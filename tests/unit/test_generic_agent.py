@@ -293,7 +293,7 @@ spec: {}
             load_agent_definition(Path("/nonexistent/agent.yaml"))
 
 
-class StubAgent(AbstractAgent):  # type: ignore[misc]
+class StubAgent(AbstractAgent):
     async def invoke(self, request: AgentRequest) -> AgentResponse:
         return AgentResponse(output="ok", invocation_id=request.invocation_id)
 

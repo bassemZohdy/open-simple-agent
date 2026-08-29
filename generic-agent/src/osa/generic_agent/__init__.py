@@ -24,6 +24,8 @@ from osa.generic_agent.config import (
     ToolRef,
     load_agent_definition,
 )
+from osa.generic_agent.model import ModelCapabilities, ModelCatalog, ModelDefinition, ModelRuntimeSettings
+from osa.generic_agent.model_provider import FakeModelProvider, ModelProvider, ModelResponse, TokenUsage
 from osa.generic_agent.runtime import AgentFactory, AgentRuntime
 
 __all__ = [
@@ -41,15 +43,23 @@ __all__ = [
     "AgentRuntime",
     "AgentSpec",
     "AgentStatus",
+    "FakeModelProvider",
     "McpRef",
     "MemoryConfig",
     "MemoryScope",
+    "ModelCapabilities",
+    "ModelCatalog",
+    "ModelDefinition",
+    "ModelProvider",
     "ModelRef",
+    "ModelResponse",
+    "ModelRuntimeSettings",
     "RuntimeConfig",
     "SecretReference",
     "SessionConfig",
     "SkillRef",
     "StrictModel",
+    "TokenUsage",
     "ToolRef",
     "load_agent_definition",
 ]

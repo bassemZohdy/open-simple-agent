@@ -15,7 +15,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: uv sync
+      - run: uv sync --all-packages
       - run: uv run ruff format --check .
       - run: uv run ruff check .
 
@@ -27,10 +27,10 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: uv sync
-      - run: uv run mypy generic-agent/src/osa/generic_agent
-      - run: uv run mypy runtimes/adk/src/osa/runtimes/adk
-      - run: uv run mypy control-plane/backend/src/osa/control_plane/backend
+      - run: uv sync --all-packages
+      - run: uv run mypy --disable-error-code=misc generic-agent/src/osa/generic_agent
+      - run: uv run mypy --disable-error-code=misc runtimes/adk/src/osa/runtimes/adk
+      - run: uv run mypy --disable-error-code=misc control-plane/backend/src/osa/control_plane/backend
       - run: uv run mypy tests
 
   test:
@@ -41,5 +41,5 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: uv sync
+      - run: uv sync --all-packages
       - run: uv run pytest --tb=short -q

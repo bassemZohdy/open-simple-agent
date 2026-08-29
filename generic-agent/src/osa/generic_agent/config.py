@@ -20,7 +20,7 @@ from pydantic import BaseModel, ConfigDict, Field
 class StrictModel(BaseModel):
     """Base model that rejects unknown fields."""
 
-    model_config = ConfigDict(extra="forbid", frozen=True)
+    model_config = ConfigDict(extra="forbid", frozen=True, protected_namespaces=())
 
 
 class SecretReference(StrictModel):

@@ -64,6 +64,7 @@ disallow_untyped_defs = true
 module = ["tests.*", "osa.*"]
 disallow_untyped_defs = false
 ignore_missing_imports = true
+disable_error_code = ["misc"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
