@@ -241,8 +241,7 @@ Conceptually:
 
 ```python
 class AgentRuntime:
-    async def create(definition: AgentDefinition) -> Agent:
-        ...
+    async def create(definition: AgentDefinition) -> Agent: ...
 ```
 
 This interface exists to separate:
@@ -267,8 +266,7 @@ Conceptually:
 
 ```python
 class Agent:
-    async def invoke(self, request: AgentRequest) -> AgentResponse:
-        ...
+    async def invoke(self, request: AgentRequest) -> AgentResponse: ...
 ```
 
 A common base implementation may provide:
@@ -599,15 +597,11 @@ Conceptually:
 
 ```python
 class MemoryProvider:
+    async def load(key): ...
 
-    async def load(key):
-        ...
+    async def store(key, update): ...
 
-    async def store(key, update):
-        ...
-
-    async def delete(key):
-        ...
+    async def delete(key): ...
 ```
 
 Potential implementations may include:
@@ -842,7 +836,6 @@ Conceptually:
 
 ```python
 class DeploymentProvider:
-
     validate(...)
     deploy(...)
     update(...)

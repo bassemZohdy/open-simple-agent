@@ -1,0 +1,21 @@
+[project]
+name = "osa-control-plane"
+version = "0.1.0"
+description = "Open Simple Agent Control Plane backend."
+requires-python = ">=3.12"
+license = "Apache-2.0"
+dependencies = [
+    "osa-generic-agent",
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+]
+
+[tool.uv.sources]
+osa-generic-agent = { workspace = true }
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/osa"]

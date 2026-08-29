@@ -271,8 +271,7 @@ The public agent contract is conceptually:
 
 ```python
 class Agent:
-    async def invoke(self, request):
-        ...
+    async def invoke(self, request): ...
 ```
 
 The runtime implementation may wrap framework-native objects internally.
