@@ -68,3 +68,50 @@ External contributions:
 - Keep functions focused
 - Write tests for new functionality
 - Use `ruff format` for formatting
+
+## Testing
+
+Tests are organized by type:
+
+- `tests/unit/` — Unit tests for individual components
+- `tests/integration/` — Integration tests for APIs and runtime
+
+Run specific test categories:
+
+```bash
+# Unit tests only
+uv run pytest tests/unit/
+
+# Integration tests only
+uv run pytest tests/integration/
+
+# Tests matching a pattern
+uv run pytest -k "tool or skill"
+```
+
+## Type Checking
+
+The project uses strict mypy checking with no exemptions for first-party code:
+
+```bash
+# Check entire project
+uv run mypy .
+
+# Check specific module
+uv run mypy generic-agent/src/osa/generic_agent
+```
+
+## Documentation
+
+- Update README.md for user-facing changes
+- Update PROJECT_DEFINITION.md for architectural changes
+- Update TODO.md when completing milestones
+- Update CHANGELOG.md for all notable changes
+- Add ADRs for significant architectural decisions
+
+## Release Process
+
+1. Update CHANGELOG.md with release notes
+2. Update version in pyproject.toml files
+3. Create a git tag
+4. Push to main (CI will run)

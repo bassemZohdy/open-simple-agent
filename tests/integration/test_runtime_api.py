@@ -1,5 +1,7 @@
 """Tests for the Agent Runtime HTTP API."""
 
+from collections.abc import AsyncGenerator
+
 import pytest
 from httpx import ASGITransport, AsyncClient
 
@@ -8,7 +10,7 @@ from osa.runtimes.adk.api import initialize_runtime, runtime_app
 
 
 @pytest.fixture(autouse=True)
-async def setup_runtime() -> None:
+async def setup_runtime() -> AsyncGenerator[None, None]:
     """Initialize the runtime before each test."""
     definition = AgentDefinition(
         metadata=AgentMetadataConfig(name="test-agent", version="1.0.0"),

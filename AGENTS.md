@@ -15,6 +15,10 @@ See @README.md for project overview. This is a Python project — see @CONTRIBUT
 - Agent definition YAML accepts bare strings for catalog refs (`- calculator` ≡ `- ref: calculator`) for `model`, `mcps`, `tools`, `skills`.
 - Docs are contract: `tests/unit/test_docs_examples.py` validates every `kind: Agent` YAML block in README.md / PROJECT_DEFINITION.md — update code and docs together.
 - `MemoryScope` lives in `generic_agent/config.py` (`memory.py` re-exports it); don't re-define domain enums.
+- `GenericAdkAgent` resolves `spec.tools`/`spec.skills` at construction (fails fast on missing refs) and executes tools via a transitional `TOOL_CALL <name> {json}` model protocol with `ToolDefinition.timeout_seconds` enforcement. ADK `LlmAgent`/`Runner` are built at construction (`osa.runtimes.adk.llm_agent`, exposed as `agent.llm_agent`/`agent.runner`); live invocation still flows through the injected `ModelProvider` until a real model is configured.
+- `GenericAdkAgent` injects memory context only when `spec.memory.enabled` + a `MemoryProvider` are configured; explicit `remember()` writes memory, raw interactions are never auto-persisted.
+- `DeploymentProvider` / `LocalDeploymentProvider` (`osa.control_plane.backend.deployment`) manage process lifecycle and are deliberately separate from `AgentRuntime`.
+- FastAPI services: Control Plane API at `osa.control_plane.backend.api`, agent Runtime API at `osa.runtimes.adk.api` (both in-memory backed; no persistence yet).
 
 ## Common Workflows
 ```bash

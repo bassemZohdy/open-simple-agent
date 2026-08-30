@@ -28,7 +28,7 @@ jobs:
         with:
           python-version: "3.12"
       - run: uv sync --all-packages
-      - run: uv run mypy generic-agent/src/osa/generic_agent runtimes/adk/src/osa/runtimes/adk control-plane/backend/src/osa/control_plane/backend tests
+      - run: uv run mypy .
 
   test:
     runs-on: ubuntu-latest

@@ -715,13 +715,45 @@ Automatic autonomous infrastructure changes without policy controls
 
 # Status
 
-The project is currently in the architecture and initial implementation phase.
+The project is in active development: Milestones 0–12 and 14 are complete (Milestone 13, deployment providers, is not started). Catalogs and templates are in-memory implementations; PostgreSQL persistence is pending.
 
-See:
+## Completed Features
 
-```text
-PROJECT_DEFINITION.md
-TODO.md
+- **Configuration-driven agents**: Define agents via YAML with `apiVersion/kind/metadata/spec` structure
+- **Generic Agent contracts**: `AgentDefinition`, `Agent` protocol, `AbstractAgent`, `AgentRuntime`
+- **Model Catalog**: `ModelDefinition`, `ModelCatalog`, `ModelProvider` with deterministic `FakeModelProvider`
+- **Tool Infrastructure**: `ToolDefinition`, `ToolCatalog`, `Tool` interface, `CalculatorTool` example
+- **MCP**: `McpDefinition`, `McpCatalog`, transport/connection options
+- **Skills**: `SkillDefinition`, `SkillCatalog` with search
+- **Sessions**: `SessionId`, `Session`, `SessionManager` (in-memory)
+- **Memory**: `MemoryProvider` ABC, `InMemoryProvider`, `MemoryPolicy`
+- **ADK Runtime**: `GenericAdkAgent`, `AdkRuntime`, `AdkAgentFactory`
+- **Runtime tool execution**: agents resolve `spec.tools` / `spec.skills` against their catalogs, execute tools with timeout enforcement, and loop on model `TOOL_CALL` directives (transitional until ADK `LlmAgent` function-calling)
+- **Agent Catalog**: `AgentCatalog` with CRUD, versioning, filtering
+- **Templates**: `AgentTemplate`, `TemplateCatalog` with built-in templates
+- **Control Plane API**: FastAPI endpoints for agent management
+- **Runtime HTTP API**: `POST /v1/invoke`, health checks, capabilities
+
+## Verification
+
+```bash
+# Run all tests
+uv run pytest --tb=short -q
+
+# Type check (strict, no exemptions)
+uv run mypy .
+
+# Lint and format
+uv run ruff check .
+uv run ruff format --check .
 ```
 
-for architectural decisions and implementation milestones.
+## Next Steps
+
+- **ADK `LlmAgent`**: native function-calling to replace the transitional `TOOL_CALL` protocol
+- **Control Plane persistence**: PostgreSQL-backed catalogs
+- **Milestone 13**: Deployment providers
+- **Milestone 15**: A2A integration
+- **Milestone 17**: Control Panel UI
+
+See [TODO.md](TODO.md) for the complete implementation backlog and [CHANGELOG.md](CHANGELOG.md) for release history.

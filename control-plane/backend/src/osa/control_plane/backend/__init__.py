@@ -6,6 +6,13 @@ from osa.control_plane.backend.agent_catalog import (
     AgentRecordStatus,
     AgentVersion,
 )
+from osa.control_plane.backend.deployment import (
+    Deployment,
+    DeploymentProvider,
+    DeploymentSpec,
+    DeploymentStatus,
+    LocalDeploymentProvider,
+)
 from osa.control_plane.backend.resource_catalogs import ResourceCatalogs
 from osa.control_plane.backend.templates import (
     GENERIC_TEMPLATE,
@@ -22,8 +29,13 @@ __all__ = [
     "AgentRecordStatus",
     "AgentTemplate",
     "AgentVersion",
+    "Deployment",
+    "DeploymentProvider",
+    "DeploymentSpec",
+    "DeploymentStatus",
     "GENERIC_TEMPLATE",
     "RESEARCH_TEMPLATE",
+    "LocalDeploymentProvider",
     "ResourceCatalogs",
     "SUPPORT_TEMPLATE",
     "TemplateCatalog",
