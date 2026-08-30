@@ -4,7 +4,22 @@ All notable changes to Open Simple Agent will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+> **Versioning note:** entries `0.1.0` through `0.14.0` record internal
+> development milestones. Package manifests and API metadata still report
+> `0.1.0`, and automated release publishing is not implemented. Version
+> alignment is tracked as a release blocker in `TODO.md`.
+
 ## [Unreleased]
+
+### Changed
+- Reworked README and project definition to separate implemented behavior from
+  target architecture.
+- Added current architecture, configuration, and HTTP API references.
+- Rebuilt `TODO.md` as a dependency-ordered P0-P3 backlog with acceptance
+  criteria and source-backed review findings.
+- Corrected documentation that described the Control Panel, A2A, MCP runtime,
+  persistent state, deployment APIs, and runnable containers as already
+  available.
 
 ### Added
 - **ADK `LlmAgent` / `Runner` construction**

@@ -11,10 +11,9 @@ COPY control-plane/ control-plane/
 
 RUN uv sync --frozen --no-dev
 
-# Base runtime image — intentionally has no ENTRYPOINT/CMD yet. The agent
-# runtime HTTP service (Milestone 14, "Agent Runtime HTTP API") adds the
-# entrypoint when there is a service to start; images built from this stage
-# are not runnable on their own until then.
+# Development base image only. It intentionally has no ENTRYPOINT/CMD because
+# the runtime API still lacks external configuration/lifespan bootstrap. Images
+# built from this Dockerfile are not standalone agent services.
 FROM python:3.12-slim AS runtime
 
 WORKDIR /app

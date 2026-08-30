@@ -1,7 +1,9 @@
 # Memory
 
 ## Project Overview
-See @README.md for project overview. This is a Python project — see @CONTRIBUTING.md for setup and check commands (there is no package.json).
+See @README.md for current capabilities and @PROJECT_DEFINITION.md for target
+scope. This is a Python project — see @CONTRIBUTING.md for setup and check
+commands (there is no package.json or Control Panel UI yet).
 
 ## Code Style Guidelines
 - Use descriptive variable names
@@ -19,6 +21,17 @@ See @README.md for project overview. This is a Python project — see @CONTRIBUT
 - `GenericAdkAgent` injects memory context only when `spec.memory.enabled` + a `MemoryProvider` are configured; explicit `remember()` writes memory, raw interactions are never auto-persisted.
 - `DeploymentProvider` / `LocalDeploymentProvider` (`osa.control_plane.backend.deployment`) manage process lifecycle and are deliberately separate from `AgentRuntime`.
 - FastAPI services: Control Plane API at `osa.control_plane.backend.api`, agent Runtime API at `osa.runtimes.adk.api` (both in-memory backed; no persistence yet).
+- The runtime API requires programmatic `initialize_runtime()`; there is no
+  external configuration bootstrap, lifespan initializer, or runnable image
+  command yet.
+- ADK `LlmAgent`/`Runner` objects are constructed, but current invocation still
+  flows through `ModelProvider` and the transitional `TOOL_CALL` protocol.
+- Current OSA session history is recorded but is not fed into later prompts;
+  persistence, TTL, and ownership isolation are backlog items.
+- `docs/ARCHITECTURE.md`, `docs/CONFIGURATION.md`, and `docs/API.md` document
+  current behavior. Keep planned behavior in `PROJECT_DEFINITION.md`/`TODO.md`.
+- Open Simple Agent is independent from the Micro-Agents project. Do not infer
+  shared architecture, dependencies, compatibility, or interoperability.
 
 ## Common Workflows
 ```bash

@@ -1,339 +1,369 @@
-# Open Simple Agent — TODO
+# Open Simple Agent — Prioritized Backlog
 
-This file contains the implementation backlog for Open Simple Agent.
+This backlog is based on a source, test, CI, packaging, and documentation review
+of `main` on 2026-08-30.
 
-Tasks should only be marked complete after implementation, automated tests, and relevant documentation are complete.
+A task is complete only after implementation, automated tests, relevant
+documentation, and appropriate failure/security behavior are complete.
 
----
+## Current baseline
 
-# Status Snapshot
+- 221 tests pass; strict mypy, Ruff format, and Ruff lint pass.
+- Latest GitHub Actions run on `main` is green.
+- Agent definitions, in-memory catalogs, native tool execution, skills,
+  in-memory sessions/memory, ADK object construction, agent management API,
+  runtime API, and local process deployment provider exist.
+- Real-model ADK invocation, configuration bootstrap, MCP runtime, persistence,
+  production deployment, A2A, authentication, policy, observability, and UI do
+  not exist.
+- The Dockerfile defines a non-root base image but has no executable service
+  command and is not built by CI.
 
-- **Completed**: Milestones 0–12 and 14 (foundation, generic agent contracts, configuration, model/tool/MCP/skill/session/memory domains, ADK runtime with tool execution and ADK `LlmAgent`/`Runner` construction, agent catalog, templates, resource catalogs, control plane API, runtime HTTP API, local deployment provider)
-- **In-memory implementations**: Agent Catalog, Templates, Resource Catalogs (PostgreSQL persistence pending)
-- **Latest session (2026-08-30)**: ADK `LlmAgent` + `Runner` construction from definitions (`osa.runtimes.adk.llm_agent`), policy-controlled memory wiring in `GenericAdkAgent` (context injection + explicit `remember()`), Milestone 13 `DeploymentProvider` contract + `LocalDeploymentProvider`
-- **Open**: routing live invocation through the ADK Runner (replaces the transitional `TOOL_CALL` protocol), MCP client manager + MCP tool resolution, Control Plane persistence, container/K8s deployment providers, A2A (M15), UI (M17), auth (M18), observability (M20)
-- **Verification**: 222 tests passing, mypy strict (no `osa.*` exemptions), ruff clean, CI green on `main`
+## Next release gate: runnable agent
 
----
+The immediate goal is one externally configured agent that starts as a service,
+invokes a real model through ADK, calls a native tool through native function
+calling, preserves isolated session context, and shuts down cleanly.
 
-# Open Work Items
-
-## Milestone 8 Leftovers — ADK Runtime
-
-- [x] Build ADK `LlmAgent` from AgentDefinition (`osa.runtimes.adk.llm_agent`; name sanitized to an ADK identifier, tools bridged as `FunctionTool`s)
-- [x] Resolve native tools (RV-009 — construction-time resolution + `TOOL_CALL` execution loop with timeout)
-- [ ] Route invocation through the ADK Runner with a live model (replaces the transitional `TOOL_CALL` protocol; blocked on a real model provider)
-- [ ] Resolve MCP tools
-- [x] Resolve skills metadata (RV-009 — `SkillCatalog` resolution at construction)
-- [x] Integrate Memory (policy-controlled context injection + explicit `remember()`; raw interactions never auto-persisted)
-- [x] Configure ADK Runner (`Runner` with in-memory session + memory services, exposed as `agent.runner`)
-- [ ] Add streaming capability if practical
-
----
-
-## Milestone 7 Leftovers — Memory Runtime Wiring
-
-- [x] Load relevant memory before agent reasoning (`_load_memory_context`; only when `spec.memory.enabled` + provider configured)
-- [x] Avoid storing every raw interaction as permanent memory by default (nothing auto-persists; covered by test)
-- [ ] Persist selected memory after interaction (only explicit `remember()` exists; policy-driven extraction pending)
-- [ ] Select first persistent memory implementation (PostgreSQL / Redis evaluation)
+The gate is complete only when the same acceptance test passes locally and from
+the built container without modifying source code or installing packages at
+startup.
 
 ---
 
-## Milestone 9 Leftovers — Agent Catalog Persistence
+# P0 — Runnable, correct vertical slice
 
-- [ ] Create database migrations (PostgreSQL)
-- [ ] Catalog survives Control Plane restart
+## P0.1 Configuration bootstrap and resource resolution
 
----
+- [ ] Define a versioned deployment-bundle format for an `AgentDefinition` plus
+  model, tool, skill, MCP, memory, and session references.
+- [ ] Add loaders for catalog definitions; reject duplicate names and unknown
+  resource types.
+- [ ] Add a `SecretResolver` contract and an environment implementation; never
+  include resolved values in models, responses, logs, or exceptions.
+- [ ] Validate `apiVersion == osa/v1alpha1` and `kind == Agent`.
+- [ ] Add positive/range validation for timeouts, TTLs, limits, and iterations.
+- [ ] Make all referenced resources fail fast, including models, MCPs, memory
+  policies, and secret references; remove silent model fallback in configured
+  deployments.
+- [ ] Decide and test behavior when `OSA_MODEL_REF` targets a bare-string model
+  reference.
+- [ ] Document supported file layout and precedence.
 
-## Milestone 13 — Deployment Providers
+**Acceptance:** one command loads an external bundle; invalid/missing references
+produce deterministic validation errors before service readiness.
 
-### Provider contract
+## P0.2 Real model execution through ADK
 
-- [x] Define `DeploymentProvider` (deploy / restart / stop / status / list_deployments)
-- [x] Keep it separate from `AgentRuntime` (`osa.control_plane.backend.deployment`; owns process lifecycle only)
+- [ ] Select and implement the first production model adapter (LiteLLM is the
+  leading option; record the decision in an ADR).
+- [ ] Route `GenericAdkAgent.invoke()` through the ADK `Runner` for configured
+  live models.
+- [ ] Replace the text `TOOL_CALL` protocol with ADK-native function calling.
+- [ ] Generate tool parameter schemas from `ToolDefinition.capabilities` and
+  validate tool arguments.
+- [ ] Apply model reference parameters and `ModelRuntimeSettings` with explicit
+  precedence.
+- [ ] Enforce `runtime.timeout_seconds`, cancellation, and iteration limits.
+- [ ] Map ADK/model/tool failures to stable OSA error types.
+- [ ] Keep `FakeModelProvider` as a deterministic test adapter, not a production
+  fallback.
 
-### Local provider
+**Acceptance:** a live model completes a multi-turn request and invokes the
+calculator tool through ADK function calling; fake-provider CI remains offline
+and deterministic.
 
-- [x] Implement local development provider (`LocalDeploymentProvider`)
-- [x] Start/stop local agent runtime (subprocess per deployment; SIGTERM → SIGKILL grace)
-- [x] Report status (running / stopped / failed with exit-code error; liveness via `poll()`)
+## P0.3 Session continuity and isolation
 
-### Container provider
+- [ ] Define `SessionProvider`; keep the in-memory provider for tests.
+- [ ] Include bounded conversation history in subsequent model turns.
+- [ ] Enforce session ownership by agent, caller/user, and tenant where present.
+- [ ] Reject user/session identity changes and cross-agent session reuse.
+- [ ] Enforce TTL and explicit deletion; define maximum history size.
+- [ ] Define behavior for caller-supplied unknown session IDs.
+- [ ] Return a stable session ID and make multi-replica requirements explicit.
 
-- [ ] Evaluate Docker runtime provider
+**Acceptance:** two users and two agents cannot access each other's sessions;
+conversation context survives the second request in the same session.
 
-### Kubernetes/OpenShift
-- [ ] Implement Kubernetes provider when required
-- [ ] Generate Deployment/Service
-- [ ] Configure readiness/liveness
-- [ ] Configure ConfigMap/Secret references
-- [ ] Handle scale/rolling update/rollback
+## P0.4 Runtime service lifecycle and image
 
-**Acceptance**: Control Plane can manage agent lifecycle without understanding ADK internals (partially met — local provider demonstrates the contract; production providers pending)
+- [ ] Add a supported CLI or application factory that loads configuration and
+  initializes the runtime during FastAPI lifespan startup.
+- [ ] Add graceful shutdown for the runtime, sessions, MCP connections, and
+  provider clients.
+- [ ] Make readiness verify successful configuration/resource initialization.
+- [ ] Add a production runtime image target with `CMD`/entrypoint, non-root
+  execution, arbitrary UID support, health check, and external configuration.
+- [ ] Remove build tools/cache/source not required at runtime and measure image
+  size.
+- [ ] Add a container smoke test to CI.
 
----
+**Acceptance:** `docker run` starts a configured agent, readiness becomes green,
+an invocation succeeds, and SIGTERM exits cleanly.
 
-## Milestone 14 Leftovers — Runtime API
+## P0.5 Control Plane correctness
 
-- [ ] Add streaming endpoint if supported
-- [ ] Multiple replicas behave consistently for external callers where session storage allows
+- [ ] Require exactly one of `template` or `definition` when creating a
+  deployable agent; explicitly model draft-without-definition if required.
+- [ ] Ensure request name, definition metadata name, record description, labels,
+  skills, and runtime stay consistent.
+- [ ] Validate referenced resources before activation/deployment.
+- [ ] Map unknown template/resource/agent to 404, duplicate name/version to 409,
+  invalid filters/transitions to 400/422.
+- [ ] Define a stable error response schema.
+- [ ] Make list filters cumulative and add pagination/sort semantics.
+- [ ] Make versions immutable snapshots and define optimistic concurrency.
+- [ ] Add lifecycle transitions (`draft -> active -> disabled/archived`) and
+  reject invalid transitions.
 
----
+**Acceptance:** API contract tests cover successful paths and every documented
+validation/conflict/not-found transition without unexpected 500 responses.
 
-## Milestone 15 — A2A
+## P0.6 Build and dependency hygiene
 
-### Agent exposure
-- [ ] Integrate supported A2A SDK
-- [ ] Generate Agent Card from AgentDefinition
-- [ ] Map Skills to Agent Card
-- [ ] Expose A2A endpoint
-- [ ] Support required security configuration
-- [ ] Validate interoperability with external A2A client
+- [ ] Replace deprecated `[tool.uv].dev-dependencies` with
+  `[dependency-groups].dev` and refresh the lock file.
+- [ ] Replace `google-adk>=0.1.0` with a tested compatibility range.
+- [ ] Resolve the ADK `BaseAgentConfig` deprecation warning.
+- [ ] Establish one authoritative version source across all three packages,
+  runtime API metadata, tags, and changelog.
+- [ ] Clarify whether packages are published independently or as one release.
 
-### A2A client
-- [ ] Support remote A2A agent registration
-- [ ] Invoke remote A2A agents
-- [ ] Handle A2A errors
-- [ ] Handle authentication
-
-**Acceptance**: Managed Agent A → A2A → Managed Agent B must work
-
----
-
-## Milestone 16 — External Agents
-
-### Catalog
-- [ ] Define external-agent catalog entry
-- [ ] Store Agent Card, endpoint, skills, capabilities, security metadata
-
-### Registration
-- [ ] Register by Agent Card URL
-- [ ] Validate Agent Card
-- [ ] Refresh metadata
-- [ ] Health/status checks
-
-**Acceptance**: External agent appears in catalog searches; platform cannot accidentally deploy external agent as managed
-
----
-
-## Milestone 17 — Control Panel UI
-
-### Foundation
-- [ ] Create TypeScript/React application
-- [ ] Implement authentication shell
-- [ ] Create API client
-
-### Agent screens
-- [ ] Agent list, search/filter, details
-- [ ] Create/Edit/Clone Agent
-- [ ] Version history, deployment status, runtime health
-
-### Agent creation
-Provide selectors for: Template, Model, MCP Servers, Tools, Skills, Memory Policy, Session Policy, A2A
-
-### Catalog screens
-- [ ] Model Catalog, MCP Catalog, Tool Catalog, Skill Catalog, Memory Policies
-
-### Testing console
-- [ ] Invoke managed agent, view response, session support, streaming, A2A test invocation
-
-**Acceptance**: Common platform operations require no manual API calls
-
----
-
-## Milestone 18 — Authentication and Authorization
-
-### Control Plane
-- [ ] OIDC/OAuth authentication
-- [ ] Administrator/read-only roles
-- [ ] Agent/catalog/deployment management permissions
-
-### Agent runtime
-- [ ] Runtime authentication
-- [ ] Agent/caller/user identity
-- [ ] Authorization policies
-
-### MCP
-- [ ] Credential references, OAuth, API key, mTLS
-
-### A2A
-- [ ] Supported authentication schemes
-- [ ] Authorization policy
-
-**Acceptance**: No production management endpoint is unauthenticated; secrets don't appear in responses/logs
+**Acceptance:** clean setup/checks emit no project-controlled deprecation
+warnings, and all artifacts report the same release version.
 
 ---
 
-## Milestone 19 — Policy and Guardrails
+# P1 — Managed platform foundation
 
-### Runtime policy
-- [ ] Tool/MCP allow/deny policy
-- [ ] Model restrictions
-- [ ] Skill exposure policy
-- [ ] Memory policy enforcement
-- [ ] External A2A policy
+## P1.1 PostgreSQL Control Plane persistence
 
-### ADK integration
-- [ ] Evaluate ADK plugins for global runtime policies
-- [ ] Add auditing/policy plugin
+- [ ] Define repository interfaces for agents, versions, templates, resources,
+  deployment records, and audit metadata.
+- [ ] Choose async database/ORM and migration tooling; record an ADR.
+- [ ] Implement PostgreSQL repositories and migrations.
+- [ ] Add transactions, uniqueness constraints, optimistic locking, and startup
+  migration policy.
+- [ ] Add isolated PostgreSQL integration tests.
+- [ ] Verify records and version history survive restart.
 
-**Acceptance**: Policy is enforced independently from agent instructions
+**Acceptance:** two Control Plane replicas share consistent state and restart
+without data loss.
 
----
+## P1.2 Resource and template APIs
 
-## Milestone 20 — Observability
+- [ ] Expose CRUD/list/search APIs for models, MCPs, tools, skills, memory
+  policies, session policies, and templates.
+- [ ] Remove direct mutation of catalog private dictionaries; add explicit
+  update/delete contracts.
+- [ ] Add reference-usage checks before deleting a resource.
+- [ ] Prevent API responses from exposing secret values.
+- [ ] Add import/export validation for configuration bundles.
 
-### Metrics
-- [ ] Invocation count/latency, model latency, token usage
-- [ ] Tool/MCP/memory/session/A2A usage, errors
+**Acceptance:** an administrator can create every resource required by an agent
+without application code and cannot delete an in-use resource accidentally.
 
-### Tracing
-- [ ] OpenTelemetry integration
-- [ ] Agent/model/tool/MCP/A2A spans
+## P1.3 MCP runtime client
 
-### Logs
-- [ ] Structured logging with correlation IDs
-- [ ] Session/agent/invocation ID
-- [ ] Secret redaction
+- [ ] Select the supported MCP SDK and protocol-version policy; record an ADR.
+- [ ] Implement connection manager for stdio and Streamable HTTP; decide whether
+  legacy SSE remains supported.
+- [ ] Resolve credentials, TLS, timeout, retry, response-size, and lifecycle
+  settings from `McpDefinition`.
+- [ ] Discover tools/resources/prompts and apply server/agent tool filters.
+- [ ] Namespace tool names and preserve MCP origin metadata.
+- [ ] Bridge MCP tools to ADK with schemas and bounded results.
+- [ ] Add connection pooling, reconnect, cancellation, and graceful close.
+- [ ] Add protocol-level tests using a deterministic local MCP server.
 
-**Acceptance**: One agent invocation can be traced across model/tool/MCP operations
+**Acceptance:** a configured agent discovers and invokes a filtered MCP tool;
+timeout/auth/oversize/disconnect failures are predictable and observable.
 
----
+## P1.4 Memory policy and persistence
 
-## Milestone 21 — Manager Agent
+- [ ] Resolve `MemoryConfig.policy` through the policy catalog.
+- [ ] Define scope IDs for user, agent, tenant, and application scopes.
+- [ ] Enforce enabled state, limits, retention, and deletion.
+- [ ] Design explicit/policy-driven extraction; never persist every raw turn by
+  default.
+- [ ] Select the first persistent provider based on access/search requirements
+  (PostgreSQL vs Redis/vector extension); record an ADR.
+- [ ] Add authorization and cross-scope isolation tests.
 
-*Do not start until deterministic Control Plane APIs are stable*
+**Acceptance:** selected memory survives restart, respects scope/retention/limit,
+and is never visible to an unauthorized user or agent.
 
-### Manager Agent
-- [ ] Create Manager Agent using ADK
-- [ ] Expose controlled Control Plane tools (search_agents, get_agent, create_agent_draft, validate_agent, clone_agent, compare_versions, create_version, deploy_agent, restart_agent, scale_agent, rollback_agent, get_health, get_logs)
+## P1.5 Deployment API and providers
 
-### Safety
-- [ ] High-impact actions require explicit policy/approval
-- [ ] Manager Agent cannot access raw secrets, bypass validation, modify database, or manipulate Kubernetes
+- [ ] Persist deployment intent and observed state.
+- [ ] Expose deploy/status/stop/restart/log APIs through the Control Plane.
+- [ ] Harden the local provider: capture bounded logs, startup failure, health
+  probing, concurrent calls, cleanup, and idempotency.
+- [ ] Ensure arbitrary process commands are never accepted from an untrusted API.
+- [ ] Implement a container provider only if it remains a required local target.
+- [ ] Implement Kubernetes/OpenShift provider: Deployment, Service, probes,
+  ConfigMap/Secret references, scale, rolling update, rollback, and status watch.
 
-**Acceptance**: "Create a new complaint-resolution agent based on support-agent" must produce validated draft before deployment
-
----
-
-## Milestone 22 — Packaging and Images
-
-### Generic Agent runtime
-- [ ] Create production ADK runtime image
-- [ ] Keep image minimal, run non-root, support arbitrary UID
-- [ ] Externalize configuration/secrets
-- [ ] Add health endpoints, graceful shutdown
-
-### Control Plane
-- [ ] Backend image
-- [ ] UI image/static packaging
-- [ ] Database migrations
-
-**Acceptance**: Containers run locally and on Kubernetes/OpenShift; no package installation during runtime startup
-
----
-
-## Milestone 23 — CI/CD
-
-- [ ] Unit tests, integration tests, E2E tests
-- [ ] Container build
-- [ ] Security scanning, dependency scanning, SBOM
-- [ ] Image signing if appropriate
-- [ ] Version tagging, GitHub release automation
-- [ ] Container registry publishing
+**Acceptance:** the Control Plane deploys a versioned agent without importing
+ADK internals, observes readiness, restarts it, and rolls back safely.
 
 ---
 
-## Milestone 24 — Documentation and Examples
+# P2 — Interoperability and production controls
 
-### Documentation
-- [ ] Getting started, configuration reference
-- [ ] AgentDefinition reference
-- [ ] Model/MCP/Tools/Skills/Memory/Sessions guide
-- [ ] A2A guide, Control Plane API guide
-- [ ] Deployment guide, security guide
+## P2.1 A2A and external agents
 
-### Examples
-- [ ] Minimal agent, tool-using agent, MCP agent
-- [ ] Memory agent, A2A agent, support agent
-- [ ] External A2A registration, Manager Agent demonstration
+- [ ] Select and pin the supported A2A specification/SDK version; record an ADR.
+- [ ] Generate Agent Cards from validated definitions and resolved skills.
+- [ ] Expose A2A invocation and required task/status semantics.
+- [ ] Define security-scheme configuration and caller identity propagation.
+- [ ] Add external-agent record type distinct from managed agents.
+- [ ] Register/validate/refresh Agent Cards by URL and track health.
+- [ ] Implement remote A2A invocation, authentication, errors, and timeouts.
+- [ ] Add external compatibility tests.
 
----
+**Acceptance:** Managed Agent A invokes Managed Agent B and a deterministic
+external A2A agent; external records cannot be deployed by OSA.
 
-# Deferred Backlog
+## P2.2 Authentication and authorization
 
-*Do not implement unless required*
+- [ ] Add OIDC/OAuth authentication to Control Plane and runtime APIs.
+- [ ] Define administrator, operator, viewer, agent, caller, user, and service
+  identities and permissions.
+- [ ] Enforce ownership/tenant boundaries for agents, sessions, and memory.
+- [ ] Add tool/MCP/skill/model/A2A allow/deny policy independent of prompts.
+- [ ] Add API key/OAuth/mTLS credential adapters for MCP/A2A as required.
+- [ ] Add audit events for every management mutation and privileged invocation.
 
-- [ ] Multiple unrelated agents inside one runtime process
-- [ ] Additional runtime frameworks (LangChain, etc.)
-- [ ] Remote runtime providers
-- [ ] Advanced multi-tenancy
-- [ ] Enterprise policy engine
-- [ ] Hosted agent marketplace
-- [ ] Advanced semantic agent discovery
-- [ ] Dynamic runtime plugin installation
-- [ ] Agent-to-agent delegation/consent framework
-- [ ] Human approval framework beyond basic management approvals
-- [ ] Advanced memory extraction and consolidation
-- [ ] Multi-region agent deployment
+**Acceptance:** no production management or invocation endpoint is anonymous;
+authorization and secret-redaction tests cover deny paths.
 
----
+## P2.3 Observability
 
-# Implementation Order (Current)
+- [ ] Add structured logs with invocation, session, agent, user/caller, and
+  deployment correlation IDs.
+- [ ] Add secret and sensitive-payload redaction with bounded capture.
+- [ ] Add metrics for invocation/model/tool/MCP/memory/session/A2A latency,
+  usage, tokens, and errors.
+- [ ] Add OpenTelemetry spans across the full invocation path.
+- [ ] Expose deployment/runtime health without revealing sensitive data.
 
-```text
- 1. Repository skeleton            ✅ done
- 2. Generic Agent contracts        ✅ done
- 3. Configuration                  ✅ done
- 4. Model Catalog                  ✅ done
- 5. Native Tool support            ✅ done (runtime wiring resolved — RV-009)
- 6. MCP                            ✅ done (domain; runtime client open)
- 7. Skills                         ✅ done (runtime metadata resolution done; A2A mapping open)
- 8. Session                        ✅ done (domain; persistence open)
- 9. Memory                         ✅ done (domain; persistence + wiring open)
-10. ADK runtime vertical slice     ✅ done (tools/skills/memory wired; LlmAgent built; live-model routing + streaming open)
-11. Agent Catalog                  ✅ done (in-memory; persistence open)
-12. Control Plane API              ✅ done
-13. Control Panel                  ⬜ not started
-14. A2A                            ⬜ not started
-15. Deployment lifecycle           ◑ local provider done; container/K8s open (Milestone 13)
-16. Manager Agent                  ⬜ not started
-```
+**Acceptance:** one invocation can be traced end-to-end and a failed tool/MCP
+call can be diagnosed without exposing secrets.
 
-**Next priority**: route invocation through the ADK Runner with a live model → Control Plane persistence (PostgreSQL) → MCP client manager → container deployment provider
+## P2.4 Streaming and replica behavior
+
+- [ ] Define SSE or another supported streaming contract for the runtime API.
+- [ ] Map ADK events to stable OSA events and handle client cancellation.
+- [ ] Verify session consistency and idempotency across replicas.
+- [ ] Add load, backpressure, timeout, and disconnect tests.
+
+**Acceptance:** streaming works through two runtime replicas without losing
+session ownership or leaking another caller's events.
 
 ---
 
-# Review Findings
+# P3 — Product surface and distribution
 
-## Resolved Findings
+## P3.1 Control Panel
 
-- **RV-001**: `osa` namespace package issue — resolved (PEP 420 namespace)
-- **RV-002**: `.gitignore` missing Python artifacts — resolved
-- **RV-003**: Dockerfile missing ENTRYPOINT — resolved (documented base image)
-- **RV-004**: mypy exempting `osa.*` code — resolved (strict checking enabled)
-- **RV-005**: Milestones checked without backing — resolved (CI green, tests added)
-- **RV-006**: Documented YAML not loading — resolved (bare string coercion)
-- **RV-007**: Env override crashes — resolved (robust error handling)
-- **RV-008**: CI `uv sync` not installing dependencies — resolved (`--all-packages`)
-- **RV-009**: Tool/skill runtime wiring — resolved 2026-08-30:
-  - `GenericAdkAgent` now resolves `spec.tools` and `spec.skills` against
-    `ToolCatalog`/`SkillCatalog` at construction and fails fast with a clear
-    `ValueError` when a referenced resource is missing.
-  - `invoke()` executes a tool-calling loop: a model response of
-    `TOOL_CALL <name> {json}` triggers `execute_tool()` and the `ToolResult`
-    is fed back to the model until a final answer (transitional protocol until
-    ADK `LlmAgent` function-calling lands; bounded by `runtime.max_iterations`,
-    default 3).
-  - `execute_tool()` enforces `ToolDefinition.timeout_seconds` via
-    `asyncio.wait_for` and raises `ToolTimeoutError`; timeouts surface in
-    `AgentResponse.error` on the invoke path.
-  - `AdkRuntime`/`AdkAgentFactory` accept and pass through `skill_catalog`;
-    resolved tools/skills are exposed via `agent.tools` / `agent.skills`.
-  - Verified: real `ToolCatalog` lookup/`execute` call sites exist in
-    `runtimes/adk/src` (previously only the constructor assignment); a
-    `CalculatorTool`-equipped agent produces a response derived from the tool's
-    `ToolResult`; a deliberately slow tool raises `ToolTimeoutError` past its
-    configured timeout; 9 new runtime tests (207 total passing).
+*Start after P1 APIs and P2 authentication contracts are stable.*
+
+- [ ] Create TypeScript/React application and authenticated shell.
+- [ ] Add agents, versions, templates, resources, deployments, health, and audit
+  views.
+- [ ] Add validated agent creation/edit/clone flows.
+- [ ] Add invocation console with sessions, streaming, tools, and A2A tests.
+- [ ] Add accessibility, localization, responsive, error, and empty/loading
+  states.
+
+## P3.2 Manager Agent
+
+*Start after deterministic Control Plane APIs, authorization, and approval
+policy are stable.*
+
+- [ ] Expose narrow Control Plane tools for search, draft, validate, compare,
+  version, deploy, restart, scale, rollback, health, and logs.
+- [ ] Require explicit approval for high-impact operations.
+- [ ] Prevent raw secret access, direct database access, policy bypass, and
+  direct Kubernetes manipulation.
+- [ ] Test prompt-injection and confused-deputy scenarios.
+
+## P3.3 Packaging, CI/CD, and release
+
+- [ ] Add separate runtime, Control Plane, and UI images.
+- [ ] Add unit, integration, protocol compatibility, database, container, and
+  end-to-end CI stages with appropriate gates.
+- [ ] Add coverage reporting and a justified threshold.
+- [ ] Add dependency/license/security scans, SBOM, and image signing.
+- [ ] Publish versioned images and packages with provenance.
+- [ ] Automate tags, changelog validation, GitHub releases, and rollback.
+
+## P3.4 Documentation and examples
+
+- [x] Separate project definition from current implementation documentation.
+- [x] Add current architecture, configuration, and API references.
+- [ ] Add runnable minimal, native-tool, memory, and support-agent examples.
+- [ ] Add runnable MCP, A2A, and external-agent examples as those features land.
+- [ ] Add operations, deployment, security, observability, upgrade, and recovery
+  guides before production release.
+- [ ] Generate or validate API/schema reference from source in CI.
+
+---
+
+# Deferred until a concrete requirement
+
+- [ ] Additional runtime frameworks such as LangChain/LangGraph.
+- [ ] Multiple unrelated agents in one runtime process.
+- [ ] Dynamic runtime plugin installation.
+- [ ] Advanced semantic agent discovery and hosted marketplace.
+- [ ] Advanced multi-tenancy and multi-region deployment.
+- [ ] Agent delegation/consent framework beyond baseline A2A security.
+- [ ] General human-approval framework beyond management operations.
+- [ ] Advanced memory extraction/consolidation and vector retrieval.
+- [ ] Enterprise external policy engine.
+
+---
+
+# Completed foundation
+
+- [x] uv workspace, PEP 420 namespace, Python 3.12, CI, Apache-2.0 license.
+- [x] Strict agent definition schema and selected environment overrides.
+- [x] Agent, runtime, model-provider, tool, MCP, skill, session, and memory
+  contracts.
+- [x] In-memory model/tool/MCP/skill/memory catalogs and session manager.
+- [x] Deterministic fake model provider and calculator tool.
+- [x] ADK `LlmAgent`/`Runner` construction and native tool wrappers.
+- [x] Transitional native tool loop with timeout enforcement.
+- [x] In-memory Agent Catalog, immutable Pydantic definitions, templates, and
+  resource catalog wrapper.
+- [x] Control Plane agent CRUD/version/disable API and health endpoints.
+- [x] Runtime invoke/capabilities/health API with programmatic initialization.
+- [x] Local process deployment-provider contract and implementation.
+- [x] Policy-controlled memory context search and explicit `remember()` writes.
+
+---
+
+# Open review findings
+
+| ID | Finding | Backlog owner |
+|---|---|---|
+| RV-010 | ADK `Runner` is built but not used for invocation | P0.2 |
+| RV-011 | Runtime API has no external configuration/lifespan bootstrap | P0.1, P0.4 |
+| RV-012 | Docker image has no runnable command | P0.4 |
+| RV-013 | Session history is stored but not used; ownership/TTL are unenforced | P0.3 |
+| RV-014 | Unknown configured model silently falls back to fake | P0.1, P0.2 |
+| RV-015 | MCP is schema/catalog only; no runtime client exists | P1.3 |
+| RV-016 | Control Plane accepts inconsistent/incomplete records and leaks some domain errors as 500 | P0.5 |
+| RV-017 | Resource and deployment implementations are not exposed by the API | P1.2, P1.5 |
+| RV-018 | Memory policy/limits/retention and persistence are not enforced | P1.4 |
+| RV-019 | Both APIs are unauthenticated; local deploy accepts trusted arbitrary commands | P1.5, P2.2 |
+| RV-020 | ADK dependency range is too broad and emits a deprecation warning | P0.6 |
+| RV-021 | uv development dependency configuration is deprecated | P0.6 |
+| RV-022 | Package versions, API versions, and changelog milestone versions are inconsistent | P0.6 |
+| RV-023 | Current tests have no live provider/MCP/database/container/A2A coverage or coverage threshold | P3.3 |
+| RV-024 | Model parameters, runtime timeout, request metadata, and several config fields are accepted but ignored | P0.1, P0.2 |
+
+Resolved findings RV-001 through RV-009 remain documented in the git history and
+changelog; they are omitted here to keep the active backlog focused.

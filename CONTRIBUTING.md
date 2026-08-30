@@ -14,6 +14,10 @@ uv sync --all-packages
 `--all-packages` is required: the workspace root has no runtime dependencies of
 its own, so a bare `uv sync` installs none of the three members' dependencies.
 
+The current uv configuration emits a deprecation warning for
+`tool.uv.dev-dependencies`; migration to `dependency-groups.dev` is tracked in
+`TODO.md` and does not prevent the checks from running.
+
 ## Running Checks
 
 ```bash
@@ -35,14 +39,15 @@ uv run pytest
 ```text
 open-simple-agent/
 ├── control-plane/
-│   ├── backend/      # Control Plane API (FastAPI)
-│   └── ui/           # Control Panel UI (React)
+│   └── backend/      # Control Plane API (FastAPI)
 ├── generic-agent/    # Domain model and contracts
 ├── runtimes/
 │   └── adk/          # Google ADK runtime
 ├── tests/            # Shared tests
 └── docs/             # Documentation
 ```
+
+The React Control Panel is planned but is not present in the repository.
 
 ## Architecture Decision Records
 
@@ -103,15 +108,31 @@ uv run mypy generic-agent/src/osa/generic_agent
 
 ## Documentation
 
-- Update README.md for user-facing changes
-- Update PROJECT_DEFINITION.md for architectural changes
-- Update TODO.md when completing milestones
-- Update CHANGELOG.md for all notable changes
-- Add ADRs for significant architectural decisions
+- Update `README.md` when user-facing behavior or current status changes.
+- Update `PROJECT_DEFINITION.md` only for product scope, principles, or target
+  architecture changes.
+- Update `docs/ARCHITECTURE.md`, `docs/CONFIGURATION.md`, and `docs/API.md` when
+  implementation behavior changes.
+- Update `TODO.md` when work is completed, added, reprioritized, or deferred.
+- Update `CHANGELOG.md` for notable changes.
+- Add an ADR for significant decisions, including protocol/provider/version
+  choices and irreversible data or deployment boundaries.
+
+Target capabilities must be labelled as planned. Do not describe a domain type
+or catalog entry as a working integration without runtime behavior and tests.
+
+`tests/unit/test_docs_examples.py` validates every `kind: Agent` YAML example in
+`README.md` and `PROJECT_DEFINITION.md`.
 
 ## Release Process
 
-1. Update CHANGELOG.md with release notes
-2. Update version in pyproject.toml files
-3. Create a git tag
-4. Push to main (CI will run)
+Release automation is not implemented yet. Before the first published release:
+
+1. Establish the authoritative version source and package versioning policy.
+2. Update every package/API version from that source.
+3. Move relevant changelog entries out of `Unreleased`.
+4. Run the full local and CI validation suite.
+5. Create a signed/tagged release and publish artifacts with provenance.
+
+The numbered changelog sections after `Unreleased` currently record internal
+development milestones; they are not proof of published package releases.

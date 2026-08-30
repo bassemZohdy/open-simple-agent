@@ -4,14 +4,47 @@
 
 {Proposed | Accepted | Deprecated | Superseded}
 
+## Date
+
+{YYYY-MM-DD}
+
+## Owners
+
+{Names or team}
+
 ## Context
 
-{What is the issue that we're seeing that is motivating this decision or change?}
+{What problem, constraints, and forces motivate this decision? Distinguish
+current implementation from desired behavior.}
+
+## Decision drivers
+
+- {Driver one}
+- {Driver two}
+
+## Considered options
+
+1. {Option one}
+2. {Option two}
 
 ## Decision
 
-{What is the change that we're proposing and/or doing?}
+{What is decided, including scope and explicit non-decisions?}
 
 ## Consequences
 
-{What becomes easier or more difficult to do because of this change?}
+### Positive
+
+- {Consequence}
+
+### Negative or trade-offs
+
+- {Consequence}
+
+## Validation
+
+{How will implementation and ongoing conformance be verified?}
+
+## Follow-up
+
+- [ ] {Required implementation or documentation task}
