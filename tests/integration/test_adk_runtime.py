@@ -13,6 +13,7 @@ from osa.generic_agent import (
     ModelCatalog,
     ModelDefinition,
     ModelRef,
+    ModelResponse,
 )
 from osa.runtimes.adk import AdkAgentFactory, AdkRuntime, GenericAdkAgent
 
@@ -61,8 +62,10 @@ class TestGenericAdkAgent:
         )
 
         await agent.invoke(AgentRequest(input="help me"))
-        assert "You are a support agent." in provider.calls[0]["prompt"]
-        assert "help me" in provider.calls[0]["prompt"]
+        prompt = provider.calls[0]["prompt"]
+        assert isinstance(prompt, str)
+        assert "You are a support agent." in prompt
+        assert "help me" in prompt
 
     async def test_invoke_creates_session(self) -> None:
         provider = FakeModelProvider(response="ok")
@@ -95,7 +98,7 @@ class TestGenericAdkAgent:
 
     async def test_invoke_handles_model_error(self) -> None:
         class ErrorProvider(FakeModelProvider):
-            async def generate(self, prompt: str, model_id: str, **kwargs: object) -> object:
+            async def generate(self, prompt: str, model_id: str, **kwargs: object) -> ModelResponse:
                 raise RuntimeError("model failed")
 
         provider = ErrorProvider()

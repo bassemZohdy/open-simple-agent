@@ -5,20 +5,10 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from enum import StrEnum
 from typing import Any
 from uuid import uuid4
 
-from osa.generic_agent.config import StrictModel
-
-
-class MemoryScope(StrEnum):
-    """Memory scope options."""
-
-    USER = "user"
-    AGENT = "agent"
-    TENANT = "tenant"
-    APPLICATION = "application"
+from osa.generic_agent.config import MemoryScope, StrictModel
 
 
 class MemoryPolicy(StrictModel):

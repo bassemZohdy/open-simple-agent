@@ -17,6 +17,7 @@ from osa.generic_agent import (
     AgentResponse,
     AgentSpec,
     AgentStatus,
+    ConfigurationError,
     McpRef,
     MemoryConfig,
     ModelRef,
@@ -26,6 +27,14 @@ from osa.generic_agent import (
     ToolRef,
     load_agent_definition,
 )
+
+MINIMAL_YAML = """
+apiVersion: osa/v1alpha1
+kind: Agent
+metadata:
+  name: test
+spec: {}
+"""
 
 
 class TestAgentId:
@@ -46,14 +55,14 @@ class TestAgentId:
     def test_frozen(self) -> None:
         aid = AgentId.generate()
         with pytest.raises(AttributeError):
-            aid.value = None
+            aid.value = None  # type: ignore[misc,assignment]
 
 
 class TestAgentStatus:
     def test_all_values(self) -> None:
-        assert AgentStatus.DRAFT == "draft"
-        assert AgentStatus.RUNNING == "running"
-        assert AgentStatus.ERROR == "error"
+        assert AgentStatus.DRAFT.value == "draft"
+        assert AgentStatus.RUNNING.value == "running"
+        assert AgentStatus.ERROR.value == "error"
 
 
 class TestAgentMetadata:
@@ -119,7 +128,7 @@ class TestSecretReference:
 class TestStrictModel:
     def test_rejects_unknown_fields(self) -> None:
         with pytest.raises(ValidationError):
-            ModelRef(ref="default", unknown_field="bad")
+            ModelRef(ref="default", unknown_field="bad")  # type: ignore[call-arg]
 
 
 class TestConfigModels:
@@ -186,7 +195,7 @@ class TestAgentDefinition:
             AgentDefinition(
                 metadata=AgentMetadataConfig(name="test"),
                 spec=AgentSpec(),
-                unknown_field="bad",
+                unknown_field="bad",  # type: ignore[call-arg]
             )
 
 
@@ -291,6 +300,90 @@ spec: {}
     def test_load_from_missing_path_raises(self) -> None:
         with pytest.raises(FileNotFoundError, match="not found"):
             load_agent_definition(Path("/nonexistent/agent.yaml"))
+
+    def test_bare_string_references_are_accepted(self) -> None:
+        yaml_str = """
+apiVersion: osa/v1alpha1
+kind: Agent
+metadata:
+  name: test
+spec:
+  model: default
+  mcps:
+    - crm
+  tools:
+    - calculator
+  skills:
+    - support
+"""
+        d = load_agent_definition(yaml_str)
+        assert d.spec.model == ModelRef(ref="default")
+        assert d.spec.mcps == [McpRef(ref="crm")]
+        assert d.spec.tools == [ToolRef(ref="calculator")]
+        assert d.spec.skills == [SkillRef(ref="support")]
+
+    def test_bare_and_mapping_reference_forms_are_equal(self) -> None:
+        bare = load_agent_definition(
+            """
+apiVersion: osa/v1alpha1
+kind: Agent
+metadata:
+  name: test
+spec:
+  tools: [calculator]
+"""
+        )
+        mapping = load_agent_definition(
+            """
+apiVersion: osa/v1alpha1
+kind: Agent
+metadata:
+  name: test
+spec:
+  tools:
+    - ref: calculator
+"""
+        )
+        assert bare == mapping
+
+
+class TestEnvOverrideRobustness:
+    def test_empty_document_raises_validation_error(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("OSA_AGENT_NAME", "x")
+        with pytest.raises(ValidationError):
+            load_agent_definition("")
+
+    def test_non_mapping_document_raises_validation_error(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("OSA_MODEL_REF", "default")
+        with pytest.raises(ValidationError):
+            load_agent_definition("- a\n- b")
+
+    def test_null_intermediate_node_is_created(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("OSA_MEMORY_ENABLED", "1")
+        d = load_agent_definition("metadata:\n  name: test\nspec:\n")
+        assert d.spec.memory.enabled is True
+
+    def test_non_mapping_intermediate_node_is_skipped(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("OSA_MODEL_REF", "default")
+        with pytest.raises(ValidationError):
+            load_agent_definition("spec: oops")
+
+    @pytest.mark.parametrize("raw", ["1", "true", "TRUE", "Yes", "on", " true "])
+    def test_boolean_truthy_spellings(self, monkeypatch: pytest.MonkeyPatch, raw: str) -> None:
+        monkeypatch.setenv("OSA_MEMORY_ENABLED", raw)
+        d = load_agent_definition(MINIMAL_YAML)
+        assert d.spec.memory.enabled is True
+
+    @pytest.mark.parametrize("raw", ["0", "false", "FALSE", "No", "off", " off "])
+    def test_boolean_falsy_spellings(self, monkeypatch: pytest.MonkeyPatch, raw: str) -> None:
+        monkeypatch.setenv("OSA_MEMORY_ENABLED", raw)
+        d = load_agent_definition(MINIMAL_YAML)
+        assert d.spec.memory.enabled is False
+
+    def test_invalid_boolean_raises_configuration_error(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("OSA_MEMORY_ENABLED", "maybe")
+        with pytest.raises(ConfigurationError):
+            load_agent_definition(MINIMAL_YAML)
 
 
 class StubAgent(AbstractAgent):

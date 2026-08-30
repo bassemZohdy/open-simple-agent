@@ -14,13 +14,30 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class StrictModel(BaseModel):
     """Base model that rejects unknown fields."""
 
     model_config = ConfigDict(extra="forbid", frozen=True, protected_namespaces=())
+
+
+class ConfigurationError(ValueError):
+    """Raised when configuration cannot be interpreted.
+
+    Distinct from pydantic.ValidationError (schema violations): this covers
+    values that cannot be parsed at all, such as an unrecognized OSA_*
+    boolean environment override.
+    """
+
+
+def _coerce_bare_string_ref(data: Any) -> Any:
+    """Accept a bare string wherever a catalog reference mapping is expected.
+
+    ``tools: [calculator]`` and ``tools: [{ref: calculator}]`` are equivalent.
+    """
+    return {"ref": data} if isinstance(data, str) else data
 
 
 class SecretReference(StrictModel):
@@ -37,6 +54,11 @@ class ModelRef(StrictModel):
     ref: str
     parameters: dict[str, Any] = Field(default_factory=dict)
 
+    @model_validator(mode="before")
+    @classmethod
+    def _accept_bare_string(cls, data: Any) -> Any:
+        return _coerce_bare_string_ref(data)
+
 
 class McpRef(StrictModel):
     """Reference to an MCP server in the MCP Catalog."""
@@ -44,17 +66,32 @@ class McpRef(StrictModel):
     ref: str
     tools_filter: list[str] = Field(default_factory=list)
 
+    @model_validator(mode="before")
+    @classmethod
+    def _accept_bare_string(cls, data: Any) -> Any:
+        return _coerce_bare_string_ref(data)
+
 
 class ToolRef(StrictModel):
     """Reference to a native tool."""
 
     ref: str
 
+    @model_validator(mode="before")
+    @classmethod
+    def _accept_bare_string(cls, data: Any) -> Any:
+        return _coerce_bare_string_ref(data)
+
 
 class SkillRef(StrictModel):
     """Reference to a skill in the Skill Catalog."""
 
     ref: str
+
+    @model_validator(mode="before")
+    @classmethod
+    def _accept_bare_string(cls, data: Any) -> Any:
+        return _coerce_bare_string_ref(data)
 
 
 class MemoryScope(StrEnum):
@@ -143,6 +180,7 @@ def load_agent_definition(source: str | Path) -> AgentDefinition:
     Raises:
         FileNotFoundError: If source is a Path and the file doesn't exist.
         pydantic.ValidationError: If the definition is invalid.
+        ConfigurationError: If an OSA_* boolean override has an unrecognized value.
     """
     if isinstance(source, Path):
         if not source.is_file():
@@ -169,21 +207,50 @@ _ENV_MAP: dict[str, tuple[list[str], bool]] = {
 }
 
 
-def _apply_env_overrides(data: dict[str, Any]) -> None:
-    """Apply OSA_* environment variables to the definition data."""
+_TRUTHY_VALUES = {"1", "true", "yes", "on"}
+_FALSY_VALUES = {"0", "false", "no", "off"}
+
+
+def _parse_boolean(value: str) -> bool:
+    normalized = value.strip().lower()
+    if normalized in _TRUTHY_VALUES:
+        return True
+    if normalized in _FALSY_VALUES:
+        return False
+    accepted = ", ".join(sorted(_TRUTHY_VALUES | _FALSY_VALUES))
+    raise ConfigurationError(
+        f"Invalid boolean value {value!r} for an OSA_* environment override. Accepted values: {accepted}."
+    )
+
+
+def _apply_env_overrides(data: object) -> None:
+    """Apply OSA_* environment variables to the raw definition data.
+
+    Non-mapping documents (empty input, lists, scalars) are left untouched so
+    AgentDefinition validation reports the real problem. Overrides onto a null
+    intermediate node create the missing mapping; overrides are skipped when
+    an intermediate node is some other non-mapping value.
+    """
+    if not isinstance(data, dict):
+        return
+
     for env_var, (path_keys, is_boolean) in _ENV_MAP.items():
-        value = os.environ.get(env_var)
-        if value is None:
+        raw_value = os.environ.get(env_var)
+        if raw_value is None:
             continue
 
-        current = data
+        current: dict[str, Any] = data
+        reachable = True
         for key in path_keys[:-1]:
-            if key not in current:
-                current[key] = {}
-            current = current[key]
+            nested = current.get(key)
+            if nested is None:
+                nested = {}
+                current[key] = nested
+            if not isinstance(nested, dict):
+                reachable = False
+                break
+            current = nested
+        if not reachable:
+            continue
 
-        final_key = path_keys[-1]
-        if is_boolean:
-            current[final_key] = value.lower() == "true"
-        else:
-            current[final_key] = value
+        current[path_keys[-1]] = _parse_boolean(raw_value) if is_boolean else raw_value

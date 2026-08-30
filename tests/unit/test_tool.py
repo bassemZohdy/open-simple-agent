@@ -132,24 +132,28 @@ class TestCalculatorTool:
         tool = CalculatorTool()
         result = tool.execute(operation="divide", a=1, b=0)
         assert result.success is False
+        assert result.error is not None
         assert "Division by zero" in result.error
 
     def test_unknown_operation(self) -> None:
         tool = CalculatorTool()
         result = tool.execute(operation="power", a=2, b=3)
         assert result.success is False
+        assert result.error is not None
         assert "Unknown operation" in result.error
 
     def test_missing_parameters(self) -> None:
         tool = CalculatorTool()
         result = tool.execute(operation="add")
         assert result.success is False
+        assert result.error is not None
         assert "Missing required parameters" in result.error
 
     def test_non_numeric_parameters(self) -> None:
         tool = CalculatorTool()
         result = tool.execute(operation="add", a="x", b=3)
         assert result.success is False
+        assert result.error is not None
         assert "numbers" in result.error
 
     def test_is_tool_instance(self) -> None:

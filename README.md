@@ -15,33 +15,40 @@ Open Simple Agent aims to make creation and operation of AI agents simple enough
 A user should be able to define an agent using configuration such as:
 
 ```yaml
-agent:
+apiVersion: osa/v1alpha1
+kind: Agent
+
+metadata:
   name: customer-support
   description: Customer support assistant
 
+spec:
   instruction: |
     Assist customers with support requests.
     Use the available tools when required.
     Do not invent customer information.
 
-model:
-  ref: default
+  model:
+    ref: default
 
-mcps:
-  - ref: crm
-  - ref: knowledge
+  mcps:
+    - ref: crm
+    - ref: knowledge
 
-tools:
-  - calculator
+  tools:
+    - calculator
 
-skills:
-  - customer-support
-  - case-resolution
+  skills:
+    - customer-support
+    - case-resolution
 
-memory:
-  enabled: true
-  policy: user-memory
+  memory:
+    enabled: true
+    policy: user-memory
 ```
+
+Bare strings are accepted for `model`, `tools`, `skills`, and `mcps` references
+(`- calculator` is equivalent to `- ref: calculator`).
 
 The platform then:
 

@@ -8,8 +8,11 @@
 ## Setup
 
 ```bash
-uv sync
+uv sync --all-packages
 ```
+
+`--all-packages` is required: the workspace root has no runtime dependencies of
+its own, so a bare `uv sync` installs none of the three members' dependencies.
 
 ## Running Checks
 
@@ -45,7 +48,12 @@ open-simple-agent/
 
 ADRs are stored in `docs/adrs/`. See [ADR template](docs/adrs/000-template.md).
 
-## Pull Requests
+## Branches and Pull Requests
+
+Maintainers may commit directly to `main`; every push runs CI, and `main` is
+expected to stay green (lint, typecheck, tests).
+
+External contributions:
 
 1. Fork the repository
 2. Create a feature branch

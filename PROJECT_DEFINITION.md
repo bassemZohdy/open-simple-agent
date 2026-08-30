@@ -63,19 +63,24 @@ A user should be able to create a useful agent without writing application code.
 For example:
 
 ```yaml
-agent:
+apiVersion: osa/v1alpha1
+kind: Agent
+
+metadata:
   name: customer-support
+
+spec:
   instruction: |
     Help customers resolve support requests.
 
-model:
-  ref: default
+  model:
+    ref: default
 
-mcps:
-  - ref: crm
+  mcps:
+    - ref: crm
 
-memory:
-  enabled: true
+  memory:
+    enabled: true
 ```
 
 This configuration should be sufficient for the platform to create and expose a functioning runtime agent.

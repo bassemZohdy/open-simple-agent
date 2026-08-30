@@ -143,6 +143,7 @@ class TestModelIntegration:
             metadata=AgentMetadataConfig(name="test"),
             spec=AgentSpec(model=ModelRef(ref="default")),
         )
+        assert definition.spec.model is not None
         resolved = catalog.resolve(definition.spec.model.ref)
         assert resolved.model_id == "gpt-4"
 

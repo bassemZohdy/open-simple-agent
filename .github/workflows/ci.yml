@@ -28,10 +28,7 @@ jobs:
         with:
           python-version: "3.12"
       - run: uv sync --all-packages
-      - run: uv run mypy --disable-error-code=misc generic-agent/src/osa/generic_agent
-      - run: uv run mypy --disable-error-code=misc runtimes/adk/src/osa/runtimes/adk
-      - run: uv run mypy --disable-error-code=misc control-plane/backend/src/osa/control_plane/backend
-      - run: uv run mypy tests
+      - run: uv run mypy generic-agent/src/osa/generic_agent runtimes/adk/src/osa/runtimes/adk control-plane/backend/src/osa/control_plane/backend tests
 
   test:
     runs-on: ubuntu-latest
