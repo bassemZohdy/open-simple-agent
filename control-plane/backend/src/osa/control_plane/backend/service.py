@@ -73,6 +73,7 @@ def create_control_plane_app(
     """
     dsn = database_url if database_url is not None else database_url_from_env()
     engine: Any = None
+    deployment_records: Any = None
     if dsn:
         engine = create_db_engine(dsn)
         agents: AgentRepository = PostgresAgentRepository(engine)
@@ -95,10 +96,21 @@ def create_control_plane_app(
                 await engine.dispose()
 
     app = FastAPI(title="Open Simple Agent Control Plane", version=_app_version(), lifespan=lifespan)
-    return configure_control_plane_app(
+    configured = configure_control_plane_app(
         app,
         agent_repository=agents,
         resource_catalogs=resource_catalogs,
         template_catalog=create_default_template_catalog(),
         resource_repository=resources,
     )
+    if deployment_records is not None:
+        from osa.control_plane.backend.deployment import LocalDeploymentProvider
+        from osa.control_plane.backend.deployment_service import DeploymentService
+
+        configured.state.deployment_service = DeploymentService(
+            provider=LocalDeploymentProvider(),
+            record_repository=deployment_records,
+            agent_repository=agents,
+            resource_catalogs=resource_catalogs,
+        )
+    return configured

@@ -195,12 +195,17 @@ def configure_control_plane_app(
     resource_catalogs: ResourceCatalogs,
     template_catalog: TemplateCatalog,
     resource_repository: ResourceDefinitionRepository | None = None,
+    deployment_provider: Any = None,
 ) -> FastAPI:
     """Attach routes and error mapping to a Control Plane app.
 
     Routes go through the repository contract, so in-memory and PostgreSQL
     backends behave identically.
     """
+    from osa.control_plane.backend.deployment import LocalDeploymentProvider
+    from osa.control_plane.backend.deployment_service import DeploymentService
+    from osa.control_plane.backend.deployments_api import configure_deployment_routes
+    from osa.control_plane.backend.repositories import InMemoryDeploymentRecordRepository
     from osa.control_plane.backend.resources_api import configure_resource_routes
 
     if resource_repository is None:
@@ -209,6 +214,12 @@ def configure_control_plane_app(
     app.state.resource_catalogs = resource_catalogs
     app.state.template_catalog = template_catalog
     app.state.resource_repository = resource_repository
+    app.state.deployment_service = DeploymentService(
+        provider=deployment_provider if deployment_provider is not None else LocalDeploymentProvider(),
+        record_repository=InMemoryDeploymentRecordRepository(),
+        agent_repository=agent_repository,
+        resource_catalogs=resource_catalogs,
+    )
 
     @app.exception_handler(HTTPException)
     async def _http_exception_handler(request: Request, exc: HTTPException) -> JSONResponse:
@@ -424,6 +435,7 @@ def configure_control_plane_app(
         resource_catalogs=resource_catalogs,
         resource_repository=resource_repository,
     )
+    configure_deployment_routes(app)
 
     @app.get("/health/live")
     async def health_live() -> dict[str, str]:

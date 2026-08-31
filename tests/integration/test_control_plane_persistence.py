@@ -185,6 +185,44 @@ class TestConcurrencyAndTransitions:
         assert count == 0
 
 
+class TestDeploymentRecordPersistence:
+    async def test_deployment_records_survive_restart(self, engine: Any, dsn: str) -> None:
+        from osa.control_plane.backend.db import create_db_engine
+        from osa.control_plane.backend.repositories import (
+            DeploymentRecord,
+            PostgresDeploymentRecordRepository,
+        )
+
+        first = PostgresDeploymentRecordRepository(engine)
+        record = DeploymentRecord(
+            deployment_id="dep-survive-1",
+            agent_id="agent-1",
+            agent_name="survivor",
+            version="1.0.0",
+            status="running",
+        )
+        await first.upsert(record)
+
+        fresh_engine = create_db_engine(dsn)
+        try:
+            restarted = PostgresDeploymentRecordRepository(fresh_engine)
+            loaded = await restarted.get("dep-survive-1")
+            assert loaded is not None
+            assert loaded.agent_name == "survivor"
+            assert loaded.status == "running"
+
+            # Observed-state updates flow through the same contract.
+            record.status = "stopped"
+            await restarted.upsert(record)
+            reloaded = await restarted.get("dep-survive-1")
+            assert reloaded is not None
+            assert reloaded.status == "stopped"
+        finally:
+            await fresh_engine.dispose()
+
+        await first.delete("dep-survive-1")
+
+
 class TestResourceDefinitionRepository:
     async def test_upsert_get_list_delete(self, engine: Any) -> None:
         from osa.control_plane.backend.repositories import PostgresResourceDefinitionRepository

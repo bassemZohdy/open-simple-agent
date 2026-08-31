@@ -189,10 +189,21 @@ Both APIs are unauthenticated (P2.2).
 ## Deployment
 
 `DeploymentProvider` separates process lifecycle from in-process agent
-execution. `LocalDeploymentProvider` launches a trusted command as a subprocess,
-reports liveness, and supports stop/restart. It discards stdout/stderr, has no
-health probe, and persists no state. It is not connected to the Control Plane
-API (P1.5).
+execution. `LocalDeploymentProvider` launches a server-owned command as a
+subprocess, captures bounded logs per deployment, probes a health URL during
+startup (early exit or a missed probe window fails the deployment with the
+captured logs), detects dead processes on status, supports idempotent
+re-deploys of the same running command, and cleans up on stop/shutdown.
+
+The Control Plane exposes deployment APIs (P1.5) through
+`DeploymentService`: deploying an active agent exports its definition plus
+referenced resources to a bundle directory and launches a runtime via a
+server-owned command template (`OSA_DEPLOY_COMMAND_TEMPLATE`) — commands are
+never accepted from API input. Intent and observed state persist through the
+`DeploymentRecordRepository` (in-memory, or PostgreSQL when the Control
+Plane uses a database); rollback relaunches an earlier immutable version
+snapshot. Deployed runtimes are external processes: no ADK internals are
+imported. The Kubernetes/OpenShift provider remains open in `TODO.md`.
 
 ## Tests and CI
 

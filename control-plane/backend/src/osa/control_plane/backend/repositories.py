@@ -47,6 +47,7 @@ __all__ = [
     "InMemoryResourceDefinitionRepository",
     "InvalidTransitionError",
     "PostgresAgentRepository",
+    "PostgresDeploymentRecordRepository",
     "PostgresResourceDefinitionRepository",
     "ResourceDefinitionRepository",
     "dump_definition",
@@ -586,6 +587,8 @@ class DeploymentRecord:
 
     deployment_id: str
     agent_id: str
+    agent_name: str = ""
+    version: str = ""
     status: str = "starting"
     detail: str = ""
     created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
@@ -623,6 +626,104 @@ class InMemoryDeploymentRecordRepository(DeploymentRecordRepository):
 
     async def delete(self, deployment_id: str) -> bool:
         return self._records.pop(deployment_id, None) is not None
+
+
+class PostgresDeploymentRecordRepository(DeploymentRecordRepository):
+    """PostgreSQL persistence for deployment intent and observed state."""
+
+    def __init__(self, engine: Any) -> None:
+        self._engine = engine
+
+    async def close(self) -> None:
+        await self._engine.dispose()
+
+    async def upsert(self, record: DeploymentRecord) -> None:
+        from sqlalchemy.dialects.postgresql import insert
+
+        from osa.control_plane.backend.tables import deployments_table
+
+        async with self._engine.begin() as connection:
+            await connection.execute(
+                insert(deployments_table)
+                .values(
+                    deployment_id=record.deployment_id,
+                    agent_id=record.agent_id,
+                    agent_name=record.agent_name,
+                    version=record.version,
+                    status=record.status,
+                    detail=record.detail,
+                    created_at=record.created_at,
+                    updated_at=record.updated_at,
+                )
+                .on_conflict_do_update(
+                    index_elements=["deployment_id"],
+                    set_={
+                        "status": record.status,
+                        "detail": record.detail,
+                        "updated_at": record.updated_at,
+                    },
+                )
+            )
+
+    async def get(self, deployment_id: str) -> DeploymentRecord | None:
+        from sqlalchemy import select
+
+        from osa.control_plane.backend.tables import deployments_table
+
+        async with self._engine.begin() as connection:
+            result = await connection.execute(
+                select(deployments_table).where(deployments_table.c.deployment_id == deployment_id)
+            )
+            row = result.first()
+        if row is None:
+            return None
+        return DeploymentRecord(
+            deployment_id=row.deployment_id,
+            agent_id=row.agent_id,
+            agent_name=row.agent_name,
+            version=row.version,
+            status=row.status,
+            detail=row.detail,
+            created_at=row.created_at,
+            updated_at=row.updated_at,
+        )
+
+    async def list_for_agent(self, agent_id: str) -> list[DeploymentRecord]:
+        from sqlalchemy import select
+
+        from osa.control_plane.backend.tables import deployments_table
+
+        async with self._engine.begin() as connection:
+            result = await connection.execute(
+                select(deployments_table)
+                .where(deployments_table.c.agent_id == agent_id)
+                .order_by(deployments_table.c.created_at.asc())
+            )
+            rows = result.fetchall()
+        return [
+            DeploymentRecord(
+                deployment_id=row.deployment_id,
+                agent_id=row.agent_id,
+                agent_name=row.agent_name,
+                version=row.version,
+                status=row.status,
+                detail=row.detail,
+                created_at=row.created_at,
+                updated_at=row.updated_at,
+            )
+            for row in rows
+        ]
+
+    async def delete(self, deployment_id: str) -> bool:
+        from sqlalchemy import delete
+
+        from osa.control_plane.backend.tables import deployments_table
+
+        async with self._engine.begin() as connection:
+            result = await connection.execute(
+                delete(deployments_table).where(deployments_table.c.deployment_id == deployment_id)
+            )
+        return bool(result.rowcount)
 
 
 # ---------------------------------------------------------------------------

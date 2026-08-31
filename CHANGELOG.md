@@ -12,6 +12,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added — P1.5: Deployment APIs and provider hardening
+- **Deployment APIs and providers (P1.5)**
+  - `LocalDeploymentProvider` hardened: bounded per-deployment log capture (`logs(tail)`), health-probe window during startup (early exit or missed probe fails the deployment with captured logs), dead-process detection on status, idempotent re-deploy of the same running command, process cleanup on stop/shutdown; restart preserves deployment identity
+  - `DeploymentService` deploys an active agent's current definition: exports the definition plus referenced resources to a bundle directory and launches a runtime via a server-owned command template (`OSA_DEPLOY_COMMAND_TEMPLATE`) — launch commands are never accepted from API input (unknown request fields rejected); no ADK internals imported
+  - Deployment routes: `POST /agents/{id}/deploy`, `GET /agents/{id}/deployments`, `GET /deployments/{id}`, stop, restart, `GET /deployments/{id}/logs`, and rollback to an earlier immutable version snapshot
+  - Intent and observed state persist through `DeploymentRecordRepository` (`PostgresDeploymentRecordRepository` + Alembic migration 0002 `osa_deployments`; in-memory default)
+
 ### Added — P1.2: Resource and template APIs
 - **Resource and template APIs (P1.2)**
   - CRUD/list/search routes for models, tools, skills, MCPs, and memory policies (`/resources/{kind}`), validated against the domain schema and persisted write-through to the `ResourceDefinitionRepository` (survive restarts, shared across replicas)

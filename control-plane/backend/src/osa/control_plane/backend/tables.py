@@ -61,6 +61,19 @@ agent_versions_table = Table(
     UniqueConstraint("agent_id", "version", name="uq_osa_agent_versions_agent_version"),
 )
 
+deployments_table = Table(
+    "osa_deployments",
+    METADATA,
+    Column("deployment_id", Text, primary_key=True),
+    Column("agent_id", Text, nullable=False),
+    Column("agent_name", Text, nullable=False, server_default=""),
+    Column("version", Text, nullable=False, server_default=""),
+    Column("status", Text, nullable=False),
+    Column("detail", Text, nullable=False, server_default=""),
+    Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    Column("updated_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+)
+
 resource_definitions_table = Table(
     "osa_resource_definitions",
     METADATA,

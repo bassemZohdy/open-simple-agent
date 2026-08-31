@@ -9,7 +9,7 @@ documentation, and appropriate failure/security behavior are complete.
 
 ## Current baseline
 
-- ~370 tests pass; strict mypy, Ruff format, and Ruff lint pass with no
+- ~410 tests pass; strict mypy, Ruff format, and Ruff lint pass with no
   project-controlled warnings.
 - Latest GitHub Actions run on `main` is green, plus a container job that
   builds the runtime image and runs a ready/invoke/SIGTERM smoke test.
@@ -20,7 +20,7 @@ documentation, and appropriate failure/security behavior are complete.
   versioning, the MCP runtime client (ADR-002), memory persistence with
 policy-enforced scope/limits/retention (ADR-003), and PostgreSQL Control
 Plane persistence with Alembic migrations (ADR-004) exist.
-- Deployment HTTP APIs, production deployment providers, A2A,
+- The Kubernetes/OpenShift deployment provider, A2A,
   authentication, policy, observability, and UI do not exist.
 
 ## Release gate status
@@ -260,19 +260,30 @@ disconnect failures are predictable and observable. ✅
 **Acceptance:** selected memory survives restart, respects scope/retention/limit,
 and is never visible to an unauthorized user or agent. ✅
 
-## P1.5 Deployment API and providers
+## P1.5 Deployment API and providers (mostly complete 2026-08-31)
 
-- [ ] Persist deployment intent and observed state.
-- [ ] Expose deploy/status/stop/restart/log APIs through the Control Plane.
-- [ ] Harden the local provider: capture bounded logs, startup failure, health
-  probing, concurrent calls, cleanup, and idempotency.
-- [ ] Ensure arbitrary process commands are never accepted from an untrusted API.
-- [ ] Implement a container provider only if it remains a required local target.
+- [x] Persist deployment intent and observed state
+  (`DeploymentRecordRepository`; in-memory + PostgreSQL, Alembic migration
+  0002).
+- [x] Expose deploy/status/stop/restart/log APIs through the Control Plane
+  (plus rollback to an earlier immutable version snapshot and per-agent
+  deployment history).
+- [x] Harden the local provider: bounded log capture, startup failure with
+  captured logs, health probing with a probe window, dead-process detection
+  on status, idempotent re-deploy of the same running command, cleanup on
+  stop/shutdown, restart preserving deployment identity.
+- [x] Ensure arbitrary process commands are never accepted from an untrusted API
+  (launch commands are synthesized from the server-owned
+  `OSA_DEPLOY_COMMAND_TEMPLATE`; unknown request fields are rejected).
+- [x] Container provider: not implemented — the runtime image + CLI already
+  provides the container path, so a separate provider is unnecessary.
 - [ ] Implement Kubernetes/OpenShift provider: Deployment, Service, probes,
-  ConfigMap/Secret references, scale, rolling update, rollback, and status watch.
+  ConfigMap/Secret references, scale, rolling update, rollback, and status
+  watch (remains open).
 
 **Acceptance:** the Control Plane deploys a versioned agent without importing
-ADK internals, observes readiness, restarts it, and rolls back safely.
+ADK internals, observes readiness, restarts it, and rolls back safely. ✅
+(local provider; Kubernetes scheduling remains open)
 
 ---
 

@@ -27,7 +27,7 @@ The first runtime targets [Google ADK](https://google.github.io/adk-docs/).
 | Memory | Policy catalog resolution (authoritative scope/limits/retention), scope-id isolation (user/agent/tenant/application), enforcement after every write, explicit writes, PostgreSQL persistence (ADR-003) | Extraction pipeline (auto-extract) reserved; vector search deferred |
 | ADK runtime | Invocation through the ADK `Runner`; timeouts, iteration limits, stable error types | Streaming pending |
 | Control Plane | Agent CRUD, lifecycle transitions, immutable versions, optimistic concurrency, validated contracts; resource CRUD/list/search APIs with reference checks and bundle import/export; in-memory default or PostgreSQL repositories via `OSA_CONTROL_PLANE_DATABASE_URL` (ADR-004), Alembic schema (`osa-cp-migrate`) | Deployment APIs are pending |
-| Deployment | Local subprocess provider contract and implementation | Not connected to the Control Plane API; no container/Kubernetes provider |
+| Deployment | Local provider with bounded logs, health probing, and startup-failure capture; deploy/status/stop/restart/logs/rollback APIs through the Control Plane with persisted records | Kubernetes provider pending |
 | Runtime API | Invoke, capabilities, liveness, readiness; `osa-runtime` CLI with bundle bootstrap | Streaming and A2A endpoints pending |
 | CI | Format, lint, strict mypy, ~320 automated tests, container build + smoke test | No coverage gate, security scan, or release automation |
 

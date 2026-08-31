@@ -136,8 +136,30 @@ survive restarts and are shared across replicas. Secret values never appear:
 `credential_ref` exposes only non-secret coordinates (`source`, `key`,
 `env_var`) and is redacted defensively in every response.
 
-Deployment providers exist as Python classes but are not exposed as routes
-yet (P1.5).
+### Deployment APIs (P1.5)
+
+Deployments launch the agent's **current definition** (must be active) as a
+local runtime process: the Control Plane exports the definition plus its
+referenced resources to a bundle directory and launches it through a
+server-owned command template (`OSA_DEPLOY_COMMAND_TEMPLATE`, default
+`osa-runtime --config {bundle_path} --port {port}`). **Requests never carry
+process commands** — unknown fields are rejected — and readiness is probed
+against the launched runtime before the deployment reports `running`.
+
+| Method | Path | Behavior |
+|---|---|---|
+| `POST` | `/agents/{agent_id}/deploy` | Deploy the current definition (agent must be active) |
+| `GET` | `/agents/{agent_id}/deployments` | Deployment history for an agent |
+| `GET` | `/deployments/{deployment_id}` | Observed status (persisted through the deployment record repository) |
+| `POST` | `/deployments/{deployment_id}/stop` | Stop the deployment |
+| `POST` | `/deployments/{deployment_id}/restart` | Restart (same identity, fresh process) |
+| `GET` | `/deployments/{deployment_id}/logs?tail=` | Bounded captured logs (newest last) |
+| `POST` | `/deployments/{deployment_id}/rollback?version=` | Relaunch from an earlier immutable version snapshot |
+
+Every transition persists intent and observed state through the
+`DeploymentRecordRepository` (in-memory by default, PostgreSQL when the
+Control Plane is configured with a database). The Kubernetes provider and
+multi-host scheduling remain open (see `TODO.md`).
 
 ## Runtime API
 
