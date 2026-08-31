@@ -27,7 +27,9 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: uv sync --all-packages
+      # Optional extras are part of the checked surface (e.g. the PostgreSQL
+      # memory provider imports sqlalchemy).
+      - run: uv sync --all-packages --extra postgres
       - run: uv run mypy .
 
   test:
