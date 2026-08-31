@@ -7,6 +7,13 @@ from osa.runtimes.adk.llm_agent import (
     build_llm_agent,
     build_runner,
 )
+from osa.runtimes.adk.mcp_client import (
+    McpConnection,
+    McpConnectionPool,
+    McpToolHandle,
+    namespaced_tool_name,
+)
+from osa.runtimes.adk.mcp_toolset import McpFunctionTool, OsaMcpToolset
 from osa.runtimes.adk.model_adapter import (
     FakeProviderAdapter,
     LiteLlmAdapter,
@@ -24,10 +31,15 @@ __all__ = [
     "FakeProviderAdapter",
     "GenericAdkAgent",
     "LiteLlmAdapter",
+    "McpConnection",
+    "McpConnectionPool",
+    "McpFunctionTool",
+    "McpToolHandle",
     "ModelAdapter",
     "ModelAdapterRegistry",
     "OsaAdkSessionService",
     "OsaFunctionTool",
+    "OsaMcpToolset",
     "ProviderBackedLlm",
     "build_function_tools",
     "build_llm_agent",
@@ -35,4 +47,5 @@ __all__ = [
     "build_runtime",
     "create_runtime_app",
     "default_registry",
+    "namespaced_tool_name",
 ]

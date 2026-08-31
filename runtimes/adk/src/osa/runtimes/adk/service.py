@@ -97,9 +97,11 @@ async def build_runtime(
         model_catalog=catalogs.model_catalog,
         tool_catalog=catalogs.tool_catalog,
         skill_catalog=catalogs.skill_catalog,
+        mcp_catalog=catalogs.mcp_catalog,
         memory_provider=InMemoryProvider(),
         session_provider=SessionManager(),
         model_adapters=adapters,
+        secret_resolver=resolver,
     )
     agent = await runtime.create(bundle.agent)
     return runtime, agent

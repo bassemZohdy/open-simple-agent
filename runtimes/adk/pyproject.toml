@@ -8,6 +8,8 @@ dependencies = [
     "osa-generic-agent",
     # Tested against the ADK 2.x line; majors may change Runner/session APIs.
     "google-adk>=2.0,<3.0",
+    # Official MCP Python SDK; range matches google-adk's own "mcp" extra.
+    "mcp>=1.24,<2",
 ]
 
 [project.optional-dependencies]

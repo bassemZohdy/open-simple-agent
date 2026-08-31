@@ -24,11 +24,13 @@ from osa.generic_agent import (
     AgentRequest,
     AgentResponse,
     AgentRuntime,
+    McpCatalog,
     MemoryEntry,
     MemoryProvider,
     ModelCatalog,
     ModelDefinition,
     ModelProvider,
+    SecretResolver,
     Session,
     SessionError,
     SessionManager,
@@ -49,6 +51,8 @@ from osa.generic_agent.errors import (
     OsaError,
 )
 from osa.runtimes.adk.llm_agent import ProviderBackedLlm, build_llm_agent, build_runner
+from osa.runtimes.adk.mcp_client import McpConnectionPool
+from osa.runtimes.adk.mcp_toolset import OsaMcpToolset
 from osa.runtimes.adk.model_adapter import ModelAdapterRegistry, default_registry
 from osa.runtimes.adk.session_service import OsaAdkSessionService
 
@@ -75,20 +79,27 @@ class GenericAdkAgent(AbstractAgent):
         model_catalog: ModelCatalog | None = None,
         tool_catalog: ToolCatalog | None = None,
         skill_catalog: SkillCatalog | None = None,
+        mcp_catalog: McpCatalog | None = None,
         memory_provider: MemoryProvider | None = None,
         session_provider: SessionProvider | None = None,
         model_adapters: ModelAdapterRegistry | None = None,
+        secret_resolver: SecretResolver | None = None,
+        mcp_pool: McpConnectionPool | None = None,
     ) -> None:
         super().__init__(definition)
         self._model_provider = model_provider
         self._model_catalog = model_catalog if model_catalog is not None else ModelCatalog()
         self._tool_catalog = tool_catalog if tool_catalog is not None else ToolCatalog()
         self._skill_catalog = skill_catalog if skill_catalog is not None else SkillCatalog()
+        self._mcp_catalog = mcp_catalog if mcp_catalog is not None else McpCatalog()
         self._memory_provider = memory_provider
         self._session_provider = session_provider if session_provider is not None else SessionManager()
+        self._owns_mcp_pool = mcp_pool is None
+        self._mcp_pool = mcp_pool if mcp_pool is not None else McpConnectionPool(secret_resolver)
         self._tools: dict[str, Tool] = {}
         self._tool_definitions: dict[str, ToolDefinition] = {}
         self._skills: list[SkillDefinition] = []
+        self._mcp_toolsets: list[OsaMcpToolset] = []
         self._resolve_definition_resources()
         self._model_definition = self._resolve_model_definition()
         self._model_id = self._model_definition.model_id if self._model_definition is not None else "fake"
@@ -107,7 +118,13 @@ class GenericAdkAgent(AbstractAgent):
                 )
             self._model = ProviderBackedLlm(model=self._model_id, provider=self._model_provider)
         # ADK objects for the definition: invocation runs through the Runner.
-        self.llm_agent = build_llm_agent(self.definition, self._model, self._tools, self._tool_definitions)
+        self.llm_agent = build_llm_agent(
+            self.definition,
+            self._model,
+            self._tools,
+            self._tool_definitions,
+            toolsets=self._mcp_toolsets,
+        )
         self._session_service = OsaAdkSessionService(self._session_provider)
         self.runner = build_runner(self.llm_agent, session_service=self._session_service)
 
@@ -152,6 +169,20 @@ class GenericAdkAgent(AbstractAgent):
                 raise ValueError(
                     f"Skill '{skill_ref.ref}' referenced by agent '{agent_name}' was not found in the skill catalog"
                 ) from exc
+        for mcp_ref in self.definition.spec.mcps:
+            try:
+                mcp_definition = self._mcp_catalog.resolve(mcp_ref.ref)
+            except KeyError as exc:
+                raise ValueError(
+                    f"MCP server '{mcp_ref.ref}' referenced by agent '{agent_name}' was not found in the MCP catalog"
+                ) from exc
+            self._mcp_toolsets.append(
+                OsaMcpToolset(
+                    mcp_definition,
+                    self._mcp_pool.get(mcp_definition),
+                    tool_filter=mcp_ref.tools_filter or None,
+                )
+            )
 
     @property
     def tools(self) -> list[str]:
@@ -296,6 +327,11 @@ class GenericAdkAgent(AbstractAgent):
             self.llm_agent.instruction = f"{instruction}\n\n{memory_context}"
 
         try:
+            # Pre-flight MCP connections: ADK resolves toolsets fail-open (a
+            # broken server silently loses its tools), which is neither
+            # predictable nor observable; OSA fails deterministically.
+            for mcp_toolset in self._mcp_toolsets:
+                await mcp_toolset.connection.connect()
             output = await self._run_adk(str(session.session_id), adk_user_id, request.input)
         except SessionError:
             raise
@@ -329,7 +365,8 @@ class GenericAdkAgent(AbstractAgent):
         )
 
     async def shutdown(self) -> None:
-        return None
+        if self._owns_mcp_pool:
+            await self._mcp_pool.close()
 
 
 class AdkRuntime(AgentRuntime):
@@ -341,17 +378,21 @@ class AdkRuntime(AgentRuntime):
         model_catalog: ModelCatalog | None = None,
         tool_catalog: ToolCatalog | None = None,
         skill_catalog: SkillCatalog | None = None,
+        mcp_catalog: McpCatalog | None = None,
         memory_provider: MemoryProvider | None = None,
         session_provider: SessionProvider | None = None,
         model_adapters: ModelAdapterRegistry | None = None,
+        secret_resolver: SecretResolver | None = None,
     ) -> None:
         self._model_provider = model_provider
         self._model_catalog = model_catalog if model_catalog is not None else ModelCatalog()
         self._tool_catalog = tool_catalog if tool_catalog is not None else ToolCatalog()
         self._skill_catalog = skill_catalog if skill_catalog is not None else SkillCatalog()
+        self._mcp_catalog = mcp_catalog if mcp_catalog is not None else McpCatalog()
         self._memory_provider = memory_provider
         self._session_provider = session_provider if session_provider is not None else SessionManager()
         self._model_adapters = model_adapters
+        self._mcp_pool = McpConnectionPool(secret_resolver)
         self._agents: list[GenericAdkAgent] = []
 
     async def create(self, definition: AgentDefinition) -> GenericAdkAgent:
@@ -362,9 +403,11 @@ class AdkRuntime(AgentRuntime):
             model_catalog=self._model_catalog,
             tool_catalog=self._tool_catalog,
             skill_catalog=self._skill_catalog,
+            mcp_catalog=self._mcp_catalog,
             memory_provider=self._memory_provider,
             session_provider=self._session_provider,
             model_adapters=self._model_adapters,
+            mcp_pool=self._mcp_pool,
         )
         self._agents.append(agent)
         logger.info("Created agent '%s'", definition.metadata.name)
@@ -381,10 +424,11 @@ class AdkRuntime(AgentRuntime):
         return self._tool_catalog
 
     async def shutdown(self) -> None:
-        """Shut down all agents created by this runtime."""
+        """Shut down all agents created by this runtime, then MCP connections."""
         for agent in self._agents:
             await agent.shutdown()
         self._agents.clear()
+        await self._mcp_pool.close()
         logger.info("ADK runtime shut down")
 
 
@@ -397,17 +441,21 @@ class AdkAgentFactory(AgentFactory):
         model_catalog: ModelCatalog | None = None,
         tool_catalog: ToolCatalog | None = None,
         skill_catalog: SkillCatalog | None = None,
+        mcp_catalog: McpCatalog | None = None,
         memory_provider: MemoryProvider | None = None,
         session_provider: SessionProvider | None = None,
         model_adapters: ModelAdapterRegistry | None = None,
+        secret_resolver: SecretResolver | None = None,
     ) -> None:
         self._model_provider = model_provider
         self._model_catalog = model_catalog if model_catalog is not None else ModelCatalog()
         self._tool_catalog = tool_catalog if tool_catalog is not None else ToolCatalog()
         self._skill_catalog = skill_catalog if skill_catalog is not None else SkillCatalog()
+        self._mcp_catalog = mcp_catalog if mcp_catalog is not None else McpCatalog()
         self._memory_provider = memory_provider
         self._session_provider = session_provider if session_provider is not None else SessionManager()
         self._model_adapters = model_adapters
+        self._secret_resolver = secret_resolver
 
     def create(self, definition: AgentDefinition) -> GenericAdkAgent:
         """Create a GenericAdkAgent from an AgentDefinition."""
@@ -417,7 +465,9 @@ class AdkAgentFactory(AgentFactory):
             model_catalog=self._model_catalog,
             tool_catalog=self._tool_catalog,
             skill_catalog=self._skill_catalog,
+            mcp_catalog=self._mcp_catalog,
             memory_provider=self._memory_provider,
             session_provider=self._session_provider,
             model_adapters=self._model_adapters,
+            secret_resolver=self._secret_resolver,
         )

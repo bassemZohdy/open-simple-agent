@@ -62,3 +62,58 @@ class IterationLimitExceededError(OsaError):
     def __init__(self, max_iterations: int) -> None:
         self.max_iterations = max_iterations
         super().__init__(f"Tool iteration limit ({max_iterations}) exceeded without a final answer")
+
+
+class McpError(OsaError):
+    """Base error for MCP runtime failures."""
+
+
+class McpConnectionError(McpError):
+    """An MCP server could not be reached, or the connection was lost."""
+
+    code = "mcp_connection_failed"
+
+    def __init__(self, server_name: str, message: str, cause: Exception | None = None) -> None:
+        self.server_name = server_name
+        self.cause = cause
+        super().__init__(f"MCP server '{server_name}': {message}")
+
+
+class McpTransportNotSupportedError(McpError):
+    """The configured MCP transport is not supported by the runtime client."""
+
+    code = "mcp_transport_not_supported"
+
+    def __init__(self, server_name: str, transport: str, supported: str) -> None:
+        self.server_name = server_name
+        super().__init__(
+            f"MCP server '{server_name}' uses transport '{transport}'; the runtime client supports {supported}"
+        )
+
+
+class McpResponseTooLargeError(McpError):
+    """An MCP response exceeded the configured size cap."""
+
+    code = "mcp_response_too_large"
+
+    def __init__(self, server_name: str, tool_name: str, size_bytes: int, limit_bytes: int) -> None:
+        self.server_name = server_name
+        self.tool_name = tool_name
+        self.size_bytes = size_bytes
+        self.limit_bytes = limit_bytes
+        super().__init__(
+            f"MCP server '{server_name}' tool '{tool_name}' returned {size_bytes} bytes, "
+            f"exceeding the {limit_bytes}-byte limit"
+        )
+
+
+class McpToolExecutionError(McpError):
+    """An MCP tool call failed after retries."""
+
+    code = "mcp_tool_failed"
+
+    def __init__(self, server_name: str, tool_name: str, message: str, cause: Exception | None = None) -> None:
+        self.server_name = server_name
+        self.tool_name = tool_name
+        self.cause = cause
+        super().__init__(f"MCP server '{server_name}' tool '{tool_name}': {message}")

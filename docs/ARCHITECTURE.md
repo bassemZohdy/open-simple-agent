@@ -11,7 +11,7 @@ namespace `osa`:
 | Package | Import root | Responsibility |
 |---|---|---|
 | `generic-agent` | `osa.generic_agent` | Domain model, configuration, deployment bundles, catalogs, provider contracts, errors |
-| `runtimes/adk` | `osa.runtimes.adk` | ADK-specific construction, model adapters, session bridging, Runner invocation, runtime API, service CLI |
+| `runtimes/adk` | `osa.runtimes.adk` | ADK-specific construction, model adapters, MCP client/toolsets, session bridging, Runner invocation, runtime API, service CLI |
 | `control-plane/backend` | `osa.control_plane.backend` | Agent records/templates/resources, local deployment provider, management API |
 
 Namespace levels such as `src/osa/` intentionally have no `__init__.py`.
@@ -108,6 +108,21 @@ function calling — the earlier `TOOL_CALL` text protocol is gone.
 (`iteration_limit_exceeded`). Generation settings follow explicit precedence:
 `ModelDefinition.runtime_settings`, overridden by `ModelRef.parameters`.
 
+## MCP runtime
+
+`osa.runtimes.adk.mcp_client` connects to MCP servers over stdio or Streamable
+HTTP (legacy SSE is rejected) using the official `mcp` SDK (ADR-002).
+Connections are lazy, pooled per runtime (agents sharing a server share one
+connection), owned by a keeper task so anyio cancel scopes are entered and
+exited in one task, and closed on runtime shutdown. Server-level and
+agent-level tool filters intersect; tools are namespaced `<server>_<tool>`
+with origin metadata preserved and are resolved by ADK per invocation through
+`OsaMcpToolset`. `GenericAdkAgent` pre-flights every MCP connection before a
+run — ADK resolves toolsets fail-open (a dead server silently loses its
+tools), which OSA replaces with a deterministic `mcp_connection_failed`
+failure. Retries, timeouts, TLS verification, response-size caps, and
+credential resolution (never storing values) follow `McpDefinition`.
+
 ## Sessions and memory
 
 The OSA `SessionProvider` is the single source of truth for sessions:
@@ -168,9 +183,11 @@ The current baseline is ~320 tests. CI runs:
   waits for readiness, performs an invocation, and verifies a clean SIGTERM
   exit.
 
-Tests use the fake provider, scripted ADK models, and in-memory services —
-no network. There is no live-model, MCP protocol, database, Kubernetes, A2A,
-authentication, or multi-replica test yet. There is no coverage threshold.
+Tests use the fake provider, scripted ADK models, in-memory services, a
+deterministic stdio MCP server subprocess, and a localhost Streamable HTTP
+MCP server — no external network. There is no live-model, database,
+Kubernetes, A2A, authentication, or multi-replica test yet. There is no
+coverage threshold.
 
 ## Dependency risks
 

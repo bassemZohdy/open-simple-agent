@@ -81,8 +81,8 @@ uses `spec.description`.
 | `spec.instruction` | string | empty | Used as the ADK `LlmAgent` instruction |
 | `spec.model` | model reference or null | null | Resolved from the catalog; an unknown reference fails fast, an absent reference uses the catalog default (deterministic mode only when no default exists) |
 | `spec.model.parameters` | map | empty | Per-agent generation overrides; override `ModelDefinition.runtime_settings` |
-| `spec.mcps` | MCP references | empty | Validated against the bundle; runtime client pending (P1.3) |
-| `spec.mcps[].tools_filter` | string list | empty | Validated against the bundle; enforcement pending (P1.3) |
+| `spec.mcps` | MCP references | empty | Resolved against the catalog; tools discovered and invoked at runtime (ADR-002) |
+| `spec.mcps[].tools_filter` | string list | empty | Agent-level allowlist of server tool names (intersects the server definition's filter) |
 | `spec.tools` | tool references | empty | Definitions and implementations resolve at construction |
 | `spec.skills` | skill references | empty | Definitions resolve at construction as metadata |
 
@@ -219,6 +219,32 @@ resources all raise deterministic `BundleError` subclasses before the bundle
 is usable. Native tool implementations ship with the runtime (see
 `osa.runtimes.adk.service.BUILTIN_TOOLS`); an agent referencing a tool
 definition without an available implementation fails at construction.
+
+## MCP runtime behavior
+
+MCP servers referenced by an agent connect lazily at invocation time
+(`osa.runtimes.adk.mcp_client`, ADR-002) using the official `mcp` SDK.
+
+- **Transports:** `stdio` (uses `command`/`args`/`env`) and
+  `streamable_http` (uses `endpoint`). Legacy `sse` is not supported at
+  runtime and fails with `mcp_transport_not_supported`.
+- **Credentials:** `credential_ref` resolves through the `SecretResolver` at
+  connect time; stdio injects the value into the subprocess environment
+  (`env_var` or `key`), HTTP sends `Authorization: Bearer <value>`. Values
+  are never stored or logged.
+- **Options:** `timeout_seconds` bounds connection and call attempts;
+  `max_retries`/`retry_delay_seconds` bound transient failures;
+  `tls_verify` disables certificate verification for HTTP servers;
+  `max_response_bytes` caps tool results (excess raises
+  `mcp_response_too_large`).
+- **Filtering and namespacing:** the server definition's `tools_filter` and
+  the agent reference's `tools_filter` intersect; tools are exposed as
+  `<server>_<tool>` with origin metadata preserved.
+- **Failures are deterministic:** a server that cannot connect, authorize,
+  answer in time, or stay within limits produces stable OSA errors
+  (`mcp_connection_failed`, `mcp_tool_failed`, `mcp_response_too_large`) —
+  the invocation fails with a clear message rather than silently losing the
+  tools.
 
 ## Precedence
 

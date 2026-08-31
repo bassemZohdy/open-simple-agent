@@ -12,6 +12,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added — P1.3: MCP runtime client
+- **MCP runtime client (ADR-002)**
+  - Official `mcp` SDK (`>=1.24,<2`, matching google-adk's extra) as a core dependency of `osa-adk-runtime`
+  - stdio and Streamable HTTP transports; legacy `sse` rejected with `mcp_transport_not_supported`
+  - Lazy connections pooled per runtime (agents sharing a server share one connection), owned by a keeper task so anyio scopes enter/exit in one task; closed on runtime shutdown
+  - Settings resolved from `McpDefinition`: `timeout_seconds`, `max_retries`/`retry_delay_seconds`, `tls_verify`, `max_response_bytes` (`mcp_response_too_large`), `credential_ref` via `SecretResolver` (bearer header for HTTP, subprocess env for stdio; values never stored or logged); new `env` field for non-secret stdio environment
+  - Server-level and agent-level `tools_filter` intersect; tools namespaced `<server>_<tool>` with origin metadata; declarations generated from MCP `inputSchema`; arguments validated before dispatch
+  - `OsaMcpToolset` bridges to ADK per invocation; `GenericAdkAgent` pre-flights MCP connections so a dead/unauthorized server fails deterministically (`mcp_connection_failed`, `mcp_tool_failed`) instead of ADK's fail-open tool loss
+  - Protocol tests: deterministic stdio server (discovery, filters, invocation, tool errors, timeout, oversize, unreachable, credential) plus localhost Streamable HTTP (discovery/invocation, 401 auth failure); end-to-end agent acceptance through the ADK Runner
+
 ### Added — P0 release gate: runnable agent
 - **Configuration bootstrap and resource resolution (P0.1)**
   - Versioned deployment-bundle format (`AgentBundle` document or directory layout) loading one `AgentDefinition` plus model, tool, skill, MCP, and memory-policy resources

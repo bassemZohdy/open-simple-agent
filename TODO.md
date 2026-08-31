@@ -9,16 +9,16 @@ documentation, and appropriate failure/security behavior are complete.
 
 ## Current baseline
 
-- ~320 tests pass; strict mypy, Ruff format, and Ruff lint pass with no
+- ~350 tests pass; strict mypy, Ruff format, and Ruff lint pass with no
   project-controlled warnings.
 - Latest GitHub Actions run on `main` is green, plus a container job that
   builds the runtime image and runs a ready/invoke/SIGTERM smoke test.
 - Deployment bundles with fail-fast validation, secret resolution, a LiteLLM
   production model adapter (ADR-001), ADK Runner invocation with native
   function calling, owned/TTL'd/bounded sessions, the `osa-runtime` CLI, a
-  non-root container image, Control Plane contract hardening, and lockstep
-  versioning exist.
-- MCP runtime, persistence, production deployment providers, A2A,
+  non-root container image, Control Plane contract hardening, lockstep
+  versioning, and the MCP runtime client (ADR-002) exist.
+- Persistent memory, persistence, production deployment providers, A2A,
   authentication, policy, observability, and UI do not exist.
 
 ## Release gate status
@@ -190,21 +190,30 @@ without data loss.
 **Acceptance:** an administrator can create every resource required by an agent
 without application code and cannot delete an in-use resource accidentally.
 
-## P1.3 MCP runtime client
+## P1.3 MCP runtime client (complete 2026-08-31)
 
-- [ ] Select the supported MCP SDK and protocol-version policy; record an ADR.
-- [ ] Implement connection manager for stdio and Streamable HTTP; decide whether
-  legacy SSE remains supported.
-- [ ] Resolve credentials, TLS, timeout, retry, response-size, and lifecycle
+- [x] Select the supported MCP SDK and protocol-version policy; record an ADR
+  (official `mcp` SDK `>=1.24,<2` matching google-adk's extra; SDK majors are
+  the compatibility boundary — ADR-002).
+- [x] Implement connection manager for stdio and Streamable HTTP; decide
+  whether legacy SSE remains supported (it does not — runtime rejects it with
+  `mcp_transport_not_supported`).
+- [x] Resolve credentials, TLS, timeout, retry, response-size, and lifecycle
   settings from `McpDefinition`.
-- [ ] Discover tools/resources/prompts and apply server/agent tool filters.
-- [ ] Namespace tool names and preserve MCP origin metadata.
-- [ ] Bridge MCP tools to ADK with schemas and bounded results.
-- [ ] Add connection pooling, reconnect, cancellation, and graceful close.
-- [ ] Add protocol-level tests using a deterministic local MCP server.
+- [x] Discover tools/resources/prompts and apply server/agent tool filters
+  (tools; resources/prompts deferred until a concrete requirement).
+- [x] Namespace tool names and preserve MCP origin metadata.
+- [x] Bridge MCP tools to ADK with schemas and bounded results
+  (`OsaMcpToolset` + `McpFunctionTool`).
+- [x] Add connection pooling, reconnect, cancellation, and graceful close
+  (per-runtime pool, keeper-task ownership, idempotent close).
+- [x] Add protocol-level tests using a deterministic local MCP server
+  (stdio subprocess + localhost Streamable HTTP; discovery, filters,
+  invocation, tool errors, timeout, oversize, unreachable, credential, 401).
 
-**Acceptance:** a configured agent discovers and invokes a filtered MCP tool;
-timeout/auth/oversize/disconnect failures are predictable and observable.
+**Acceptance:** a configured agent discovers and invokes a filtered MCP tool
+(through the ADK Runner with native function calling); timeout/auth/oversize/
+disconnect failures are predictable and observable. ✅
 
 ## P1.4 Memory policy and persistence
 
@@ -381,7 +390,6 @@ policy are stable.*
 
 | ID | Finding | Backlog owner |
 |---|---|---|
-| RV-015 | MCP is schema/catalog only; no runtime client exists | P1.3 |
 | RV-016 | Control Plane resource refs not validated before deployment; deployment routes missing | P1.5 |
 | RV-017 | Resource and deployment implementations are not exposed by the API | P1.2, P1.5 |
 | RV-018 | Memory policy/limits/retention and persistence are not enforced | P1.4 |
@@ -390,7 +398,8 @@ policy are stable.*
 | RV-024 | Request metadata (beyond `tenant_id`) is accepted but not used by model/tool policy | P2.2 |
 
 Resolved on 2026-08-31 (documented here, then removed from the active table on
-the next backlog review): RV-010 (Runner now used for invocation), RV-011
+the next backlog review): RV-015 (MCP runtime client, ADR-002), RV-010 (Runner
+now used for invocation), RV-011
 (lifespan bundle bootstrap), RV-012 (runnable image with CMD), RV-013 (session
 ownership/TTL/bounded history), RV-014 (no silent model fallback), RV-016
 (Control Plane 400/404/409/422 mapping and stable error schema), RV-020/RV-021

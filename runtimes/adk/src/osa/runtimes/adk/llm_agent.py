@@ -15,7 +15,7 @@ from __future__ import annotations
 import concurrent.futures
 import re
 from collections.abc import Callable
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any
 
 from google.adk import Runner
 from google.adk.agents import LlmAgent
@@ -184,24 +184,23 @@ class OsaFunctionTool(FunctionTool):
         return dict(args)
 
     def _get_declaration(self) -> types.FunctionDeclaration | None:
-        declaration = _declaration_from_capabilities(self._osa_tool, self._osa_schema, self._osa_tool.description)
+        declaration = build_tool_declaration(self._osa_tool.name, self._osa_schema, self._osa_tool.description)
         if declaration is not None:
             return declaration
         return super()._get_declaration()
 
 
-def _declaration_from_capabilities(
-    tool: Tool, schema: dict[str, Any], description: str
-) -> types.FunctionDeclaration | None:
+def build_tool_declaration(name: str, schema: dict[str, Any], description: str) -> types.FunctionDeclaration | None:
+    """Build an ADK function declaration from a JSON schema, or None if empty."""
     if not schema:
         return None
     try:
         parameters = types.Schema.model_validate(schema)
     except Exception as exc:
-        raise ModelConfigurationError(f"Tool '{tool.name}' has an invalid parameters_schema: {exc}") from exc
+        raise ModelConfigurationError(f"Tool '{name}' has an invalid parameters schema: {exc}") from exc
     return types.FunctionDeclaration(
-        name=tool.name,
-        description=description or f"Execute the {tool.name} tool.",
+        name=name,
+        description=description or f"Execute the {name} tool.",
         parameters=parameters,
     )
 
@@ -224,20 +223,24 @@ def build_llm_agent(
     model: str | BaseLlm,
     tools: dict[str, Tool],
     tool_definitions: dict[str, ToolDefinition] | None = None,
+    toolsets: list[Any] | None = None,
 ) -> LlmAgent:
     """Build an ADK ``LlmAgent`` from an AgentDefinition.
 
     ``model`` is either an ADK model identifier string or an ADK model
     instance built by a :class:`~osa.runtimes.adk.model_adapter.ModelAdapter`.
+    ``toolsets`` (e.g. MCP toolsets) are resolved by ADK per invocation.
     The agent name is sanitized to satisfy ADK's identifier requirement
     (``customer-support`` becomes ``customer_support``).
     """
+    all_tools: list[Any] = list(build_function_tools(tools, tool_definitions))
+    all_tools.extend(toolsets or [])
     return LlmAgent(
         name=adk_name(definition.metadata.name),
         description=definition.spec.description or "",
         model=model,
         instruction=definition.spec.instruction or "",
-        tools=cast("list[Any]", build_function_tools(tools, tool_definitions)),
+        tools=all_tools,
         disallow_transfer_to_parent=True,
         disallow_transfer_to_peers=True,
     )

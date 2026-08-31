@@ -37,6 +37,9 @@ class McpDefinition(StrictModel):
     endpoint: str | None = None
     command: str | None = None
     args: list[str] = Field(default_factory=list)
+    # Non-secret environment variables for stdio servers; secrets go through
+    # credential_ref so values stay external to definitions.
+    env: dict[str, str] = Field(default_factory=dict)
     credential_ref: SecretReference | None = None
     connection_options: McpConnectionOptions = Field(default_factory=McpConnectionOptions)
     tools_filter: list[str] = Field(default_factory=list)
