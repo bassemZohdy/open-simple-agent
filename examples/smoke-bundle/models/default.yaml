@@ -1,0 +1,7 @@
+apiVersion: osa/v1alpha1
+kind: Model
+spec:
+  name: default
+  provider: fake
+  model_id: fake-model
+  is_default: true

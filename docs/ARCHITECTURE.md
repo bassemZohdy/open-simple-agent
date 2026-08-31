@@ -1,7 +1,7 @@
 # Current Architecture
 
-This document describes the source tree on `main` as reviewed on 2026-08-30.
-It is an implementation map, not a promise that planned capabilities exist.
+This document describes the source tree on `main`. It is an implementation
+map, not a promise that planned capabilities exist.
 
 ## Workspace
 
@@ -10,8 +10,8 @@ namespace `osa`:
 
 | Package | Import root | Responsibility |
 |---|---|---|
-| `generic-agent` | `osa.generic_agent` | Domain model, configuration, catalogs, provider contracts |
-| `runtimes/adk` | `osa.runtimes.adk` | ADK-specific construction, invocation adapter, runtime API |
+| `generic-agent` | `osa.generic_agent` | Domain model, configuration, deployment bundles, catalogs, provider contracts, errors |
+| `runtimes/adk` | `osa.runtimes.adk` | ADK-specific construction, model adapters, session bridging, Runner invocation, runtime API, service CLI |
 | `control-plane/backend` | `osa.control_plane.backend` | Agent records/templates/resources, local deployment provider, management API |
 
 Namespace levels such as `src/osa/` intentionally have no `__init__.py`.
@@ -30,26 +30,30 @@ flowchart TB
 
     subgraph DOMAIN["Generic contracts"]
         DEF["AgentDefinition"]
+        BUNDLE["DeploymentBundle loader"]
         CONTRACT["Agent / AgentRuntime"]
-        PROVIDERS["Model, memory, session, tool contracts"]
+        PROVIDERS["Model, memory, session, tool, secret contracts"]
     end
 
     subgraph DATA["ADK data plane"]
-        RAPI["Runtime FastAPI"]
+        RAPI["Runtime FastAPI / osa-runtime CLI"]
         GA["GenericAdkAgent"]
         ADK["ADK LlmAgent + Runner"]
+        MAD["Model adapters (litellm / fake bridge)"]
     end
 
     CPAPI --> AC
     CPAPI --> TC
     CPAPI --> RC
     AC --> DEF
+    BUNDLE --> DEF
     DEF --> GA
     CONTRACT --> GA
     PROVIDERS --> GA
     RAPI --> GA
     GA --> ADK
-    DP -. "not API-wired" .-> RAPI
+    ADK --> MAD
+    DP -. "not API-wired" .-> CPAPI
 ```
 
 ## Agent construction
@@ -57,76 +61,91 @@ flowchart TB
 `AdkRuntime.create()` receives an already validated `AgentDefinition`. During
 `GenericAdkAgent` construction it:
 
-1. resolves every native tool definition and implementation;
-2. resolves every skill definition;
-3. resolves the configured model ID, falling back to `fake` when absent or
-   unknown;
-4. builds an ADK `LlmAgent` with wrapped native tools;
-5. builds an ADK `Runner` with ADK in-memory session and memory services.
+1. resolves every native tool definition and implementation (missing
+   references fail fast);
+2. resolves every skill definition (missing references fail fast);
+3. resolves the model definition from the catalog — an unknown reference
+   fails fast; an absent reference uses the catalog default, and with no
+   default at all only an explicitly supplied deterministic provider may be
+   used;
+4. builds the ADK model through the adapter registry (`litellm` for live
+   models, a `ModelProvider` bridge for deterministic tests);
+5. builds an ADK `LlmAgent` with `OsaFunctionTool` wrappers whose
+   declarations come from `ToolDefinition.capabilities`;
+6. builds an ADK `Runner` wired to `OsaAdkSessionService`, which stores ADK
+   events inside the OSA session provider.
 
-Missing tool or skill references fail construction. Missing models currently do
-not; the fallback is an inconsistency tracked in `TODO.md`. MCP references and
-memory policy references are not resolved during construction.
-
-## Current invocation flow
+## Invocation flow
 
 ```mermaid
 sequenceDiagram
     participant C as Caller
     participant A as GenericAdkAgent
-    participant S as OSA SessionManager
-    participant M as OSA MemoryProvider
-    participant P as ModelProvider
-    participant T as Native Tool
+    participant S as SessionProvider
+    participant R as ADK Runner
+    participant M as ADK model (litellm / bridge)
+    participant T as Native Tool (ADK function calling)
 
     C->>A: AgentRequest
-    A->>S: get_or_create
-    A->>M: search relevant memory
-    A->>P: generate prompt
-    alt response starts with TOOL_CALL
-        A->>T: execute in worker thread
-        T-->>A: ToolResult
-        A->>P: generate with tool result
+    A->>S: resolve/create session (ownership, TTL)
+    A->>S: load session events (bounded)
+    A->>R: run_async(user message)
+    R->>M: LlmRequest
+    alt model requests a function call
+        R->>T: execute (schema validation + timeout)
+        T-->>R: function response
+        R->>M: LlmRequest with tool result
     end
-    A->>S: append assistant response
+    R-->>A: final event
+    A->>S: save bounded history
     A-->>C: AgentResponse
 ```
 
-This flow does **not** invoke `agent.runner`. ADK objects are constructed but
-live execution remains on the generic provider path. Tool calling is parsed from
-`TOOL_CALL <name> {json}` text and is bounded by `runtime.max_iterations`.
-
-`runtime.timeout_seconds`, model reference parameters, model runtime settings,
-and request metadata are not currently applied to generation.
+Invocation flows through the ADK `Runner`. Tools execute through ADK-native
+function calling — the earlier `TOOL_CALL` text protocol is gone.
+`runtime.timeout_seconds` cancels the run (`invocation_timeout`);
+`runtime.max_iterations` caps function-call rounds
+(`iteration_limit_exceeded`). Generation settings follow explicit precedence:
+`ModelDefinition.runtime_settings`, overridden by `ModelRef.parameters`.
 
 ## Sessions and memory
 
-OSA session state and ADK Runner session state are separate in-memory services.
-Current OSA sessions record user/assistant messages but history is not added to
-the next model prompt. `SessionConfig.persistence` and `ttl_seconds` are schema
-only.
+The OSA `SessionProvider` is the single source of truth for sessions:
+ownership (`agent_name`, `user_id`, `tenant_id`), TTL expiry, bounded history
+(`max_history_messages`), and the ADK event payload ADK reuses for context.
+Caller-supplied unknown IDs are rejected (`session_not_found`), identity
+changes are access violations (`session_access_denied`), and IDs are
+server-issued UUIDs. `OsaAdkSessionService` maps ADK session operations onto
+the provider, so model context stays bounded by the OSA history limit. The
+in-memory provider is single-replica; multi-replica deployments need a shared
+persistent provider (P1).
 
 Memory context is loaded only when `spec.memory.enabled` is true and a
 `MemoryProvider` is injected. Search is a case-insensitive substring match in
 the in-memory provider. Writes occur only through `agent.remember()`.
-`MemoryConfig.policy`, `max_entries`, and policy retention/extraction settings
-are not enforced.
-
-Session lookup currently trusts a supplied session ID without verifying the
-agent or user that owns it. Production session work must add ownership checks,
-unguessable identifiers, expiry, and multi-replica storage.
+Policy resolution, `max_entries` enforcement, retention, and extraction are
+pending (P1.4).
 
 ## HTTP applications
 
-The Control Plane application owns module-level in-memory catalogs. Restarting
-the process loses all state. Only agent CRUD/version/disable routes are exposed;
-resource catalog and deployment provider classes have no HTTP routes.
+The Control Plane application owns module-level in-memory catalogs.
+Restarting the process loses all state. Routes enforce create/transition
+validation, cumulative list filters with pagination/sorting, immutable
+version snapshots, optimistic concurrency (`expected_version`), and the
+stable error envelope (`{"error": {"code", "message"}}`). Resource catalog
+and deployment provider classes have no HTTP routes yet.
 
-The runtime application owns one module-level runtime and agent. It must be
-initialized programmatically. Initialization creates a fake default model and
-does not load tools, skills, MCPs, secrets, persistent sessions, or memory.
+The runtime application owns one module-level runtime and agent. The
+production path is the `osa-runtime` CLI (or `create_runtime_app`), which
+loads a deployment bundle during startup: bundle validation, reference
+resolution, and secret resolution all complete before readiness, and an
+invalid bundle aborts startup. SIGTERM runs the lifespan shutdown and closes
+the runtime cleanly. The runtime image (`Dockerfile`) runs non-root with an
+arbitrary-UID-friendly layout, a health check, and an externally mounted
+bundle; CI builds it and runs a container smoke test (ready → invoke →
+SIGTERM).
 
-Both APIs are unauthenticated and are development-only.
+Both APIs are unauthenticated (P2.2).
 
 ## Deployment
 
@@ -134,29 +153,35 @@ Both APIs are unauthenticated and are development-only.
 execution. `LocalDeploymentProvider` launches a trusted command as a subprocess,
 reports liveness, and supports stop/restart. It discards stdout/stderr, has no
 health probe, and persists no state. It is not connected to the Control Plane
-API.
+API (P1.5).
 
 ## Tests and CI
 
-The current baseline is 221 tests. CI runs:
+The current baseline is ~320 tests. CI runs:
 
 - `ruff format --check .`;
 - `ruff check .`;
 - strict `mypy .` across all first-party packages;
-- `pytest --tb=short -q`.
+- `pytest --tb=short -q`;
+- a container job: `uv lock --check`, `docker build`, then a smoke test that
+  starts the built image with the `examples/smoke-bundle` configuration,
+  waits for readiness, performs an invocation, and verifies a clean SIGTERM
+  exit.
 
-Tests use the fake model provider and in-memory services. There is no live-model,
-MCP protocol, database, container, Kubernetes, A2A, authentication, or
-multi-replica test. The Dockerfile is not built by CI, and there is no coverage
-threshold.
+Tests use the fake provider, scripted ADK models, and in-memory services —
+no network. There is no live-model, MCP protocol, database, Kubernetes, A2A,
+authentication, or multi-replica test yet. There is no coverage threshold.
 
 ## Dependency risks
 
-- `google-adk>=0.1.0` is a very broad lower bound; the current lock resolves ADK
-  2.8.0 and emits a `BaseAgentConfig` deprecation warning during tests.
-- uv reports that `[tool.uv].dev-dependencies` is deprecated.
-- Package manifests report `0.1.0` while changelog entries use later milestone
-  numbers. A single versioning and release policy is required before publishing.
+- `google-adk>=2.0,<3.0` pins the tested major line; ADK still emits its own
+  `BaseAgentConfig` deprecation warning at import time (filtered in pytest,
+  documented there).
+- `litellm>=1.84` is optional (`osa-adk-runtime[litellm]`); configuring a
+  litellm model without the extra fails fast (ADR-001).
+- Package manifests share one lockstep release version, enforced by
+  `tests/unit/test_versioning.py`; automated publishing is still pending
+  (P3.3).
 
 ## Architectural invariants
 
@@ -166,5 +191,8 @@ threshold.
 - MCP definitions remain distinct from native tool definitions.
 - Session and memory remain separate.
 - Deployment providers remain separate from `AgentRuntime`.
+- Secret values never appear in definitions, responses, logs, or errors.
+- The `fake` provider is a deterministic test adapter, never a production
+  fallback.
 - OSA remains independent from the Micro-Agents project unless a future ADR
   explicitly changes that position.

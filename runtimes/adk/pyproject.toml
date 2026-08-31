@@ -6,8 +6,17 @@ requires-python = ">=3.12"
 license = "Apache-2.0"
 dependencies = [
     "osa-generic-agent",
-    "google-adk>=0.1.0",
+    # Tested against the ADK 2.x line; majors may change Runner/session APIs.
+    "google-adk>=2.0,<3.0",
 ]
+
+[project.optional-dependencies]
+# Production LiteLLM model adapter. Kept optional so deterministic test
+# environments stay offline; the runtime image installs this extra.
+litellm = ["litellm>=1.84"]
+
+[project.scripts]
+osa-runtime = "osa.runtimes.adk.service:main"
 
 [tool.uv.sources]
 osa-generic-agent = { workspace = true }

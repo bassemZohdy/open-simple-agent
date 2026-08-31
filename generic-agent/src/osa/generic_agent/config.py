@@ -1,6 +1,7 @@
 """Configuration models for agent definitions.
 
-All models use strict validation — unknown properties are rejected.
+All models use strict validation — unknown properties are rejected, and
+timeouts, TTLs, limits, and iterations must be positive/in-range where set.
 
 Configuration precedence:
     Built-in Defaults -> Configuration File -> Environment Variables
@@ -15,6 +16,9 @@ from typing import Any
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+SUPPORTED_API_VERSION = "osa/v1alpha1"
+SUPPORTED_KIND = "Agent"
 
 
 class StrictModel(BaseModel):
@@ -109,14 +113,15 @@ class MemoryConfig(StrictModel):
     enabled: bool = False
     policy: str | None = None
     scope: MemoryScope = MemoryScope.USER
-    max_entries: int | None = None
+    max_entries: int | None = Field(default=None, ge=1)
 
 
 class SessionConfig(StrictModel):
     """Session configuration for an agent."""
 
     persistence: bool = False
-    ttl_seconds: int | None = None
+    ttl_seconds: int | None = Field(default=None, gt=0)
+    max_history_messages: int = Field(default=20, ge=1)
 
 
 class A2AConfig(StrictModel):
@@ -128,8 +133,8 @@ class A2AConfig(StrictModel):
 class RuntimeConfig(StrictModel):
     """Runtime-specific configuration."""
 
-    timeout_seconds: int | None = None
-    max_iterations: int | None = None
+    timeout_seconds: int | None = Field(default=None, gt=0)
+    max_iterations: int | None = Field(default=None, ge=1)
 
 
 class AgentSpec(StrictModel):
@@ -163,10 +168,18 @@ class AgentDefinition(StrictModel):
     It is NOT a running runtime object.
     """
 
-    api_version: str = Field(default="osa/v1alpha1", alias="apiVersion")
-    kind: str = "Agent"
+    api_version: str = Field(default=SUPPORTED_API_VERSION, alias="apiVersion")
+    kind: str = SUPPORTED_KIND
     metadata: AgentMetadataConfig
     spec: AgentSpec
+
+    @model_validator(mode="after")
+    def _validate_supported_document(self) -> AgentDefinition:
+        if self.api_version != SUPPORTED_API_VERSION:
+            raise ValueError(f"Unsupported apiVersion '{self.api_version}'; expected '{SUPPORTED_API_VERSION}'")
+        if self.kind != SUPPORTED_KIND:
+            raise ValueError(f"Unsupported kind '{self.kind}'; expected '{SUPPORTED_KIND}'")
+        return self
 
 
 def load_agent_definition(source: str | Path) -> AgentDefinition:
@@ -230,6 +243,11 @@ def _apply_env_overrides(data: object) -> None:
     AgentDefinition validation reports the real problem. Overrides onto a null
     intermediate node create the missing mapping; overrides are skipped when
     an intermediate node is some other non-mapping value.
+
+    ``OSA_MODEL_REF`` targets a bare-string model reference by replacing the
+    string entirely — ``model: default`` plus ``OSA_MODEL_REF=other`` resolves
+    to ``{ref: other}`` (environment precedence), never a merge with the file
+    value.
     """
     if not isinstance(data, dict):
         return
@@ -243,6 +261,10 @@ def _apply_env_overrides(data: object) -> None:
         reachable = True
         for key in path_keys[:-1]:
             nested = current.get(key)
+            if isinstance(nested, str) and key == "model":
+                # Bare-string model reference: coerce so the override applies.
+                nested = {"ref": nested}
+                current[key] = nested
             if nested is None:
                 nested = {}
                 current[key] = nested

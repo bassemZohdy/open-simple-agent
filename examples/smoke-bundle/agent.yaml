@@ -1,0 +1,8 @@
+apiVersion: osa/v1alpha1
+kind: Agent
+metadata:
+  name: smoke-agent
+spec:
+  instruction: Answer briefly.
+  model:
+    ref: default

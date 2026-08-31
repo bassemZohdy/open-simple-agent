@@ -7,7 +7,23 @@ from osa.generic_agent.agent_metadata import AgentMetadata
 from osa.generic_agent.agent_request import AgentRequest
 from osa.generic_agent.agent_response import AgentResponse
 from osa.generic_agent.agent_status import AgentStatus
+from osa.generic_agent.bundle import (
+    API_VERSION,
+    BUNDLE_KIND,
+    BundleCatalogs,
+    BundleError,
+    BundleMetadata,
+    DeploymentBundle,
+    DuplicateResourceError,
+    InvalidBundleError,
+    UnknownReferenceError,
+    build_catalogs,
+    collect_secret_references,
+    load_bundle,
+)
 from osa.generic_agent.config import (
+    SUPPORTED_API_VERSION,
+    SUPPORTED_KIND,
     A2AConfig,
     AgentDefinition,
     AgentMetadataConfig,
@@ -24,6 +40,14 @@ from osa.generic_agent.config import (
     StrictModel,
     ToolRef,
     load_agent_definition,
+)
+from osa.generic_agent.errors import (
+    InvocationTimeoutError,
+    IterationLimitExceededError,
+    ModelConfigurationError,
+    ModelInvocationError,
+    OsaError,
+    error_payload,
 )
 from osa.generic_agent.example_tools import CalculatorTool
 from osa.generic_agent.mcp import (
@@ -44,10 +68,26 @@ from osa.generic_agent.memory import (
 from osa.generic_agent.model import ModelCapabilities, ModelCatalog, ModelDefinition, ModelRuntimeSettings
 from osa.generic_agent.model_provider import FakeModelProvider, ModelProvider, ModelResponse, TokenUsage
 from osa.generic_agent.runtime import AgentFactory, AgentRuntime
-from osa.generic_agent.session import Session, SessionId, SessionManager
+from osa.generic_agent.secret import (
+    EnvironmentSecretResolver,
+    SecretError,
+    SecretResolutionError,
+    SecretResolver,
+    SecretSourceError,
+)
+from osa.generic_agent.session import (
+    Session,
+    SessionAccessError,
+    SessionError,
+    SessionId,
+    SessionManager,
+    SessionNotFoundError,
+    SessionProvider,
+)
 from osa.generic_agent.skill import SkillCatalog, SkillDefinition
 from osa.generic_agent.tool import (
     Tool,
+    ToolCapability,
     ToolCatalog,
     ToolCategory,
     ToolDefinition,
@@ -58,6 +98,7 @@ from osa.generic_agent.tool import (
 
 __all__ = [
     "A2AConfig",
+    "API_VERSION",
     "AbstractAgent",
     "Agent",
     "AgentCapabilities",
@@ -71,10 +112,20 @@ __all__ = [
     "AgentRuntime",
     "AgentSpec",
     "AgentStatus",
+    "BUNDLE_KIND",
+    "BundleCatalogs",
+    "BundleError",
+    "BundleMetadata",
     "CalculatorTool",
     "ConfigurationError",
+    "DeploymentBundle",
+    "DuplicateResourceError",
+    "EnvironmentSecretResolver",
     "FakeModelProvider",
     "InMemoryProvider",
+    "InvalidBundleError",
+    "InvocationTimeoutError",
+    "IterationLimitExceededError",
     "McpCatalog",
     "McpConnectionOptions",
     "McpDefinition",
@@ -90,23 +141,37 @@ __all__ = [
     "MemoryScope",
     "ModelCapabilities",
     "ModelCatalog",
+    "ModelConfigurationError",
     "ModelDefinition",
+    "ModelInvocationError",
     "ModelProvider",
     "ModelRef",
     "ModelResponse",
     "ModelRuntimeSettings",
+    "OsaError",
     "RuntimeConfig",
+    "SUPPORTED_API_VERSION",
+    "SUPPORTED_KIND",
+    "SecretError",
     "SecretReference",
+    "SecretResolutionError",
+    "SecretResolver",
+    "SecretSourceError",
     "Session",
+    "SessionAccessError",
     "SessionConfig",
+    "SessionError",
     "SessionId",
     "SessionManager",
+    "SessionNotFoundError",
+    "SessionProvider",
     "SkillCatalog",
     "SkillDefinition",
     "SkillRef",
     "StrictModel",
     "TokenUsage",
     "Tool",
+    "ToolCapability",
     "ToolCatalog",
     "ToolCategory",
     "ToolDefinition",
@@ -114,5 +179,10 @@ __all__ = [
     "ToolRef",
     "ToolResult",
     "ToolTimeoutError",
+    "error_payload",
+    "UnknownReferenceError",
+    "build_catalogs",
+    "collect_secret_references",
     "load_agent_definition",
+    "load_bundle",
 ]

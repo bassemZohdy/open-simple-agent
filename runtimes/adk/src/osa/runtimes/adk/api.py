@@ -1,11 +1,24 @@
 """Agent Runtime HTTP API — endpoints for invoking agents.
 
 This API runs alongside the agent runtime, independent of the Control Plane.
+
+Two ways to serve it:
+
+- Programmatic: call :func:`initialize_runtime` with an ``AgentDefinition``
+  and serve :data:`runtime_app` (used by tests and embedders).
+- Service: :func:`osa.runtimes.adk.service.create_runtime_app` bootstraps
+  from a deployment bundle during startup, or run the ``osa-runtime`` CLI.
+
+Error responses use the stable OSA schema ``{"error": {"code", "message"}}``.
 """
 
 from __future__ import annotations
 
-from fastapi import FastAPI, HTTPException
+from importlib import metadata
+from typing import Any
+
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 
 from osa.generic_agent import (
@@ -14,14 +27,27 @@ from osa.generic_agent import (
     FakeModelProvider,
     ModelCatalog,
     ModelDefinition,
+    OsaError,
+    SecretResolver,
+    SessionAccessError,
+    SessionError,
+    SessionNotFoundError,
+    error_payload,
 )
 from osa.runtimes.adk import AdkRuntime, GenericAdkAgent
 
-runtime_app = FastAPI(title="Open Simple Agent Runtime", version="0.1.0")
 
-# Runtime state
+def _package_version() -> str:
+    try:
+        return metadata.version("osa-adk-runtime")
+    except metadata.PackageNotFoundError:
+        return "0"
+
+
+# Runtime state (single agent per process, matching the deployment-bundle model)
 _runtime: AdkRuntime | None = None
 _agent: GenericAdkAgent | None = None
+_start_error: str | None = None
 
 
 class InvokeRequest(BaseModel):
@@ -55,68 +81,131 @@ class CapabilitiesResponse(BaseModel):
     skills: list[str] = Field(default_factory=list)
 
 
-async def initialize_runtime(definition: AgentDefinition) -> None:
-    """Initialize the runtime with an agent definition."""
-    global _runtime, _agent
+async def initialize_runtime(
+    definition: AgentDefinition,
+    *,
+    secret_resolver: SecretResolver | None = None,
+) -> GenericAdkAgent:
+    """Initialize the runtime with an agent definition.
 
+    Deterministic bootstrap used by tests and programmatic embedding: a fake
+    default model plus the injected provider. Production deployments bootstrap
+    from a bundle via the service factory instead.
+    """
     model_catalog = ModelCatalog()
     model_catalog.register(ModelDefinition(name="default", provider="fake", model_id="fake-model", is_default=True))
 
-    _runtime = AdkRuntime(
+    runtime = AdkRuntime(
         model_provider=FakeModelProvider(response="I'm a runtime agent. How can I help?"),
         model_catalog=model_catalog,
     )
-    _agent = await _runtime.create(definition)
+    agent = await runtime.create(definition)
+    set_runtime(runtime, agent)
+    return agent
 
 
-@runtime_app.post("/v1/invoke", response_model=InvokeResponse)
-async def invoke_agent(request: InvokeRequest) -> InvokeResponse:
-    """Invoke the agent."""
-    if _agent is None:
-        raise HTTPException(status_code=503, detail="Agent not initialized")
-
-    agent_request = AgentRequest(
-        input=request.input,
-        session_id=request.session_id,
-        user_id=request.user_id,
-        metadata=request.metadata,
-    )
-
-    response = await _agent.invoke(agent_request)
-
-    return InvokeResponse(
-        output=response.output,
-        invocation_id=str(response.invocation_id),
-        session_id=response.session_id,
-        error=response.error,
-    )
+def reset_runtime() -> None:
+    """Clear runtime state (used by tests and lifespan shutdown)."""
+    global _runtime, _agent, _start_error
+    _runtime = None
+    _agent = None
+    _start_error = None
 
 
-@runtime_app.get("/health/live")
-async def health_live() -> dict[str, str]:
-    """Liveness check."""
-    return {"status": "alive"}
+def set_start_error(message: str) -> None:
+    """Record a startup failure so readiness reports the real cause."""
+    global _start_error
+    _start_error = message
 
 
-@runtime_app.get("/health/ready")
-async def health_ready() -> dict[str, str]:
-    """Readiness check."""
-    if _agent is None:
-        raise HTTPException(status_code=503, detail="Agent not initialized")
-    return {"status": "ready"}
+def get_agent() -> GenericAdkAgent | None:
+    """The initialized agent, if any."""
+    return _agent
 
 
-@runtime_app.get("/v1/capabilities", response_model=CapabilitiesResponse)
-async def get_capabilities() -> CapabilitiesResponse:
-    """Get agent capabilities."""
-    if _agent is None:
-        raise HTTPException(status_code=503, detail="Agent not initialized")
+def set_runtime(runtime: AdkRuntime, agent: GenericAdkAgent) -> None:
+    """Install runtime state created by an external bootstrap."""
+    global _runtime, _agent, _start_error
+    _runtime = runtime
+    _agent = agent
+    _start_error = None
 
-    return CapabilitiesResponse(
-        agent_name=_agent.metadata.name,
-        version=_agent.metadata.version,
-        streaming=False,
-        session_support=True,
-        tools=[t.name for t in (_runtime._tool_catalog.list_tools() if _runtime else [])],
-        skills=[s.ref for s in _agent.definition.spec.skills],
-    )
+
+def configure_runtime_app(app: FastAPI) -> FastAPI:
+    """Attach the runtime routes and error mapping to a FastAPI app.
+
+    Used both by the module-level ``runtime_app`` and by the service factory
+    (``osa.runtimes.adk.service.create_runtime_app``), which supplies its own
+    bundle-driven lifespan.
+    """
+
+    @app.exception_handler(SessionNotFoundError)
+    async def _session_not_found_handler(request: Request, exc: SessionNotFoundError) -> JSONResponse:
+        return JSONResponse(status_code=404, content=error_payload(exc.code, str(exc)))
+
+    @app.exception_handler(SessionAccessError)
+    async def _session_access_handler(request: Request, exc: SessionAccessError) -> JSONResponse:
+        return JSONResponse(status_code=403, content=error_payload(exc.code, str(exc)))
+
+    @app.exception_handler(SessionError)
+    async def _session_error_handler(request: Request, exc: SessionError) -> JSONResponse:
+        return JSONResponse(status_code=400, content=error_payload(exc.code, str(exc)))
+
+    @app.exception_handler(OsaError)
+    async def _osa_error_handler(request: Request, exc: OsaError) -> JSONResponse:
+        return JSONResponse(status_code=502, content=error_payload(exc.code, str(exc)))
+
+    @app.post("/v1/invoke", response_model=InvokeResponse)
+    async def invoke_agent(request: InvokeRequest) -> Any:
+        """Invoke the agent."""
+        if _agent is None:
+            return JSONResponse(status_code=503, content=error_payload("not_initialized", "Agent not initialized"))
+
+        agent_request = AgentRequest(
+            input=request.input,
+            session_id=request.session_id,
+            user_id=request.user_id,
+            metadata=request.metadata,
+        )
+
+        response = await _agent.invoke(agent_request)
+
+        return InvokeResponse(
+            output=response.output,
+            invocation_id=str(response.invocation_id),
+            session_id=response.session_id,
+            error=response.error,
+        )
+
+    @app.get("/health/live")
+    async def health_live() -> dict[str, str]:
+        """Liveness check."""
+        return {"status": "alive"}
+
+    @app.get("/health/ready")
+    async def health_ready() -> JSONResponse:
+        """Readiness reflects successful agent initialization."""
+        if _agent is None:
+            message = _start_error or "Agent not initialized"
+            return JSONResponse(status_code=503, content=error_payload("not_initialized", message))
+        return JSONResponse(status_code=200, content={"status": "ready"})
+
+    @app.get("/v1/capabilities", response_model=CapabilitiesResponse)
+    async def get_capabilities() -> Any:
+        """Get agent capabilities."""
+        if _agent is None:
+            return JSONResponse(status_code=503, content=error_payload("not_initialized", "Agent not initialized"))
+
+        return CapabilitiesResponse(
+            agent_name=_agent.metadata.name,
+            version=_agent.metadata.version,
+            streaming=False,
+            session_support=True,
+            tools=[t.name for t in (_runtime.tool_catalog.list_tools() if _runtime else [])],
+            skills=[s.ref for s in _agent.definition.spec.skills],
+        )
+
+    return app
+
+
+runtime_app = configure_runtime_app(FastAPI(title="Open Simple Agent Runtime", version=_package_version()))

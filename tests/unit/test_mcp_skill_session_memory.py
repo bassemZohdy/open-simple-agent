@@ -15,6 +15,7 @@ from osa.generic_agent import (
     Session,
     SessionId,
     SessionManager,
+    SessionNotFoundError,
     SkillCatalog,
     SkillDefinition,
 )
@@ -155,19 +156,23 @@ class TestSessionManager:
         manager = SessionManager()
         assert manager.get("nonexistent") is None
 
-    def test_get_or_create(self) -> None:
+    def test_resolve_returns_owned_session(self) -> None:
         manager = SessionManager()
-        s1 = manager.get_or_create(None, agent_name="test")
-        s2 = manager.get_or_create(str(s1.session_id), agent_name="test")
+        s1 = manager.create(agent_name="test", user_id="u1")
+        s2 = manager.resolve(str(s1.session_id), agent_name="test", user_id="u1")
         assert s1.session_id == s2.session_id
-        assert len(manager) == 1
+
+    def test_resolve_rejects_unknown_session_id(self) -> None:
+        manager = SessionManager()
+        with pytest.raises(SessionNotFoundError):
+            manager.resolve("does-not-exist", agent_name="test")
 
     def test_delete(self) -> None:
         manager = SessionManager()
         session = manager.create(agent_name="test")
-        assert manager.delete(str(session.session_id)) is True
+        assert manager.delete(str(session.session_id), agent_name="test") is True
         assert len(manager) == 0
-        assert manager.delete("nonexistent") is False
+        assert manager.delete("nonexistent", agent_name="test") is False
 
 
 # --- Memory Tests ---

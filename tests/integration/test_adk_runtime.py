@@ -5,8 +5,10 @@ Verifies the end-to-end flow:
 """
 
 import time
+from typing import Any
 
 import pytest
+from google.adk.models.llm_response import LlmResponse
 
 from osa.generic_agent import (
     AgentDefinition,
@@ -220,19 +222,6 @@ class SlowTool(Tool):
         return ToolResult(success=True, output="finally done")
 
 
-class ScriptedProvider(FakeModelProvider):
-    """Returns scripted responses in order, then repeats the last one."""
-
-    def __init__(self, responses: list[str]) -> None:
-        super().__init__(response=responses[-1])
-        self._script = list(responses)
-
-    async def generate(self, prompt: str, model_id: str, **kwargs: object) -> ModelResponse:
-        self.calls.append({"prompt": prompt, "model_id": model_id, **kwargs})
-        text = self._script.pop(0) if self._script else self._response
-        return ModelResponse(text=text, model_id=model_id)
-
-
 def _make_tool_catalog(*tools: Tool, timeout_seconds: float | None = None) -> ToolCatalog:
     catalog = ToolCatalog()
     for tool in tools:
@@ -241,6 +230,12 @@ def _make_tool_catalog(*tools: Tool, timeout_seconds: float | None = None) -> To
         )
         catalog.register_tool(tool)
     return catalog
+
+
+def _scripted_adapters(model: Any) -> Any:
+    from tests.integration.test_native_function_calling import scripted_registry
+
+    return scripted_registry(model)
 
 
 def _make_tool_definition(*tool_names: str, skill: str | None = None) -> AgentDefinition:
@@ -258,18 +253,39 @@ def _make_tool_definition(*tool_names: str, skill: str | None = None) -> AgentDe
 
 
 class TestNativeToolResolution:
-    async def test_tool_call_loop_derives_response_from_tool_result(self) -> None:
-        provider = ScriptedProvider(
-            [
-                'TOOL_CALL calculator {"operation": "add", "a": 2, "b": 3}',
-                "The answer is 5.",
-            ]
+    async def test_native_function_calling_derives_response_from_tool_result(self) -> None:
+        """A scripted model that answers with a function call exercises the
+        ADK-native function-calling loop: the tool executes, the result is fed
+        back, and the final answer comes from the model."""
+        from google.genai import types
+
+        from tests.integration.test_native_function_calling import ScriptedLlm
+
+        model = ScriptedLlm(
+            model="fake-model",
+            script=[
+                LlmResponse(
+                    content=types.Content(
+                        role="model",
+                        parts=[
+                            types.Part(
+                                function_call=types.FunctionCall(
+                                    name="calculator",
+                                    args={"operation": "add", "a": 2, "b": 3},
+                                )
+                            )
+                        ],
+                    )
+                ),
+                LlmResponse(content=types.Content(role="model", parts=[types.Part(text="The answer is 5.")])),
+            ],
         )
         agent = GenericAdkAgent(
             definition=_make_tool_definition("calculator"),
-            model_provider=provider,
+            model_provider=FakeModelProvider(),
             model_catalog=_make_catalog_with_default(),
             tool_catalog=_make_tool_catalog(CalculatorTool()),
+            model_adapters=_scripted_adapters(model),
         )
         assert agent.tools == ["calculator"]
 
@@ -277,11 +293,6 @@ class TestNativeToolResolution:
 
         assert response.output == "The answer is 5."
         assert response.error is None
-        assert len(provider.calls) == 2
-        second_prompt = provider.calls[1]["prompt"]
-        assert isinstance(second_prompt, str)
-        assert "success=True" in second_prompt
-        assert "5.0" in second_prompt
 
     async def test_unknown_tool_reference_fails_at_construction(self) -> None:
         definition = _make_definition()
@@ -348,20 +359,42 @@ class TestNativeToolResolution:
         with pytest.raises(ToolTimeoutError, match="timed out after 0.05"):
             await agent.execute_tool("slow")
 
-    async def test_invoke_captures_timeout_in_error(self) -> None:
-        provider = ScriptedProvider(["TOOL_CALL slow {}", "This will never be reached."])
+    async def test_tool_timeout_is_reported_to_the_model(self) -> None:
+        """A tool exceeding its timeout returns an error payload to the model,
+        which then answers from the follow-up turn."""
+        from google.genai import types
+
+        from tests.integration.test_native_function_calling import ScriptedLlm
+
+        model = ScriptedLlm(
+            model="fake-model",
+            script=[
+                LlmResponse(
+                    content=types.Content(
+                        role="model",
+                        parts=[types.Part(function_call=types.FunctionCall(name="slow", args={}))],
+                    )
+                ),
+                LlmResponse(content=types.Content(role="model", parts=[types.Part(text="Tool timed out; moving on.")])),
+            ],
+        )
         agent = GenericAdkAgent(
             definition=_make_tool_definition("slow"),
-            model_provider=provider,
+            model_provider=FakeModelProvider(),
             model_catalog=_make_catalog_with_default(),
             tool_catalog=_make_tool_catalog(SlowTool(), timeout_seconds=0.05),
+            model_adapters=_scripted_adapters(model),
         )
 
         response = await agent.invoke(AgentRequest(input="go"))
 
-        assert response.output == ""
-        assert response.error is not None
-        assert "timed out" in response.error
+        assert response.output == "Tool timed out; moving on."
+        assert response.error is None
+        # The function response the model received must carry the timeout.
+        tool_response = model.last_function_response()
+        assert tool_response is not None
+        assert tool_response["success"] is False
+        assert "timed out" in str(tool_response["error"])
 
     async def test_runtime_passes_skill_catalog(self) -> None:
         skill_catalog = SkillCatalog()

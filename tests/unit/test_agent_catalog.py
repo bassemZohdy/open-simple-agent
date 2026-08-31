@@ -64,9 +64,11 @@ class TestAgentCatalog:
         assert retrieved.name == "support"
 
     def test_create_duplicate_name_raises(self) -> None:
+        from osa.control_plane.backend import DuplicateAgentError
+
         catalog = AgentCatalog()
         catalog.create(_make_record("support"))
-        with pytest.raises(ValueError, match="already exists"):
+        with pytest.raises(DuplicateAgentError, match="already exists"):
             catalog.create(_make_record("support"))
 
     def test_get_by_name(self) -> None:
@@ -128,10 +130,15 @@ class TestAgentCatalog:
         with pytest.raises(KeyError, match="Agent not found"):
             catalog.update("nonexistent", description="x")
 
-    def test_disable(self) -> None:
+    def test_disable_requires_activation_first(self) -> None:
+        from osa.control_plane.backend import InvalidTransitionError
+
         catalog = AgentCatalog()
         record = _make_record("test")
         catalog.create(record)
+        with pytest.raises(InvalidTransitionError):
+            catalog.disable(record.agent_id)
+        catalog.transition(record.agent_id, AgentRecordStatus.ACTIVE)
         disabled = catalog.disable(record.agent_id)
         assert disabled.status == AgentRecordStatus.DISABLED
 
@@ -139,8 +146,20 @@ class TestAgentCatalog:
         catalog = AgentCatalog()
         record = _make_record("test")
         catalog.create(record)
-        archived = catalog.archive(record.agent_id)
+        archived = catalog.transition(record.agent_id, AgentRecordStatus.ARCHIVED)
         assert archived.status == AgentRecordStatus.ARCHIVED
+
+    def test_transition_rejects_unknown_agent(self) -> None:
+
+        catalog = AgentCatalog()
+        with pytest.raises(KeyError, match="Agent not found"):
+            catalog.transition("nope", AgentRecordStatus.ARCHIVED)
+
+    def test_invalid_transition_error_message(self) -> None:
+        from osa.control_plane.backend import InvalidTransitionError
+
+        error = InvalidTransitionError(AgentRecordStatus.DRAFT, AgentRecordStatus.DISABLED)
+        assert "draft" in str(error) and "disabled" in str(error)
 
     def test_delete(self) -> None:
         catalog = AgentCatalog()

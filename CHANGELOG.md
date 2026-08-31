@@ -5,39 +5,67 @@ All notable changes to Open Simple Agent will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 > **Versioning note:** entries `0.1.0` through `0.14.0` record internal
-> development milestones. Package manifests and API metadata still report
-> `0.1.0`, and automated release publishing is not implemented. Version
-> alignment is tracked as a release blocker in `TODO.md`.
+> development milestones; they are not published package releases. All package
+> manifests now share one lockstep release version, enforced by
+> `tests/unit/test_versioning.py`. Automated release publishing remains
+> tracked in `TODO.md` (P3.3).
 
 ## [Unreleased]
+
+### Added — P0 release gate: runnable agent
+- **Configuration bootstrap and resource resolution (P0.1)**
+  - Versioned deployment-bundle format (`AgentBundle` document or directory layout) loading one `AgentDefinition` plus model, tool, skill, MCP, and memory-policy resources
+  - Fail-fast bundle validation: unknown resource kinds, unsupported apiVersions, duplicate resource names, and unresolvable agent references raise deterministic `BundleError` subclasses
+  - `SecretResolver` contract with `EnvironmentSecretResolver`; resolved values are never stored, logged, or surfaced in errors
+  - `apiVersion`/`kind` enforcement on agent definitions; positive/range validation for timeouts, TTLs, limits, iterations, model settings, and MCP connection options
+  - `OSA_MODEL_REF` now replaces bare-string model references (environment precedence), decided and tested
+- **Real model execution through ADK (P0.2, ADR-001)**
+  - LiteLLM production model adapter via ADK `LiteLlm` (`osa-adk-runtime[litellm]` optional extra); `fake` provider remains an explicit deterministic test adapter
+  - `GenericAdkAgent.invoke()` routes through the ADK `Runner`; the transitional `TOOL_CALL` text protocol is removed in favor of ADK-native function calling
+  - Tool declarations generated from `ToolDefinition.capabilities` with argument validation; tool timeouts enforced inside the ADK loop
+  - Generation settings precedence: `ModelRuntimeSettings` (catalog) overridden by `ModelRef.parameters` (per agent)
+  - `runtime.timeout_seconds` cancellation and `max_iterations` enforcement with stable error types (`InvocationTimeoutError`, `IterationLimitExceededError`, `ModelInvocationError`, `ModelConfigurationError`)
+- **Session continuity and isolation (P0.3)**
+  - `SessionProvider` contract with ownership by `(agent_name, user_id, tenant_id)`; TTL expiry, bounded history (`max_history_messages`), and explicit deletion
+  - Caller-supplied unknown session IDs rejected (`session_not_found`); identity changes and cross-agent reuse rejected (`session_access_denied`)
+  - `OsaAdkSessionService` backs ADK sessions with the OSA provider so bounded conversation history reaches the model
+- **Runtime service lifecycle and image (P0.4)**
+  - `osa-runtime` CLI and `create_runtime_app` factory: bundle bootstrap during FastAPI lifespan startup; invalid bundles abort startup before readiness
+  - Graceful shutdown on SIGTERM; readiness reflects successful initialization
+  - Production container image: non-root (UID 10001), arbitrary-UID friendly, health check, externally mounted bundle, no build tooling or source in the runtime stage
+  - CI container job: build, ready → invoke → SIGTERM smoke test, `uv lock --check`
+- **Control Plane correctness (P0.5)**
+  - Stable error envelope `{"error": {"code", "message"}}` across Control Plane and runtime APIs
+  - Create validation (template XOR definition, explicit draft placeholders, definition/request name agreement), activation-time resource-reference validation, lifecycle transitions (`draft -> active -> disabled/archived`, archived terminal) with invalid transitions rejected
+  - Cumulative list filters with pagination (`limit`/`offset`) and sorting (`sort_by`/`order`); immutable version snapshots with duplicate-version conflicts; optimistic concurrency via `expected_version`
+- **Versioning and dependency hygiene (P0.6)**
+  - `[dependency-groups].dev` replaces deprecated `[tool.uv].dev-dependencies`
+  - `google-adk>=2.0,<3.0` tested range; BaseAgentConfig deprecation filtered (upstream import noise, documented)
+  - One lockstep release version across manifests, installed distributions, and API metadata, enforced by tests; release policy documented in CONTRIBUTING.md
 
 ### Changed
 - Reworked README and project definition to separate implemented behavior from
   target architecture.
-- Added current architecture, configuration, and HTTP API references.
+- Added current architecture, configuration, and HTTP API references; added
+  ADR-001 (LiteLLM adapter) and the runnable smoke-bundle example.
 - Rebuilt `TODO.md` as a dependency-ordered P0-P3 backlog with acceptance
   criteria and source-backed review findings.
 - Corrected documentation that described the Control Panel, A2A, MCP runtime,
   persistent state, deployment APIs, and runnable containers as already
   available.
 
-### Added
+### Added (earlier, pre-gate)
 - **ADK `LlmAgent` / `Runner` construction**
   - `osa.runtimes.adk.llm_agent`: `build_llm_agent`, `build_runner`, `build_function_tools`
-  - `GenericAdkAgent.llm_agent` / `GenericAdkAgent.runner` expose the ADK objects for live-model routing
+  - `GenericAdkAgent.llm_agent` / `GenericAdkAgent.runner` expose the ADK objects
   - Runtime tools bridged as ADK `FunctionTool`s; agent names sanitized to ADK identifiers
 - **Runtime memory integration**
   - Policy-controlled memory context injection before reasoning (`spec.memory.enabled` + provider)
   - Explicit `remember()` API; raw interactions are never auto-persisted
-  - `AdkRuntime` / `AdkAgentFactory` accept `memory_provider`
 - **Milestone 13 — deployment providers (local)**
-  - `DeploymentProvider` contract (deploy / restart / stop / status / list) in the Control Plane backend
-  - `LocalDeploymentProvider` running each deployment as a local OS process with liveness-based status
+  - `DeploymentProvider` contract and `LocalDeploymentProvider` process lifecycle
 - **Tool & skill runtime wiring (RV-009)**
-  - `GenericAdkAgent` resolves `spec.tools` / `spec.skills` against their catalogs at construction and fails fast on missing references
-  - `execute_tool()` with `ToolDefinition.timeout_seconds` enforcement (`ToolTimeoutError`)
-  - Transitional `TOOL_CALL <name> {json}` model protocol in `invoke()`; `ToolResult` fed back to the model until a final answer (to be replaced by ADK `LlmAgent` function-calling)
-  - `AdkRuntime` / `AdkAgentFactory` accept `skill_catalog`; resolved tools/skills exposed via `agent.tools` / `agent.skills`
+  - Fail-fast resolution of `spec.tools` / `spec.skills`; `execute_tool()` with timeout enforcement
 
 ---
 

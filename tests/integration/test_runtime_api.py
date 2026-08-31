@@ -55,15 +55,45 @@ async def test_invoke_agent() -> None:
         assert "invocation_id" in data
 
 
-async def test_invoke_with_session() -> None:
+async def test_invoke_with_session_reuse() -> None:
+    """A returned session ID is stable and reusable by the same caller."""
+    async with AsyncClient(transport=ASGITransport(app=runtime_app), base_url="http://test") as client:
+        first = await client.post("/v1/invoke", json={"input": "Hello", "user_id": "user-1"})
+        assert first.status_code == 200
+        session_id = first.json()["session_id"]
+        assert session_id
+
+        second = await client.post(
+            "/v1/invoke",
+            json={"input": "Again", "session_id": session_id, "user_id": "user-1"},
+        )
+        assert second.status_code == 200
+        assert second.json()["session_id"] == session_id
+
+
+async def test_invoke_rejects_unknown_session_id() -> None:
+    """Caller-supplied unknown session IDs are rejected, not silently created."""
     async with AsyncClient(transport=ASGITransport(app=runtime_app), base_url="http://test") as client:
         response = await client.post(
             "/v1/invoke",
-            json={"input": "Hello", "session_id": "test-session", "user_id": "user-1"},
+            json={"input": "Hello", "session_id": "no-such-session", "user_id": "user-1"},
         )
-        assert response.status_code == 200
-        data = response.json()
-        assert data["session_id"] is not None
+        assert response.status_code == 404
+        body = response.json()
+        assert body["error"]["code"] == "session_not_found"
+
+
+async def test_invoke_rejects_foreign_user_on_session() -> None:
+    async with AsyncClient(transport=ASGITransport(app=runtime_app), base_url="http://test") as client:
+        first = await client.post("/v1/invoke", json={"input": "Hello", "user_id": "user-1"})
+        session_id = first.json()["session_id"]
+
+        second = await client.post(
+            "/v1/invoke",
+            json={"input": "Hello", "session_id": session_id, "user_id": "user-2"},
+        )
+        assert second.status_code == 403
+        assert second.json()["error"]["code"] == "session_access_denied"
 
 
 async def test_get_capabilities() -> None:

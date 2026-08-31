@@ -21,11 +21,11 @@ class McpTransport(StrEnum):
 class McpConnectionOptions(StrictModel):
     """Connection options for an MCP server."""
 
-    timeout_seconds: float = 30.0
-    max_retries: int = 3
-    retry_delay_seconds: float = 1.0
+    timeout_seconds: float = Field(default=30.0, gt=0)
+    max_retries: int = Field(default=3, ge=0)
+    retry_delay_seconds: float = Field(default=1.0, ge=0)
     tls_verify: bool = True
-    max_response_bytes: int | None = None
+    max_response_bytes: int | None = Field(default=None, gt=0)
 
 
 class McpDefinition(StrictModel):

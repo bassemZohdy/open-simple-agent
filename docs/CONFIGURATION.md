@@ -1,7 +1,7 @@
 # Configuration Reference
 
-This document reflects `osa.generic_agent.config` on `main` as reviewed on
-2026-08-30.
+This document reflects `osa.generic_agent.config` and the deployment-bundle
+loader (`osa.generic_agent.bundle`) on `main`.
 
 ## Loading and validation
 
@@ -64,8 +64,8 @@ spec:
 
 | Path | Type | Default | Current behavior |
 |---|---|---:|---|
-| `apiVersion` | string | `osa/v1alpha1` | Stored; supported-version enforcement is not implemented |
-| `kind` | string | `Agent` | Stored; exact-kind enforcement is not implemented |
+| `apiVersion` | string | `osa/v1alpha1` | Must equal `osa/v1alpha1`; other values are rejected |
+| `kind` | string | `Agent` | Must equal `Agent`; other values are rejected |
 | `metadata.name` | string | required | Used for runtime metadata and ADK name derivation |
 | `metadata.version` | string | `0.1.0` | No semantic-version validation |
 | `metadata.description` | string | empty | Used in generic metadata |
@@ -78,11 +78,11 @@ uses `spec.description`.
 
 | Path | Type | Default | Current behavior |
 |---|---|---:|---|
-| `spec.instruction` | string | empty | Included in the current generated prompt |
-| `spec.model` | model reference or null | null | Model ID resolved from the catalog; absent/unknown falls back to `fake` |
-| `spec.model.parameters` | map | empty | Accepted but not passed to the provider yet |
-| `spec.mcps` | MCP references | empty | Accepted but not runtime-resolved yet |
-| `spec.mcps[].tools_filter` | string list | empty | Accepted but not enforced yet |
+| `spec.instruction` | string | empty | Used as the ADK `LlmAgent` instruction |
+| `spec.model` | model reference or null | null | Resolved from the catalog; an unknown reference fails fast, an absent reference uses the catalog default (deterministic mode only when no default exists) |
+| `spec.model.parameters` | map | empty | Per-agent generation overrides; override `ModelDefinition.runtime_settings` |
+| `spec.mcps` | MCP references | empty | Validated against the bundle; runtime client pending (P1.3) |
+| `spec.mcps[].tools_filter` | string list | empty | Validated against the bundle; enforcement pending (P1.3) |
 | `spec.tools` | tool references | empty | Definitions and implementations resolve at construction |
 | `spec.skills` | skill references | empty | Definitions resolve at construction as metadata |
 
@@ -99,17 +99,20 @@ tools:
 | Path | Type | Default | Current behavior |
 |---|---|---:|---|
 | `spec.memory.enabled` | boolean | false | Enables search-based context only when a provider is injected |
-| `spec.memory.policy` | string or null | null | Stored; policy catalog resolution is pending |
+| `spec.memory.policy` | string or null | null | Must resolve in the bundle when memory is enabled |
 | `spec.memory.scope` | enum | `user` | `user`, `agent`, `tenant`, or `application` |
-| `spec.memory.max_entries` | integer or null | null | Stored; not enforced |
-| `spec.session.persistence` | boolean | false | Stored; not enforced |
-| `spec.session.ttl_seconds` | integer or null | null | Stored; not enforced |
+| `spec.memory.max_entries` | integer or null | null | Must be >= 1 when set; enforcement pending (P1.4) |
+| `spec.session.persistence` | boolean | false | Stored; persistent providers pending (P1) |
+| `spec.session.ttl_seconds` | integer or null | null | Must be > 0 when set; expired sessions are deleted on access |
+| `spec.session.max_history_messages` | integer | 20 | Bounds the per-session conversation history |
 | `spec.a2a.enabled` | boolean | false | Stored; A2A is not implemented |
-| `spec.runtime.timeout_seconds` | integer or null | null | Stored; invocation timeout is not enforced |
-| `spec.runtime.max_iterations` | integer or null | null | Controls transitional tool-loop iterations; default behavior is 3 |
+| `spec.runtime.timeout_seconds` | integer or null | null | Must be > 0 when set; the invocation is cancelled with `invocation_timeout` when exceeded |
+| `spec.runtime.max_iterations` | integer or null | null | Must be >= 1 when set; caps ADK function-call rounds (default 3), fails with `iteration_limit_exceeded` |
 
-Positive/range validation for timeout, TTL, limits, and iterations is not yet
-implemented. This is tracked in the backlog.
+Timeouts, TTLs, limits, and iterations carry positive/range validation
+(`timeout_seconds > 0`, `ttl_seconds > 0`, `max_iterations >= 1`,
+`max_entries >= 1`, model `temperature` in 0..2, `top_p` in 0..1, token
+limits > 0, MCP connection options likewise).
 
 ## Environment overrides
 
@@ -127,10 +130,12 @@ Only these environment variables are recognized:
 Boolean values are case-insensitive. Accepted true values are `1`, `true`,
 `yes`, and `on`; false values are `0`, `false`, `no`, and `off`.
 
-If an intermediate YAML value is a non-mapping, the override is skipped. In
-particular, `OSA_MODEL_REF` does not replace `spec.model` when the YAML uses a
-bare string model reference. Configuration bundle work must make this behavior
-explicit and consistent.
+`OSA_MODEL_REF` applies to bare-string model references by replacing them
+outright: `model: default` plus `OSA_MODEL_REF=other` resolves to
+`{ref: other}`. Environment overrides always win over the file value.
+
+If an intermediate YAML value is some other non-mapping, the override is
+skipped and schema validation reports the underlying problem.
 
 ## Secret references
 
@@ -143,16 +148,77 @@ credential_ref:
   env_var: PROVIDER_API_KEY
 ```
 
-`SecretReference` stores metadata only. The current repository does not include
-a secret resolver, so this does not yet inject a credential into a model or MCP
-client.
+`SecretReference` stores metadata only; resolved values are never stored on
+models, returned in responses, logged, or embedded in error messages.
 
-## Resource definitions
+`EnvironmentSecretResolver` (`osa.generic_agent.secret`) resolves secrets from
+environment variables: `source` must be `env`, and the variable is `env_var`
+when set, otherwise `key` itself. Unresolvable secrets raise
+`SecretResolutionError`, which identifies the reference - never the value.
+Service bootstraps resolve every bundle secret before reporting ready.
 
-Agent YAML refers to catalog names. Model, MCP, tool, skill, and memory-policy
-catalog documents do not yet have a standard file format or loader. Until that
-bootstrap is implemented, applications must construct and register these
-objects in Python before creating the runtime agent.
+## Deployment bundles
+
+A deployment bundle is one agent plus the catalog resources it references
+(`osa.generic_agent.bundle`). Two layouts are supported.
+
+A single `AgentBundle` document:
+
+```yaml
+apiVersion: osa/v1alpha1
+kind: AgentBundle
+metadata:
+  name: my-bundle
+agent:
+  apiVersion: osa/v1alpha1
+  kind: Agent
+  metadata:
+    name: greeter
+  spec:
+    instruction: Say hello.
+    model:
+      ref: default
+models:
+  - name: default
+    provider: litellm
+    model_id: openai/gpt-4o-mini
+```
+
+A directory layout (see `examples/smoke-bundle`):
+
+```text
+my-bundle/
+├── agent.yaml          # standard AgentDefinition document (required)
+├── bundle.yaml         # optional bundle metadata (name, version, labels)
+├── models/*.yaml       # resource envelopes
+├── tools/*.yaml
+├── skills/*.yaml
+├── mcps/*.yaml
+└── memory-policies/*.yaml
+```
+
+Each resource file is an envelope with `apiVersion: osa/v1alpha1`, a `kind`
+(`Model`, `Tool`, `Skill`, `Mcp`, or `MemoryPolicy`), and the domain
+definition under `spec`:
+
+```yaml
+apiVersion: osa/v1alpha1
+kind: Model
+spec:
+  name: default
+  provider: litellm
+  model_id: openai/gpt-4o-mini
+  credential_ref:
+    source: env
+    key: OPENAI_API_KEY
+```
+
+Loading (`load_bundle`) is fail-fast: unknown resource kinds, unsupported
+apiVersions, duplicate resource names, and agent references to missing
+resources all raise deterministic `BundleError` subclasses before the bundle
+is usable. Native tool implementations ship with the runtime (see
+`osa.runtimes.adk.service.BUILTIN_TOOLS`); an agent referencing a tool
+definition without an available implementation fails at construction.
 
 ## Precedence
 
@@ -162,5 +228,11 @@ The implemented precedence for agent fields is:
 Pydantic defaults < YAML < supported OSA_* environment variables
 ```
 
-Secret resolution and layered catalog files are target behavior, not current
-behavior.
+Generation settings use explicit precedence:
+
+```text
+ModelDefinition.runtime_settings (catalog defaults) < ModelRef.parameters (per-agent overrides)
+```
+
+Bundle secrets are resolved before service readiness; a bundle whose secrets
+cannot be resolved never starts.

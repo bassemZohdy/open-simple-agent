@@ -29,6 +29,14 @@ async def test_health_ready() -> None:
         assert response.json()["status"] == "ready"
 
 
+_DEFINITION = {
+    "apiVersion": "osa/v1alpha1",
+    "kind": "Agent",
+    "metadata": {"name": "test-agent"},
+    "spec": {"instruction": "Help."},
+}
+
+
 async def test_create_agent() -> None:
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         response = await client.post(
@@ -94,10 +102,12 @@ async def test_update_agent() -> None:
 
 
 async def test_disable_agent() -> None:
+    """draft -> active -> disabled is a valid transition path."""
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-        create_response = await client.post("/agents", json={"name": "test-agent"})
+        create_response = await client.post("/agents", json={"name": "test-agent", "definition": _DEFINITION})
         agent_id = create_response.json()["agent_id"]
 
+        await client.post(f"/agents/{agent_id}/activate")
         response = await client.post(f"/agents/{agent_id}/disable")
         assert response.status_code == 200
         assert response.json()["status"] == "disabled"
@@ -117,22 +127,27 @@ async def test_delete_agent() -> None:
 
 async def test_create_agent_version() -> None:
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-        create_response = await client.post("/agents", json={"name": "test-agent"})
+        create_response = await client.post(
+            "/agents",
+            json={"name": "test-agent", "definition": _DEFINITION},
+        )
         agent_id = create_response.json()["agent_id"]
 
         response = await client.post(
             f"/agents/{agent_id}/versions",
-            params={"version": "2.0.0", "change_summary": "Major update"},
+            json={"version": "2.0.0", "change_summary": "Major update"},
         )
-        assert response.status_code == 200
+        assert response.status_code == 201
         assert response.json()["current_version"] == "2.0.0"
 
 
 async def test_list_agents_with_filter() -> None:
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         await client.post("/agents", json={"name": "agent-1"})
-        create_response = await client.post("/agents", json={"name": "agent-2"})
+        agent2_definition = dict(_DEFINITION, metadata={"name": "agent-2"})
+        create_response = await client.post("/agents", json={"name": "agent-2", "definition": agent2_definition})
         agent_id = create_response.json()["agent_id"]
+        await client.post(f"/agents/{agent_id}/activate")
         await client.post(f"/agents/{agent_id}/disable")
 
         response = await client.get("/agents", params={"status": "disabled"})

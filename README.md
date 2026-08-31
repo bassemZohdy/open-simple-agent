@@ -7,28 +7,29 @@ skills, memory, and session settings and is executed by a runtime.
 
 The first runtime targets [Google ADK](https://google.github.io/adk-docs/).
 
-> **Development status:** OSA is an early-stage framework prototype. The domain
-> model, in-memory catalogs, control-plane API, ADK runtime skeleton, local
-> process deployment provider, and deterministic tests are implemented. A
-> runnable real-model service, MCP runtime client, persistent storage, A2A,
-> authentication, production images, and the UI are not implemented yet.
+> **Development status:** OSA is an early-stage framework. The domain model,
+> deployment bundles, in-memory catalogs, control-plane API, a runnable
+> real-model ADK runtime (LiteLLM adapter, native function calling, session
+> isolation), the `osa-runtime` service CLI, a production-oriented container
+> image, and deterministic tests are implemented. MCP runtime, persistent
+> storage, A2A, authentication, and the UI are not implemented yet.
 
 ## What works today
 
 | Area | Current implementation | Important limitation |
 |---|---|---|
-| Agent definition | Strict Pydantic schema; YAML loading; selected `OSA_*` overrides | No catalog/config bundle loader |
-| Models | In-memory catalog and provider contract | Only a deterministic fake provider is wired into HTTP startup |
-| Native tools | Catalog, resolution, timeout, execution loop, ADK wrappers | Invocation still uses a transitional `TOOL_CALL` text protocol |
+| Agent definition | Strict Pydantic schema; YAML loading; `OSA_*` overrides; versioned deployment bundles | Bundle import/export APIs pending |
+| Models | Catalog, provider contract, LiteLLM production adapter (ADR-001), deterministic fake bridge | Live-model CI job pending |
+| Native tools | Catalog, declared parameter schemas, ADK-native function calling, timeout enforcement | Built-in implementations only (`calculator`); custom toolsets need code |
 | MCP | Definitions, catalog, transports, credential references | No client, discovery, connection lifecycle, or tool invocation |
 | Skills | Catalog, search, runtime metadata resolution | No A2A Agent Card mapping |
-| Sessions | In-memory manager and response session IDs | History is not added to prompts; TTL/persistence settings are not enforced |
+| Sessions | `SessionProvider` contract, ownership (agent/user/tenant), TTL, bounded history fed back to the model | In-memory only; not replica-safe |
 | Memory | Provider contract, in-memory provider, search-based context, explicit writes | Policy resolution, limits, retention, extraction, and persistence are pending |
-| ADK runtime | `LlmAgent` and `Runner` construction | Live invocation does not go through the ADK Runner |
-| Control Plane | In-memory agent CRUD/version API and resource catalog classes | Resource/deployment APIs and persistence are pending |
+| ADK runtime | Invocation through the ADK `Runner`; timeouts, iteration limits, stable error types | Streaming pending |
+| Control Plane | In-memory agent CRUD, lifecycle transitions, immutable versions, optimistic concurrency, validated contracts | Resource/deployment APIs and persistence are pending |
 | Deployment | Local subprocess provider contract and implementation | Not connected to the Control Plane API; no container/Kubernetes provider |
-| Runtime API | Invoke, capabilities, liveness, and readiness routes | Requires programmatic initialization; no executable bootstrap |
-| CI | Format, lint, strict mypy, and 221 automated tests | No coverage gate, container build, security scan, or release automation |
+| Runtime API | Invoke, capabilities, liveness, readiness; `osa-runtime` CLI with bundle bootstrap | Streaming and A2A endpoints pending |
+| CI | Format, lint, strict mypy, ~320 automated tests, container build + smoke test | No coverage gate, security scan, or release automation |
 
 ## Architecture
 
@@ -171,12 +172,40 @@ async def main() -> None:
 asyncio.run(main())
 ```
 
+## Running an agent
+
+Load a deployment bundle and serve it:
+
+```bash
+# Deterministic smoke bundle (explicit fake-provider opt-in, no network)
+OSA_ALLOW_FAKE_PROVIDER=1 uv run osa-runtime --config examples/smoke-bundle --port 8080
+```
+
+A production bundle uses a live provider (see
+[ADR-001](docs/adrs/001-litellm-model-adapter.md)) and resolves credentials
+from the environment:
+
+```bash
+export OPENAI_API_KEY=...
+uv run osa-runtime --config ./my-bundle --port 8080
+```
+
+The service validates the bundle, resolves every reference and secret, and
+only then reports `/health/ready`; SIGTERM shuts it down gracefully. The
+container image runs the same way with a mounted bundle:
+
+```bash
+docker build -t osa-runtime .
+docker run -p 8080:8080 -e OSA_ALLOW_FAKE_PROVIDER=1 \
+  -v "$PWD/examples/smoke-bundle:/app/config:ro" osa-runtime
+```
+
 ## HTTP APIs
 
 Two FastAPI applications exist:
 
 - Control Plane: `osa.control_plane.backend.api:app`
-- Agent runtime: `osa.runtimes.adk.api:runtime_app`
+- Agent runtime: `osa.runtimes.adk.api:runtime_app` (or the `osa-runtime` CLI)
 
 The Control Plane can be started for development after setup:
 
@@ -184,24 +213,21 @@ The Control Plane can be started for development after setup:
 uv run uvicorn osa.control_plane.backend.api:app --reload
 ```
 
-The runtime application cannot yet be started as a useful standalone service:
-it must first receive an `AgentDefinition` through the programmatic
-`initialize_runtime()` function. Adding a configuration bootstrap and real
-provider wiring is the first backlog priority.
-
-See [API reference](docs/API.md) for the exact implemented endpoints and known
-error/validation limitations.
+Both APIs use the stable error envelope `{"error": {"code", "message"}}` and
+enforce session ownership, lifecycle transitions, and optimistic concurrency
+where applicable. See [API reference](docs/API.md) for the exact endpoints.
 
 ## Repository structure
 
 ```text
 open-simple-agent/
 ├── control-plane/backend/   # FastAPI management API and in-memory catalogs
-├── generic-agent/           # Stable domain model and runtime contracts
-├── runtimes/adk/            # Google ADK runtime adapter and runtime API
+├── generic-agent/           # Stable domain model, bundles, and runtime contracts
+├── runtimes/adk/            # Google ADK runtime, model adapters, service CLI
 ├── docs/                    # Architecture, configuration, API, and ADRs
+├── examples/                # Runnable bundles (smoke bundle)
 ├── tests/                   # Unit and integration tests
-├── Dockerfile               # Unverified base image; no service command yet
+├── Dockerfile               # Production runtime image (non-root, health check)
 └── TODO.md                  # Prioritized implementation backlog
 ```
 
@@ -231,17 +257,14 @@ The planned React Control Panel does not exist in the repository yet.
 - [Backlog](TODO.md) — prioritized work and acceptance criteria
 - [Changelog](CHANGELOG.md) — development history
 
-## Next release gate
+## Release status
 
-The next meaningful release is a runnable real-model vertical slice:
-
-1. Load an agent and its referenced catalogs from external configuration.
-2. Resolve secrets without placing values in agent definitions.
-3. Invoke a live model through the ADK Runner and native function calling.
-4. Preserve isolated conversational context through a session provider.
-5. Start through a supported CLI/service command and production-oriented image.
-
-See [TODO.md](TODO.md) for the dependency-ordered backlog.
+The P0 "runnable agent" gate is implemented: external bundle loading, secret
+resolution, live-model invocation through the ADK Runner with native function
+calling, isolated session continuity, and a CLI/container service path — the
+same acceptance test passes locally and from the built container. Remaining
+work is tracked in [TODO.md](TODO.md) (persistence, MCP runtime, A2A,
+authentication, observability).
 
 ## License
 

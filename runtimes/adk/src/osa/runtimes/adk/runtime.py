@@ -2,14 +2,20 @@
 
 This module implements the GenericAdkAgent and AdkRuntime that convert
 an AgentDefinition into a running agent using Google ADK.
+
+Invocation flows through the ADK ``Runner``: conversation context comes from
+the ADK session service (keyed by the OSA session ID), tools execute through
+ADK-native function calling, and ``runtime.timeout_seconds`` /
+``max_iterations`` are enforced around the event loop.
 """
 
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 from typing import Any
+
+from google.genai import types
 
 from osa.generic_agent import (
     AbstractAgent,
@@ -18,12 +24,15 @@ from osa.generic_agent import (
     AgentRequest,
     AgentResponse,
     AgentRuntime,
-    FakeModelProvider,
     MemoryEntry,
     MemoryProvider,
     ModelCatalog,
+    ModelDefinition,
     ModelProvider,
+    Session,
+    SessionError,
     SessionManager,
+    SessionProvider,
     SkillCatalog,
     SkillDefinition,
     Tool,
@@ -32,80 +41,94 @@ from osa.generic_agent import (
     ToolResult,
     ToolTimeoutError,
 )
-from osa.runtimes.adk.llm_agent import build_llm_agent, build_runner
+from osa.generic_agent.errors import (
+    InvocationTimeoutError,
+    IterationLimitExceededError,
+    ModelConfigurationError,
+    ModelInvocationError,
+    OsaError,
+)
+from osa.runtimes.adk.llm_agent import ProviderBackedLlm, build_llm_agent, build_runner
+from osa.runtimes.adk.model_adapter import ModelAdapterRegistry, default_registry
+from osa.runtimes.adk.session_service import OsaAdkSessionService
 
 logger = logging.getLogger(__name__)
 
-_TOOL_CALL_PREFIX = "TOOL_CALL"
 _DEFAULT_MAX_TOOL_ITERATIONS = 3
 
-
-def _parse_tool_call(text: str) -> tuple[str, dict[str, Any]] | None:
-    """Parse a tool-call directive: ``TOOL_CALL <name> {<json arguments>}``.
-
-    This is the transitional invocation protocol used until ADK `LlmAgent`
-    function-calling is wired up (Milestone 8 leftover). Responses that do not
-    start with the prefix are treated as final answers.
-    """
-    stripped = text.strip()
-    if not stripped.startswith(_TOOL_CALL_PREFIX):
-        return None
-    parts = stripped.split(" ", 2)
-    if len(parts) < 2 or not parts[1]:
-        return None
-    raw_arguments = parts[2] if len(parts) == 3 else "{}"
-    try:
-        arguments = json.loads(raw_arguments)
-    except json.JSONDecodeError:
-        arguments = None
-    return (parts[1], arguments if isinstance(arguments, dict) else {})
+_ANONYMOUS_USER = "anonymous"
 
 
 class GenericAdkAgent(AbstractAgent):
     """ADK-based agent implementation.
 
     Wraps the generic agent contract with ADK-specific runtime behavior.
-    Uses a ModelProvider for model calls, a ToolCatalog for tool resolution,
-    and a SkillCatalog for skill metadata.
+    Model execution flows through the ADK Runner using either a live model
+    adapter (e.g. LiteLLM) or, for deterministic tests, a bridged
+    ``ModelProvider``. Sessions enforce ownership via a ``SessionProvider``.
     """
 
     def __init__(
         self,
         definition: AgentDefinition,
-        model_provider: ModelProvider,
-        model_catalog: ModelCatalog,
+        model_provider: ModelProvider | None = None,
+        model_catalog: ModelCatalog | None = None,
         tool_catalog: ToolCatalog | None = None,
         skill_catalog: SkillCatalog | None = None,
         memory_provider: MemoryProvider | None = None,
-        session_manager: SessionManager | None = None,
+        session_provider: SessionProvider | None = None,
+        model_adapters: ModelAdapterRegistry | None = None,
     ) -> None:
         super().__init__(definition)
         self._model_provider = model_provider
-        self._model_catalog = model_catalog
-        self._tool_catalog = tool_catalog or ToolCatalog()
-        self._skill_catalog = skill_catalog or SkillCatalog()
+        self._model_catalog = model_catalog if model_catalog is not None else ModelCatalog()
+        self._tool_catalog = tool_catalog if tool_catalog is not None else ToolCatalog()
+        self._skill_catalog = skill_catalog if skill_catalog is not None else SkillCatalog()
         self._memory_provider = memory_provider
-        self._session_manager = session_manager or SessionManager()
-        self._running = False
+        self._session_provider = session_provider if session_provider is not None else SessionManager()
         self._tools: dict[str, Tool] = {}
         self._tool_definitions: dict[str, ToolDefinition] = {}
         self._skills: list[SkillDefinition] = []
         self._resolve_definition_resources()
-        self._model_id = self._resolve_model_id()
-        # ADK objects for the definition: a real model can be routed through
-        # them when configured; deterministic invocation keeps using the
-        # injected ModelProvider until then.
-        self.llm_agent = build_llm_agent(self.definition, self._model_id, self._tools)
-        self.runner = build_runner(self.llm_agent)
+        self._model_definition = self._resolve_model_definition()
+        self._model_id = self._model_definition.model_id if self._model_definition is not None else "fake"
+        self._adapters = model_adapters or default_registry(fake_provider=model_provider)
+        if self._model_definition is not None:
+            self._model = self._adapters.resolve(self._model_definition.provider).build(
+                self._model_definition, self._model_parameters()
+            )
+        else:
+            # No model configured anywhere: deterministic mode requires an
+            # explicit provider; otherwise refuse to guess.
+            if self._model_provider is None:
+                raise ModelConfigurationError(
+                    f"Agent '{self.metadata.name}' has no model configured, no default model "
+                    "exists in the catalog, and no model provider was supplied"
+                )
+            self._model = ProviderBackedLlm(model=self._model_id, provider=self._model_provider)
+        # ADK objects for the definition: invocation runs through the Runner.
+        self.llm_agent = build_llm_agent(self.definition, self._model, self._tools, self._tool_definitions)
+        self._session_service = OsaAdkSessionService(self._session_provider)
+        self.runner = build_runner(self.llm_agent, session_service=self._session_service)
 
-    def _resolve_model_id(self) -> str:
-        if not self.definition.spec.model:
-            return "fake"
-        try:
-            return self._model_catalog.resolve(self.definition.spec.model.ref).model_id
-        except KeyError:
-            logger.warning("Model '%s' not found, using fallback", self.definition.spec.model.ref)
-            return "fake"
+    def _resolve_model_definition(self) -> ModelDefinition | None:
+        """Resolve the model definition for this agent, failing fast on a
+        missing reference — silent fallbacks are not allowed in configured
+        deployments. Returns None when no model is configured at all."""
+        spec_model = self.definition.spec.model
+        if spec_model is not None:
+            try:
+                return self._model_catalog.resolve(spec_model.ref)
+            except KeyError:
+                raise ValueError(
+                    f"Model '{spec_model.ref}' referenced by agent '{self.metadata.name}' "
+                    "was not found in the model catalog"
+                ) from None
+        return self._model_catalog.get_default()
+
+    def _model_parameters(self) -> dict[str, Any]:
+        spec_model = self.definition.spec.model
+        return dict(spec_model.parameters) if spec_model is not None else {}
 
     def _resolve_definition_resources(self) -> None:
         """Resolve spec.tools and spec.skills against their catalogs.
@@ -188,67 +211,125 @@ class GenericAdkAgent(AbstractAgent):
             MemoryEntry(key=key, content=content, scope=memory_cfg.scope, scope_id=scope_id)
         )
 
+    def _resolve_session(self, request: AgentRequest, tenant_id: str | None) -> Session:
+        """Resolve or create the OSA session with strict ownership."""
+        session_cfg = self.definition.spec.session
+        if request.session_id is not None:
+            return self._session_provider.resolve(
+                request.session_id,
+                agent_name=self.metadata.name,
+                user_id=request.user_id,
+                tenant_id=tenant_id,
+            )
+        return self._session_provider.create(
+            self.metadata.name,
+            user_id=request.user_id,
+            tenant_id=tenant_id,
+            ttl_seconds=session_cfg.ttl_seconds,
+            max_history_messages=session_cfg.max_history_messages,
+        )
+
+    def _adk_user_id(self, user_id: str | None, tenant_id: str | None) -> str:
+        """Identity label for ADK session objects.
+
+        Ownership enforcement happens in the OSA ``SessionProvider`` before
+        the run; this label only decorates ADK session metadata.
+        """
+        if tenant_id:
+            return f"{tenant_id}:{user_id or _ANONYMOUS_USER}"
+        return user_id or _ANONYMOUS_USER
+
+    async def _ensure_adk_session(self, session_id: str, adk_user_id: str) -> None:
+        service = self.runner.session_service
+        existing = await service.get_session(app_name=self.runner.app_name, user_id=adk_user_id, session_id=session_id)
+        if existing is None:
+            await service.create_session(app_name=self.runner.app_name, user_id=adk_user_id, session_id=session_id)
+
+    async def _run_adk(self, session_id: str, adk_user_id: str, user_input: str) -> str:
+        """Consume Runner events, enforcing iteration and timeout limits."""
+        max_iterations = self.definition.spec.runtime.max_iterations or _DEFAULT_MAX_TOOL_ITERATIONS
+        timeout_seconds = self.definition.spec.runtime.timeout_seconds
+        message = types.Content(role="user", parts=[types.Part(text=user_input)])
+
+        async def consume() -> str:
+            function_call_rounds = 0
+            final_text = ""
+            async for event in self.runner.run_async(user_id=adk_user_id, session_id=session_id, new_message=message):
+                if event.get_function_calls():
+                    function_call_rounds += 1
+                    if function_call_rounds > max_iterations:
+                        raise IterationLimitExceededError(max_iterations)
+                if event.is_final_response() and event.content and event.content.parts:
+                    text = "".join(part.text or "" for part in event.content.parts)
+                    if text:
+                        final_text = text
+            if not final_text:
+                raise ModelInvocationError(self._model_id, "the model produced no final response")
+            return final_text
+
+        if timeout_seconds is None:
+            return await consume()
+        try:
+            return await asyncio.wait_for(consume(), timeout_seconds)
+        except TimeoutError as exc:
+            raise InvocationTimeoutError(float(timeout_seconds)) from exc
+
     async def invoke(self, request: AgentRequest) -> AgentResponse:
         """Invoke the agent with a request.
 
-        Resolves the model, builds the prompt from the definition's
-        instruction, policy-loaded memory, and the user's input, and calls the
-        model. If the model answers with a ``TOOL_CALL`` directive (see
-        ``_parse_tool_call``), the referenced tool is executed — subject to its
-        configured timeout — and the result is fed back to the model until it
-        produces a final answer.
+        The session is resolved under strict ownership (unknown caller-supplied
+        IDs and identity changes raise :class:`SessionError` subclasses).
+        Conversation context comes from the ADK session bound to the OSA
+        session ID; tools execute through ADK-native function calling.
+        Model/tool/timeout failures are captured in ``AgentResponse.error``.
         """
-        if not self._running:
-            self._running = True
+        tenant_id = request.metadata.get("tenant_id")
+        session = self._resolve_session(request, tenant_id)
+        adk_user_id = self._adk_user_id(request.user_id, tenant_id)
+        await self._ensure_adk_session(str(session.session_id), adk_user_id)
 
-        # Build prompt from instruction + memory context + user input
+        # Policy-controlled memory context is injected into the instruction
+        # for this invocation only.
         instruction = self.definition.spec.instruction or ""
         memory_context = await self._load_memory_context(request.user_id or "", request.input)
-        base = f"{instruction}\n\n{memory_context}" if memory_context else instruction
-        prompt = f"{base}\n\nUser: {request.input}" if base else request.input
+        if memory_context:
+            self.llm_agent.instruction = f"{instruction}\n\n{memory_context}"
 
-        # Get or create session
-        session = self._session_manager.get_or_create(
-            request.session_id, agent_name=self.metadata.name, user_id=request.user_id
-        )
-        session.add_message("user", request.input)
-
-        max_iterations = self.definition.spec.runtime.max_iterations or _DEFAULT_MAX_TOOL_ITERATIONS
         try:
-            output: str | None = None
-            for _ in range(max_iterations + 1):
-                model_response = await self._model_provider.generate(prompt=prompt, model_id=self._model_id)
-                tool_call = _parse_tool_call(model_response.text)
-                if tool_call is None:
-                    output = model_response.text
-                    break
-                tool_name, arguments = tool_call
-                logger.info("Agent '%s' requested tool '%s'", self.metadata.name, tool_name)
-                result = await self.execute_tool(tool_name, **arguments)
-                prompt = f"{prompt}\n\nTool '{tool_name}' result (success={result.success}): {result.output}"
-
-            if output is None:
-                raise RuntimeError(f"Tool iteration limit ({max_iterations}) exceeded without a final answer")
-
-            # Store response in session
-            session.add_message("assistant", output)
-
-            return AgentResponse(
-                output=output,
-                invocation_id=request.invocation_id,
-                session_id=str(session.session_id),
-            )
-        except Exception as e:
-            logger.error("Agent invocation failed: %s", e)
+            output = await self._run_adk(str(session.session_id), adk_user_id, request.input)
+        except SessionError:
+            raise
+        except OsaError as exc:
+            logger.error("Agent invocation failed: %s", exc)
             return AgentResponse(
                 output="",
                 invocation_id=request.invocation_id,
                 session_id=str(session.session_id),
-                error=str(e),
+                error=str(exc),
+            )
+        except Exception as exc:
+            failure = ModelInvocationError(self._model_id, str(exc), cause=exc)
+            logger.error("Agent invocation failed: %s", failure)
+            return AgentResponse(
+                output="",
+                invocation_id=request.invocation_id,
+                session_id=str(session.session_id),
+                error=str(failure),
             )
 
+        # Mirror the exchange into the bounded OSA conversation history.
+        session.add_message("user", request.input)
+        session.add_message("assistant", output)
+        self._session_provider.save(session)
+
+        return AgentResponse(
+            output=output,
+            invocation_id=request.invocation_id,
+            session_id=str(session.session_id),
+        )
+
     async def shutdown(self) -> None:
-        self._running = False
+        return None
 
 
 class AdkRuntime(AgentRuntime):
@@ -261,13 +342,16 @@ class AdkRuntime(AgentRuntime):
         tool_catalog: ToolCatalog | None = None,
         skill_catalog: SkillCatalog | None = None,
         memory_provider: MemoryProvider | None = None,
+        session_provider: SessionProvider | None = None,
+        model_adapters: ModelAdapterRegistry | None = None,
     ) -> None:
-        self._model_provider = model_provider or FakeModelProvider()
-        self._model_catalog = model_catalog or ModelCatalog()
-        self._tool_catalog = tool_catalog or ToolCatalog()
-        self._skill_catalog = skill_catalog or SkillCatalog()
+        self._model_provider = model_provider
+        self._model_catalog = model_catalog if model_catalog is not None else ModelCatalog()
+        self._tool_catalog = tool_catalog if tool_catalog is not None else ToolCatalog()
+        self._skill_catalog = skill_catalog if skill_catalog is not None else SkillCatalog()
         self._memory_provider = memory_provider
-        self._session_manager = SessionManager()
+        self._session_provider = session_provider if session_provider is not None else SessionManager()
+        self._model_adapters = model_adapters
         self._agents: list[GenericAdkAgent] = []
 
     async def create(self, definition: AgentDefinition) -> GenericAdkAgent:
@@ -279,11 +363,22 @@ class AdkRuntime(AgentRuntime):
             tool_catalog=self._tool_catalog,
             skill_catalog=self._skill_catalog,
             memory_provider=self._memory_provider,
-            session_manager=self._session_manager,
+            session_provider=self._session_provider,
+            model_adapters=self._model_adapters,
         )
         self._agents.append(agent)
         logger.info("Created agent '%s'", definition.metadata.name)
         return agent
+
+    @property
+    def session_provider(self) -> SessionProvider:
+        """The session provider shared by all agents of this runtime."""
+        return self._session_provider
+
+    @property
+    def tool_catalog(self) -> ToolCatalog:
+        """The tool catalog shared by all agents of this runtime."""
+        return self._tool_catalog
 
     async def shutdown(self) -> None:
         """Shut down all agents created by this runtime."""
@@ -303,13 +398,16 @@ class AdkAgentFactory(AgentFactory):
         tool_catalog: ToolCatalog | None = None,
         skill_catalog: SkillCatalog | None = None,
         memory_provider: MemoryProvider | None = None,
+        session_provider: SessionProvider | None = None,
+        model_adapters: ModelAdapterRegistry | None = None,
     ) -> None:
-        self._model_provider = model_provider or FakeModelProvider()
-        self._model_catalog = model_catalog or ModelCatalog()
-        self._tool_catalog = tool_catalog or ToolCatalog()
-        self._skill_catalog = skill_catalog or SkillCatalog()
+        self._model_provider = model_provider
+        self._model_catalog = model_catalog if model_catalog is not None else ModelCatalog()
+        self._tool_catalog = tool_catalog if tool_catalog is not None else ToolCatalog()
+        self._skill_catalog = skill_catalog if skill_catalog is not None else SkillCatalog()
         self._memory_provider = memory_provider
-        self._session_manager = SessionManager()
+        self._session_provider = session_provider if session_provider is not None else SessionManager()
+        self._model_adapters = model_adapters
 
     def create(self, definition: AgentDefinition) -> GenericAdkAgent:
         """Create a GenericAdkAgent from an AgentDefinition."""
@@ -320,5 +418,6 @@ class AdkAgentFactory(AgentFactory):
             tool_catalog=self._tool_catalog,
             skill_catalog=self._skill_catalog,
             memory_provider=self._memory_provider,
-            session_manager=self._session_manager,
+            session_provider=self._session_provider,
+            model_adapters=self._model_adapters,
         )

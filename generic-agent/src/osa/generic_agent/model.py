@@ -16,16 +16,16 @@ class ModelCapabilities(StrictModel):
     function_calling: bool = False
     vision: bool = False
     json_mode: bool = False
-    max_context_tokens: int | None = None
-    max_output_tokens: int | None = None
+    max_context_tokens: int | None = Field(default=None, gt=0)
+    max_output_tokens: int | None = Field(default=None, gt=0)
 
 
 class ModelRuntimeSettings(StrictModel):
     """Runtime generation settings for a model."""
 
-    temperature: float | None = None
-    top_p: float | None = None
-    max_tokens: int | None = None
+    temperature: float | None = Field(default=None, ge=0, le=2)
+    top_p: float | None = Field(default=None, gt=0, le=1)
+    max_tokens: int | None = Field(default=None, gt=0)
     stop_sequences: list[str] = Field(default_factory=list)
     extra: dict[str, Any] = Field(default_factory=dict)
 

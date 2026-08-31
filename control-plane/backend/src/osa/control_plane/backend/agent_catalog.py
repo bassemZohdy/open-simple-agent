@@ -25,6 +25,45 @@ class AgentRecordStatus(StrEnum):
     ARCHIVED = "archived"
 
 
+# Allowed lifecycle transitions; archived is terminal.
+_VALID_TRANSITIONS: dict[AgentRecordStatus, set[AgentRecordStatus]] = {
+    AgentRecordStatus.DRAFT: {AgentRecordStatus.ACTIVE, AgentRecordStatus.ARCHIVED},
+    AgentRecordStatus.ACTIVE: {AgentRecordStatus.DISABLED, AgentRecordStatus.ARCHIVED},
+    AgentRecordStatus.DISABLED: {AgentRecordStatus.ACTIVE, AgentRecordStatus.ARCHIVED},
+    AgentRecordStatus.ARCHIVED: set(),
+}
+
+
+class AgentCatalogError(Exception):
+    """Base error for agent catalog operations."""
+
+
+class DuplicateAgentError(AgentCatalogError):
+    """An agent with the same name already exists."""
+
+    def __init__(self, name: str) -> None:
+        self.name = name
+        super().__init__(f"Agent with name '{name}' already exists")
+
+
+class InvalidTransitionError(AgentCatalogError):
+    """A lifecycle transition that is not allowed was requested."""
+
+    def __init__(self, current: AgentRecordStatus, requested: AgentRecordStatus) -> None:
+        self.current = current
+        self.requested = requested
+        super().__init__(f"Cannot transition agent from '{current.value}' to '{requested.value}'")
+
+
+class DuplicateVersionError(AgentCatalogError):
+    """A version with the same identifier already exists for the agent."""
+
+    def __init__(self, agent_name: str, version: str) -> None:
+        self.agent_name = agent_name
+        self.version = version
+        super().__init__(f"Version '{version}' already exists for agent '{agent_name}'")
+
+
 @dataclass
 class AgentVersion:
     """A versioned snapshot of an agent definition."""
@@ -73,7 +112,7 @@ class AgentCatalog:
     def create(self, record: AgentRecord) -> AgentRecord:
         """Create a new agent record."""
         if record.name in {r.name for r in self._records.values()}:
-            raise ValueError(f"Agent with name '{record.name}' already exists")
+            raise DuplicateAgentError(record.name)
         self._records[record.agent_id] = record
         return record
 
@@ -124,21 +163,43 @@ class AgentCatalog:
 
     def disable(self, agent_id: str) -> AgentRecord:
         """Disable an agent."""
-        return self.update(agent_id, status=AgentRecordStatus.DISABLED)
+        return self.transition(agent_id, AgentRecordStatus.DISABLED)
 
-    def archive(self, agent_id: str) -> AgentRecord:
-        """Archive an agent."""
-        return self.update(agent_id, status=AgentRecordStatus.ARCHIVED)
+    def transition(self, agent_id: str, new_status: AgentRecordStatus) -> AgentRecord:
+        """Apply a lifecycle transition, rejecting invalid moves.
+
+        Allowed: draft -> active/archived, active -> disabled/archived,
+        disabled -> active/archived. Archived is terminal.
+        """
+        record = self._records.get(agent_id)
+        if record is None:
+            raise KeyError(f"Agent not found: {agent_id}")
+        if new_status == record.status:
+            return record
+        if new_status not in _VALID_TRANSITIONS[record.status]:
+            raise InvalidTransitionError(record.status, new_status)
+        return self.update(agent_id, status=new_status)
 
     def delete(self, agent_id: str) -> bool:
         """Delete an agent record. Returns True if the record existed."""
         return self._records.pop(agent_id, None) is not None
 
     def add_version(self, agent_id: str, version: AgentVersion) -> AgentVersion:
-        """Add a new version to an agent record."""
+        """Add a new version to an agent record.
+
+        The definition stored on the version is an immutable snapshot (deep
+        copy) of the agent's current definition at creation time; later record
+        updates never mutate it. Version identifiers must be unique per agent.
+        """
         record = self._records.get(agent_id)
         if record is None:
             raise KeyError(f"Agent not found: {agent_id}")
+        if any(existing.version == version.version for existing in record.versions):
+            raise DuplicateVersionError(record.name, version.version)
+        if version.definition is None:
+            version.definition = record.definition.model_copy(deep=True) if record.definition else None
+        else:
+            version.definition = version.definition.model_copy(deep=True)
         record.versions.append(version)
         record.current_version = version.version
         if version.definition:

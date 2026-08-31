@@ -8,6 +8,8 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
 
+from pydantic import Field
+
 from osa.generic_agent.config import MemoryScope, StrictModel
 
 
@@ -17,8 +19,8 @@ class MemoryPolicy(StrictModel):
     name: str
     scope: MemoryScope = MemoryScope.USER
     enabled: bool = True
-    max_entries: int | None = None
-    retention_days: int | None = None
+    max_entries: int | None = Field(default=None, ge=1)
+    retention_days: int | None = Field(default=None, ge=1)
     auto_extract: bool = False
 
 

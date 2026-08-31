@@ -13,8 +13,8 @@ members = [
     "control-plane/backend",
 ]
 
-[tool.uv]
-dev-dependencies = [
+[dependency-groups]
+dev = [
     "pytest>=8.0",
     "pytest-asyncio>=0.24",
     "pytest-cov>=5.0",
@@ -71,3 +71,14 @@ disallow_untyped_defs = false
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
+filterwarnings = [
+    # google-adk emits this from its own import machinery (LlmAgentConfig
+    # subclasses the deprecated BaseAgentConfig upstream); nothing in this
+    # project can avoid triggering it. Revisit when google-adk drops the
+    # deprecated config classes.
+    "ignore:BaseAgentConfig is deprecated:DeprecationWarning",
+    # google-adk flags its own JSON-schema declaration feature as
+    # experimental; OSA only reaches that path for tools without a declared
+    # parameters_schema (signature-derived declarations are the fallback).
+    "ignore:\\[EXPERIMENTAL\\] feature FeatureName.JSON_SCHEMA_FOR_FUNC_DECL:UserWarning",
+]

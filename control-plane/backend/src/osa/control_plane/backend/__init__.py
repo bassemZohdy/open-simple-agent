@@ -2,9 +2,13 @@
 
 from osa.control_plane.backend.agent_catalog import (
     AgentCatalog,
+    AgentCatalogError,
     AgentRecord,
     AgentRecordStatus,
     AgentVersion,
+    DuplicateAgentError,
+    DuplicateVersionError,
+    InvalidTransitionError,
 )
 from osa.control_plane.backend.deployment import (
     Deployment,
@@ -25,8 +29,12 @@ from osa.control_plane.backend.templates import (
 
 __all__ = [
     "AgentCatalog",
+    "AgentCatalogError",
     "AgentRecord",
     "AgentRecordStatus",
+    "DuplicateAgentError",
+    "DuplicateVersionError",
+    "InvalidTransitionError",
     "AgentTemplate",
     "AgentVersion",
     "Deployment",

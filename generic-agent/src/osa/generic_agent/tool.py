@@ -35,7 +35,7 @@ class ToolDefinition(StrictModel):
     description: str = ""
     category: ToolCategory = ToolCategory.NATIVE
     capabilities: list[ToolCapability] = Field(default_factory=list)
-    timeout_seconds: float | None = None
+    timeout_seconds: float | None = Field(default=None, gt=0)
     enabled: bool = True
 
 

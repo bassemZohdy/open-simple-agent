@@ -14,10 +14,6 @@ uv sync --all-packages
 `--all-packages` is required: the workspace root has no runtime dependencies of
 its own, so a bare `uv sync` installs none of the three members' dependencies.
 
-The current uv configuration emits a deprecation warning for
-`tool.uv.dev-dependencies`; migration to `dependency-groups.dev` is tracked in
-`TODO.md` and does not prevent the checks from running.
-
 ## Running Checks
 
 ```bash
@@ -126,13 +122,18 @@ or catalog entry as a working integration without runtime behavior and tests.
 
 ## Release Process
 
-Release automation is not implemented yet. Before the first published release:
+All three packages are released together as one versioned release — packages
+are not published independently. The release version is the `version` field,
+kept identical across the workspace root and the three member manifests; it is
+the single authoritative version source. `tests/unit/test_versioning.py`
+fails when the manifests drift or when the installed distributions / FastAPI
+application metadata report a different version.
 
-1. Establish the authoritative version source and package versioning policy.
-2. Update every package/API version from that source.
-3. Move relevant changelog entries out of `Unreleased`.
-4. Run the full local and CI validation suite.
-5. Create a signed/tagged release and publish artifacts with provenance.
+Before tagging a release:
 
-The numbered changelog sections after `Unreleased` currently record internal
-development milestones; they are not proof of published package releases.
+1. Bump `version` in `pyproject.toml` and the three member manifests to the
+   same value and refresh `uv.lock`.
+2. Move relevant changelog entries out of `Unreleased` into the new version.
+3. Run the full local and CI validation suite.
+4. Create a signed/tagged release and publish artifacts with provenance
+   (automation is tracked in `TODO.md`, P3.3).

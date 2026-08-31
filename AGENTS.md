@@ -17,17 +17,16 @@ commands (there is no package.json or Control Panel UI yet).
 - Agent definition YAML accepts bare strings for catalog refs (`- calculator` ≡ `- ref: calculator`) for `model`, `mcps`, `tools`, `skills`.
 - Docs are contract: `tests/unit/test_docs_examples.py` validates every `kind: Agent` YAML block in README.md / PROJECT_DEFINITION.md — update code and docs together.
 - `MemoryScope` lives in `generic_agent/config.py` (`memory.py` re-exports it); don't re-define domain enums.
-- `GenericAdkAgent` resolves `spec.tools`/`spec.skills` at construction (fails fast on missing refs) and executes tools via a transitional `TOOL_CALL <name> {json}` model protocol with `ToolDefinition.timeout_seconds` enforcement. ADK `LlmAgent`/`Runner` are built at construction (`osa.runtimes.adk.llm_agent`, exposed as `agent.llm_agent`/`agent.runner`); live invocation still flows through the injected `ModelProvider` until a real model is configured.
+- Stable error types live in `generic_agent/errors.py` (`OsaError` hierarchy + `error_payload` wire schema); HTTP layers map them, never let them escape as 500s.
+- Deployment bundles: `osa.generic_agent.bundle` (`load_bundle`, `build_catalogs`) loads an `AgentBundle` document or `agent.yaml` + resource directories; all validation (duplicates, unknown kinds/refs, secrets) fails fast before readiness. `osa.generic_agent.secret` holds the `SecretResolver` contract; resolved values must never appear in models, responses, logs, or exceptions.
+- Sessions: `osa.generic_agent.session.SessionProvider` enforces ownership (`agent_name`, `user_id`, `tenant_id`), TTL, and bounded history; unknown caller-supplied session IDs are rejected. `osa.runtimes.adk.session_service.OsaAdkSessionService` maps ADK sessions onto the provider so bounded history reaches the model.
+- `GenericAdkAgent` resolves `spec.tools`/`spec.skills`/`spec.model` at construction (missing refs fail fast — no silent model fallback) and invokes through the ADK `Runner` with ADK-native function calling. Tool declarations come from `ToolDefinition.capabilities`; `runtime.timeout_seconds`/`max_iterations` are enforced around the run. Models are built via `osa.runtimes.adk.model_adapter` (litellm = production, fake = explicit test-only opt-in via `OSA_ALLOW_FAKE_PROVIDER=1`).
 - `GenericAdkAgent` injects memory context only when `spec.memory.enabled` + a `MemoryProvider` are configured; explicit `remember()` writes memory, raw interactions are never auto-persisted.
 - `DeploymentProvider` / `LocalDeploymentProvider` (`osa.control_plane.backend.deployment`) manage process lifecycle and are deliberately separate from `AgentRuntime`.
-- FastAPI services: Control Plane API at `osa.control_plane.backend.api`, agent Runtime API at `osa.runtimes.adk.api` (both in-memory backed; no persistence yet).
-- The runtime API requires programmatic `initialize_runtime()`; there is no
-  external configuration bootstrap, lifespan initializer, or runnable image
-  command yet.
-- ADK `LlmAgent`/`Runner` objects are constructed, but current invocation still
-  flows through `ModelProvider` and the transitional `TOOL_CALL` protocol.
-- Current OSA session history is recorded but is not fed into later prompts;
-  persistence, TTL, and ownership isolation are backlog items.
+- FastAPI services: Control Plane API at `osa.control_plane.backend.api`, agent Runtime API at `osa.runtimes.adk.api`. The runtime service path is the `osa-runtime` CLI / `osa.runtimes.adk.service.create_runtime_app` (bundle-driven lifespan; SIGTERM shuts down cleanly). Both apps are in-memory backed; no persistence yet.
+- The runtime container image (`Dockerfile`) has an `ENTRYPOINT`/`CMD`, runs non-root, and is smoke-tested in CI (`examples/smoke-bundle`).
+- Package versions are one lockstep release (root + three manifests), enforced by `tests/unit/test_versioning.py`; bump all four together and refresh `uv.lock`.
+- Don't write `x or Default()` for catalogs/providers/managers — they define `__len__`, so an empty instance is falsy; use `x if x is not None else Default()`.
 - `docs/ARCHITECTURE.md`, `docs/CONFIGURATION.md`, and `docs/API.md` document
   current behavior. Keep planned behavior in `PROJECT_DEFINITION.md`/`TODO.md`.
 - Open Simple Agent is independent from the Micro-Agents project. Do not infer

@@ -1,0 +1,16 @@
+.git
+.venv
+**/__pycache__
+**/*.pyc
+.pytest_cache
+.mypy_cache
+.ruff_cache
+tests
+docs
+.github
+TODO.md
+CHANGELOG.md
+CONTRIBUTING.md
+PROJECT_DEFINITION.md
+AGENTS.md
+uv.lock.bak
