@@ -64,6 +64,17 @@ class DuplicateVersionError(AgentCatalogError):
         super().__init__(f"Version '{version}' already exists for agent '{agent_name}'")
 
 
+class ConcurrentUpdateError(AgentCatalogError):
+    """An update expected a current_version that no longer matches."""
+
+    def __init__(self, agent_id: str, expected_version: str) -> None:
+        self.agent_id = agent_id
+        self.expected_version = expected_version
+        super().__init__(
+            f"Version conflict on agent '{agent_id}': expected current version '{expected_version}' does not match"
+        )
+
+
 @dataclass
 class AgentVersion:
     """A versioned snapshot of an agent definition."""
@@ -150,11 +161,18 @@ class AgentCatalog:
         """Filter agents by runtime."""
         return [r for r in self._records.values() if r.runtime == runtime]
 
-    def update(self, agent_id: str, **kwargs: Any) -> AgentRecord:
-        """Update an agent record."""
+    def update(self, agent_id: str, *, expected_version: str | None = None, **kwargs: Any) -> AgentRecord:
+        """Update an agent record.
+
+        ``expected_version`` enables compare-and-set on ``current_version``;
+        a mismatch raises :class:`ConcurrentUpdateError` (mirroring the
+        PostgreSQL repository's behavior).
+        """
         record = self._records.get(agent_id)
         if record is None:
             raise KeyError(f"Agent not found: {agent_id}")
+        if expected_version is not None and record.current_version != expected_version:
+            raise ConcurrentUpdateError(agent_id, expected_version)
         for key, value in kwargs.items():
             if hasattr(record, key):
                 setattr(record, key, value)

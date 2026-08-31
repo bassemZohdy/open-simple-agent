@@ -12,7 +12,7 @@ namespace `osa`:
 |---|---|---|
 | `generic-agent` | `osa.generic_agent` | Domain model, configuration, deployment bundles, catalogs, provider contracts, errors |
 | `runtimes/adk` | `osa.runtimes.adk` | ADK-specific construction, model adapters, MCP client/toolsets, memory persistence, session bridging, Runner invocation, runtime API, service CLI |
-| `control-plane/backend` | `osa.control_plane.backend` | Agent records/templates/resources, local deployment provider, management API |
+| `control-plane/backend` | `osa.control_plane.backend` | Agent records/templates/resources (in-memory or PostgreSQL repositories, ADR-004), local deployment provider, management API |
 
 Namespace levels such as `src/osa/` intentionally have no `__init__.py`.
 
@@ -154,12 +154,21 @@ is in-memory and single-process.
 
 ## HTTP applications
 
-The Control Plane application owns module-level in-memory catalogs.
-Restarting the process loses all state. Routes enforce create/transition
-validation, cumulative list filters with pagination/sorting, immutable
-version snapshots, optimistic concurrency (`expected_version`), and the
-stable error envelope (`{"error": {"code", "message"}}`). Resource catalog
-and deployment provider classes have no HTTP routes yet.
+The Control Plane application stores state through the `AgentRepository`
+and `ResourceDefinitionRepository` contracts (ADR-004): by default in-memory
+(tests/development), or PostgreSQL via `OSA_CONTROL_PLANE_DATABASE_URL`
+(`create_control_plane_app()`). PG writes are transactional; agent names and
+`(agent_id, version)` are unique constraints; updates compare-and-set on
+`current_version`; transitions lock the row and validate the move. Persisted
+resource definitions materialize into the catalogs at startup. Schema is
+managed by Alembic (`osa-cp-migrate`, explicit ops step — the app verifies
+connectivity and never migrates, avoiding multi-replica races). Records and
+version history survive restarts, and replicas share state.
+
+Routes enforce create/transition validation, cumulative list filters with
+pagination/sorting, immutable version snapshots, optimistic concurrency, and
+the stable error envelope (`{"error": {"code", "message"}}`). Resource
+catalog and deployment provider routes are pending (P1.2/P1.5).
 
 The runtime application owns one module-level runtime and agent. The
 production path is the `osa-runtime` CLI (or `create_runtime_app`), which
@@ -196,10 +205,11 @@ The current baseline is ~320 tests. CI runs:
 
 Tests use the fake provider, scripted ADK models, in-memory services, a
 deterministic stdio MCP server subprocess, and a localhost Streamable HTTP
-MCP server — no external network. PostgreSQL memory tests run against a real
-PostgreSQL 16 service in CI (`OSA_TEST_DATABASE_URL`) and skip locally when
-unset. There is no live-model, Kubernetes, A2A, authentication, or
-multi-replica test yet. There is no coverage threshold.
+MCP server — no external network. PostgreSQL memory and Control Plane
+persistence tests run against a real PostgreSQL 16 service in CI
+(`OSA_TEST_DATABASE_URL`) and skip locally when unset. There is no
+live-model, Kubernetes, A2A, authentication, or multi-replica deployment
+test yet. There is no coverage threshold.
 
 ## Dependency risks
 

@@ -10,6 +10,14 @@ dependencies = [
     "uvicorn[standard]>=0.30",
 ]
 
+[project.optional-dependencies]
+# PostgreSQL persistence (ADR-004). Selected via
+# OSA_CONTROL_PLANE_DATABASE_URL; schema managed by Alembic (osa-cp-migrate).
+postgres = ["sqlalchemy[asyncio]>=2.0,<3", "asyncpg>=0.29", "alembic>=1.13"]
+
+[project.scripts]
+osa-cp-migrate = "osa.control_plane.backend.db:migrate_cli"
+
 [tool.uv.sources]
 osa-generic-agent = { workspace = true }
 

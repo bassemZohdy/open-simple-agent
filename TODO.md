@@ -9,7 +9,7 @@ documentation, and appropriate failure/security behavior are complete.
 
 ## Current baseline
 
-- ~360 tests pass; strict mypy, Ruff format, and Ruff lint pass with no
+- ~370 tests pass; strict mypy, Ruff format, and Ruff lint pass with no
   project-controlled warnings.
 - Latest GitHub Actions run on `main` is green, plus a container job that
   builds the runtime image and runs a ready/invoke/SIGTERM smoke test.
@@ -17,10 +17,11 @@ documentation, and appropriate failure/security behavior are complete.
   production model adapter (ADR-001), ADK Runner invocation with native
   function calling, owned/TTL'd/bounded sessions, the `osa-runtime` CLI, a
   non-root container image, Control Plane contract hardening, lockstep
-  versioning, the MCP runtime client (ADR-002), and memory persistence with
-policy-enforced scope/limits/retention (ADR-003) exist.
-- Production deployment providers, A2A, authentication, policy,
-  observability, and UI do not exist.
+  versioning, the MCP runtime client (ADR-002), memory persistence with
+policy-enforced scope/limits/retention (ADR-003), and PostgreSQL Control
+Plane persistence with Alembic migrations (ADR-004) exist.
+- Resource/deployment HTTP APIs, production deployment providers, A2A,
+  authentication, policy, observability, and UI do not exist.
 
 ## Release gate status
 
@@ -164,19 +165,30 @@ warnings, and all artifacts report the same release version. ✅
 
 # P1 — Managed platform foundation
 
-## P1.1 PostgreSQL Control Plane persistence
+## P1.1 PostgreSQL Control Plane persistence (complete 2026-08-31)
 
-- [ ] Define repository interfaces for agents, versions, templates, resources,
-  deployment records, and audit metadata.
-- [ ] Choose async database/ORM and migration tooling; record an ADR.
-- [ ] Implement PostgreSQL repositories and migrations.
-- [ ] Add transactions, uniqueness constraints, optimistic locking, and startup
-  migration policy.
-- [ ] Add isolated PostgreSQL integration tests.
-- [ ] Verify records and version history survive restart.
+- [x] Define repository interfaces for agents, versions, templates, resources,
+  deployment records, and audit metadata (`AgentRepository`,
+  `ResourceDefinitionRepository`, plus `DeploymentRecordRepository` and
+  `AuditEventRepository` interfaces; templates stay code-defined built-ins —
+  ADR-004).
+- [x] Choose async database/ORM and migration tooling; record an ADR
+  (PostgreSQL 16 + SQLAlchemy 2.0 async + Alembic — ADR-004).
+- [x] Implement PostgreSQL repositories and migrations
+  (`osa_agents`, `osa_agent_versions`, `osa_resource_definitions`; Alembic via
+  the `osa-cp-migrate` CLI).
+- [x] Add transactions, uniqueness constraints, optimistic locking, and startup
+  migration policy (transactional writes; unique name and `(agent_id, version)`
+  constraints mapped to typed errors; compare-and-set on `current_version`;
+  explicit migrations — apps verify connectivity and never auto-migrate).
+- [x] Add isolated PostgreSQL integration tests (CI service container;
+  skipped locally without `OSA_TEST_DATABASE_URL`).
+- [x] Verify records and version history survive restart.
 
 **Acceptance:** two Control Plane replicas share consistent state and restart
-without data loss.
+without data loss. ✅ (repository-level: two `PostgresAgentRepository`
+instances over one database see each other's writes; a fresh engine sees all
+records and version history)
 
 ## P1.2 Resource and template APIs
 
@@ -400,7 +412,7 @@ policy are stable.*
 
 | ID | Finding | Backlog owner |
 |---|---|---|
-| RV-016 | Control Plane resource refs not validated before deployment; deployment routes missing | P1.5 |
+| RV-016 | Control Plane deployment routes missing (refs are validated at activation) | P1.5 |
 | RV-017 | Resource and deployment implementations are not exposed by the API | P1.2, P1.5 |
 | RV-019 | Both APIs are unauthenticated; local deploy accepts trusted arbitrary commands | P1.5, P2.2 |
 | RV-023 | Current tests have no live provider/MCP/database/A2A coverage or coverage threshold | P3.3 |

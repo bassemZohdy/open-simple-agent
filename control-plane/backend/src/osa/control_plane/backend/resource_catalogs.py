@@ -114,6 +114,10 @@ class ResourceCatalogs:
         self._memory_policies[policy.name] = policy
         return policy
 
+    def register_memory_policy(self, policy: MemoryPolicy) -> None:
+        """Public registration used by startup materialization (P1.1)."""
+        self._memory_policies[policy.name] = policy
+
     def get_memory_policy(self, name: str) -> MemoryPolicy:
         if name not in self._memory_policies:
             raise KeyError(f"Memory policy not found: {name}")

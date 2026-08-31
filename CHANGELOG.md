@@ -12,6 +12,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added — P1.1: Control Plane PostgreSQL persistence
+- **Control Plane persistence (ADR-004)**
+  - Repository contracts: `AgentRepository` (records + versions), `ResourceDefinitionRepository` (models/tools/skills/MCPs/memory policies as kind + JSONB spec), plus `DeploymentRecordRepository` and `AuditEventRepository` interfaces (wired in P1.5/P2.2)
+  - PostgreSQL implementations (SQLAlchemy 2.0 async over asyncpg, optional `osa-control-plane[postgres]` extra): transactional writes, unique constraints (agent name; `(agent_id, version)`) mapped to the existing typed errors, compare-and-set optimistic locking on `current_version`, `FOR UPDATE` row locks for lifecycle transitions, cascade version history
+  - Alembic owns the schema (`osa_agents`, `osa_agent_versions`, `osa_resource_definitions`); migrations are an explicit ops step via the `osa-cp-migrate` CLI — the app verifies connectivity and never auto-migrates (multi-replica race)
+  - `create_control_plane_app()` selects backends from `OSA_CONTROL_PLANE_DATABASE_URL`; in-memory remains the default; persisted resource definitions materialize into the catalogs at startup
+  - Integration tests against PostgreSQL 16 (CI service): restart survival, two-replica shared state, unique-name/version conflicts, CAS conflicts, cascade deletes, resource materialization
+
 ### Added — P1.4: Memory policy and persistence
 - **Memory policy and persistence (ADR-003)**
   - `MemoryPolicyCatalog`; a referenced policy is authoritative for scope, limits, and retention, missing references fail fast, and `enabled: false` on a policy disables memory (writes raise, reads return nothing)
