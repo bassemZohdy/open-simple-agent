@@ -112,6 +112,12 @@ class ToolCatalog:
             raise KeyError(f"Tool not found: {name}")
         return self._tools[name]
 
+    def delete(self, name: str) -> bool:
+        """Remove a tool definition and implementation. Returns True if the definition existed."""
+        removed = self._definitions.pop(name, None) is not None
+        self._tools.pop(name, None)
+        return removed
+
     def list_definitions(self) -> list[ToolDefinition]:
         """List all registered tool definitions."""
         return list(self._definitions.values())

@@ -1,7 +1,9 @@
 """Resource Catalogs — unified CRUD for Control Plane resources.
 
 Wraps the individual domain catalogs (Model, MCP, Tool, Skill, Memory Policy)
-with validation and CRUD operations for the Control Plane API.
+with explicit contracts for the Control Plane API: create-or-replace
+registration, lookup, listing, and deletion — no direct mutation of the
+domain catalogs' internal dictionaries.
 """
 
 from __future__ import annotations
@@ -35,9 +37,12 @@ class ResourceCatalogs:
 
     # --- Model Catalog ---
 
-    def create_model(self, model: ModelDefinition) -> ModelDefinition:
+    def register_model(self, model: ModelDefinition) -> None:
+        """Create or replace a model definition."""
         self.models.register(model)
-        return model
+
+    def has_model(self, name: str) -> bool:
+        return name in self.models
 
     def get_model(self, name: str) -> ModelDefinition:
         return self.models.resolve(name)
@@ -46,16 +51,17 @@ class ResourceCatalogs:
         return self.models.list_models()
 
     def delete_model(self, name: str) -> bool:
-        if name in self.models:
-            del self.models._models[name]
-            return True
-        return False
+        """Delete a model definition. Returns True if it existed."""
+        return self.models.delete(name)
 
     # --- MCP Catalog ---
 
-    def create_mcp(self, mcp: McpDefinition) -> McpDefinition:
+    def register_mcp(self, mcp: McpDefinition) -> None:
+        """Create or replace an MCP server definition."""
         self.mcps.register(mcp)
-        return mcp
+
+    def has_mcp(self, name: str) -> bool:
+        return name in self.mcps
 
     def get_mcp(self, name: str) -> McpDefinition:
         return self.mcps.resolve(name)
@@ -64,16 +70,16 @@ class ResourceCatalogs:
         return self.mcps.list_definitions()
 
     def delete_mcp(self, name: str) -> bool:
-        if name in self.mcps:
-            del self.mcps._definitions[name]
-            return True
-        return False
+        return self.mcps.delete(name)
 
     # --- Tool Catalog ---
 
-    def create_tool(self, tool: ToolDefinition) -> ToolDefinition:
+    def register_tool(self, tool: ToolDefinition) -> None:
+        """Create or replace a tool definition."""
         self.tools.register_definition(tool)
-        return tool
+
+    def has_tool(self, name: str) -> bool:
+        return name in self.tools
 
     def get_tool(self, name: str) -> ToolDefinition:
         return self.tools.get_definition(name)
@@ -82,16 +88,16 @@ class ResourceCatalogs:
         return self.tools.list_definitions()
 
     def delete_tool(self, name: str) -> bool:
-        if name in self.tools:
-            del self.tools._definitions[name]
-            return True
-        return False
+        return self.tools.delete(name)
 
     # --- Skill Catalog ---
 
-    def create_skill(self, skill: SkillDefinition) -> SkillDefinition:
+    def register_skill(self, skill: SkillDefinition) -> None:
+        """Create or replace a skill definition."""
         self.skills.register(skill)
-        return skill
+
+    def has_skill(self, name: str) -> bool:
+        return name in self.skills
 
     def get_skill(self, name: str) -> SkillDefinition:
         return self.skills.resolve(name)
@@ -99,24 +105,20 @@ class ResourceCatalogs:
     def list_skills(self) -> list[SkillDefinition]:
         return self.skills.list_definitions()
 
+    def delete_skill(self, name: str) -> bool:
+        return self.skills.delete(name)
+
     def search_skills(self, query: str) -> list[SkillDefinition]:
         return self.skills.search(query)
 
-    def delete_skill(self, name: str) -> bool:
-        if name in self.skills:
-            del self.skills._definitions[name]
-            return True
-        return False
-
     # --- Memory Policies ---
 
-    def create_memory_policy(self, policy: MemoryPolicy) -> MemoryPolicy:
-        self._memory_policies[policy.name] = policy
-        return policy
-
     def register_memory_policy(self, policy: MemoryPolicy) -> None:
-        """Public registration used by startup materialization (P1.1)."""
+        """Create or replace a memory policy."""
         self._memory_policies[policy.name] = policy
+
+    def has_memory_policy(self, name: str) -> bool:
+        return name in self._memory_policies
 
     def get_memory_policy(self, name: str) -> MemoryPolicy:
         if name not in self._memory_policies:

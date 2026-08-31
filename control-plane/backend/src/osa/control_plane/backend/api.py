@@ -33,7 +33,9 @@ from osa.control_plane.backend.repositories import (
     DuplicateAgentError,
     DuplicateVersionError,
     InMemoryAgentRepository,
+    InMemoryResourceDefinitionRepository,
     InvalidTransitionError,
+    ResourceDefinitionRepository,
 )
 from osa.control_plane.backend.resource_catalogs import ResourceCatalogs
 from osa.control_plane.backend.templates import TemplateCatalog, create_default_template_catalog
@@ -192,15 +194,21 @@ def configure_control_plane_app(
     agent_repository: AgentRepository,
     resource_catalogs: ResourceCatalogs,
     template_catalog: TemplateCatalog,
+    resource_repository: ResourceDefinitionRepository | None = None,
 ) -> FastAPI:
     """Attach routes and error mapping to a Control Plane app.
 
     Routes go through the repository contract, so in-memory and PostgreSQL
     backends behave identically.
     """
+    from osa.control_plane.backend.resources_api import configure_resource_routes
+
+    if resource_repository is None:
+        resource_repository = InMemoryResourceDefinitionRepository()
     app.state.agent_repository = agent_repository
     app.state.resource_catalogs = resource_catalogs
     app.state.template_catalog = template_catalog
+    app.state.resource_repository = resource_repository
 
     @app.exception_handler(HTTPException)
     async def _http_exception_handler(request: Request, exc: HTTPException) -> JSONResponse:
@@ -409,6 +417,13 @@ def configure_control_plane_app(
         """Delete an agent."""
         if not await agent_repository.delete(agent_id):
             raise HTTPException(status_code=404, detail=f"Agent not found: {agent_id}")
+
+    configure_resource_routes(
+        app,
+        agent_repository=agent_repository,
+        resource_catalogs=resource_catalogs,
+        resource_repository=resource_repository,
+    )
 
     @app.get("/health/live")
     async def health_live() -> dict[str, str]:

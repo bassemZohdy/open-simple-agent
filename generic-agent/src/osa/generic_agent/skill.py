@@ -37,6 +37,10 @@ class SkillCatalog:
             raise KeyError(f"Skill not found: {ref}")
         return self._definitions[ref]
 
+    def delete(self, name: str) -> bool:
+        """Remove a skill definition. Returns True if it existed."""
+        return self._definitions.pop(name, None) is not None
+
     def search(self, query: str) -> list[SkillDefinition]:
         """Search skills by name, description, or tags."""
         query_lower = query.lower()

@@ -12,6 +12,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added — P1.2: Resource and template APIs
+- **Resource and template APIs (P1.2)**
+  - CRUD/list/search routes for models, tools, skills, MCPs, and memory policies (`/resources/{kind}`), validated against the domain schema and persisted write-through to the `ResourceDefinitionRepository` (survive restarts, shared across replicas)
+  - Explicit update/delete contracts on `ResourceCatalogs` and the domain catalogs (`delete()` methods) — no private-dictionary mutation anywhere in the API path
+  - Reference-usage checks before deletion: a resource referenced by any agent definition returns 409 naming the referencing agents
+  - Secret redaction pinned by tests: `credential_ref` exposes only non-secret coordinates (source/key/env_var) and is redacted defensively in every response
+  - Bundle import/export: `POST /resources/import` and `GET /resources/export` use the deployment-bundle resource envelope format (`{apiVersion, kind, spec}`)
+  - Read-only `GET /templates` listing of built-in agent templates
+
 ### Added — P1.1: Control Plane PostgreSQL persistence
 - **Control Plane persistence (ADR-004)**
   - Repository contracts: `AgentRepository` (records + versions), `ResourceDefinitionRepository` (models/tools/skills/MCPs/memory policies as kind + JSONB spec), plus `DeploymentRecordRepository` and `AuditEventRepository` interfaces (wired in P1.5/P2.2)

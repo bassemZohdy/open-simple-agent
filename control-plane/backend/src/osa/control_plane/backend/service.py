@@ -100,4 +100,5 @@ def create_control_plane_app(
         agent_repository=agents,
         resource_catalogs=resource_catalogs,
         template_catalog=create_default_template_catalog(),
+        resource_repository=resources,
     )

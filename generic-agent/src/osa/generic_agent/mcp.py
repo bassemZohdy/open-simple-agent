@@ -88,6 +88,10 @@ class McpCatalog:
             raise KeyError(f"MCP server not found: {ref}")
         return self._definitions[ref]
 
+    def delete(self, name: str) -> bool:
+        """Remove an MCP server definition. Returns True if it existed."""
+        return self._definitions.pop(name, None) is not None
+
     def list_definitions(self) -> list[McpDefinition]:
         return list(self._definitions.values())
 

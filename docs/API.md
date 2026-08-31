@@ -113,9 +113,31 @@ Every error response uses:
 ```
 
 Documented codes: `not_found` (404), `conflict` (409), `bad_request` (400),
-`invalid_transition` (400), `validation_error` (422). Resource catalog
-operations and deployment providers exist as Python classes but are not
-exposed as routes yet (P1.2/P1.5).
+`invalid_transition` (400), `validation_error` (422). ### Resource and template APIs (P1.2)
+
+Catalog resources are managed under `/resources/{kind}` with `kind` one of
+`Model`, `Tool`, `Skill`, `Mcp`, or `MemoryPolicy` (unknown kinds return
+404):
+
+| Method | Path | Behavior |
+|---|---|---|
+| `POST` | `/resources/{kind}` | Create from an envelope (`{apiVersion, kind, spec}`); duplicate names return 409 |
+| `GET` | `/resources/{kind}?q=` | List envelopes (optionally filtered by name substring) |
+| `GET` | `/resources/{kind}/{name}` | Get one envelope |
+| `PUT` | `/resources/{kind}/{name}` | Replace (must exist; `spec.name` must match the path) |
+| `DELETE` | `/resources/{kind}/{name}` | Delete; 409 with the referencing agent names if any agent definition uses the resource |
+| `POST` | `/resources/import` | Import a list of envelopes (bundle resource-file format); existing resources are replaced |
+| `GET` | `/resources/export` | Export all resources as envelopes |
+| `GET` | `/templates` | List built-in agent templates (read-only) |
+
+All writes are validated against the domain schema (422 on violation) and
+persisted write-through to the `ResourceDefinitionRepository`, so resources
+survive restarts and are shared across replicas. Secret values never appear:
+`credential_ref` exposes only non-secret coordinates (`source`, `key`,
+`env_var`) and is redacted defensively in every response.
+
+Deployment providers exist as Python classes but are not exposed as routes
+yet (P1.5).
 
 ## Runtime API
 

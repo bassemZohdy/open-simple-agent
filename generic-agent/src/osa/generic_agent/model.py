@@ -77,6 +77,10 @@ class ModelCatalog:
             raise KeyError(f"Model not found: {ref}")
         return self._models[ref]
 
+    def delete(self, name: str) -> bool:
+        """Remove a model definition. Returns True if it existed."""
+        return self._models.pop(name, None) is not None
+
     def get_default(self) -> ModelDefinition | None:
         """Return the default model, if one is registered."""
         for model in self._models.values():

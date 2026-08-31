@@ -203,6 +203,41 @@ class TestResourceDefinitionRepository:
         assert await repo.delete("Model", "gpt") is True
         assert await repo.get("Model", "gpt") is None
 
+    async def test_api_resource_writes_persist_across_restart(self, engine: Any, dsn: str) -> None:
+        from httpx import ASGITransport, AsyncClient
+
+        from osa.control_plane.backend.service import create_control_plane_app
+
+        envelope = {
+            "apiVersion": "osa/v1alpha1",
+            "kind": "Model",
+            "spec": {"name": "persistent-model", "provider": "fake", "model_id": "fake-p"},
+        }
+        first_app = create_control_plane_app(database_url=dsn)
+        async with (
+            first_app.router.lifespan_context(first_app),
+            AsyncClient(transport=ASGITransport(app=first_app), base_url="http://test") as client,
+        ):
+            created = await client.post("/resources/Model", json=envelope)
+            assert created.status_code == 201, created.text
+
+        # A brand-new app instance (another replica / a restart) sees it.
+        second_app = create_control_plane_app(database_url=dsn)
+        try:
+            async with (
+                second_app.router.lifespan_context(second_app),
+                AsyncClient(transport=ASGITransport(app=second_app), base_url="http://test") as client,
+            ):
+                got = await client.get("/resources/Model/persistent-model")
+                assert got.status_code == 200
+                assert got.json()["spec"]["model_id"] == "fake-p"
+        finally:
+            from osa.control_plane.backend.repositories import PostgresResourceDefinitionRepository
+
+            cleanup = PostgresResourceDefinitionRepository(engine)
+            await cleanup.delete("Model", "persistent-model")
+            await cleanup.close()
+
     async def test_definitions_materialize_into_catalogs(self, engine: Any, dsn: str) -> None:
         from osa.control_plane.backend.repositories import PostgresResourceDefinitionRepository
         from osa.control_plane.backend.service import create_control_plane_app

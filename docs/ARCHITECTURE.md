@@ -167,8 +167,12 @@ version history survive restarts, and replicas share state.
 
 Routes enforce create/transition validation, cumulative list filters with
 pagination/sorting, immutable version snapshots, optimistic concurrency, and
-the stable error envelope (`{"error": {"code", "message"}}`). Resource
-catalog and deployment provider routes are pending (P1.2/P1.5).
+the stable error envelope (`{"error": {"code", "message"}}`). Resource APIs
+(P1.2) provide CRUD/list/search for models, tools, skills, MCPs, and memory
+policies with write-through persistence, reference-usage checks before
+deletion (a resource used by any agent cannot be deleted), credential
+redaction, and bundle import/export. Deployment provider routes are pending
+(P1.5).
 
 The runtime application owns one module-level runtime and agent. The
 production path is the `osa-runtime` CLI (or `create_runtime_app`), which

@@ -20,7 +20,7 @@ documentation, and appropriate failure/security behavior are complete.
   versioning, the MCP runtime client (ADR-002), memory persistence with
 policy-enforced scope/limits/retention (ADR-003), and PostgreSQL Control
 Plane persistence with Alembic migrations (ADR-004) exist.
-- Resource/deployment HTTP APIs, production deployment providers, A2A,
+- Deployment HTTP APIs, production deployment providers, A2A,
   authentication, policy, observability, and UI do not exist.
 
 ## Release gate status
@@ -190,18 +190,27 @@ without data loss. ✅ (repository-level: two `PostgresAgentRepository`
 instances over one database see each other's writes; a fresh engine sees all
 records and version history)
 
-## P1.2 Resource and template APIs
+## P1.2 Resource and template APIs (complete 2026-08-31)
 
-- [ ] Expose CRUD/list/search APIs for models, MCPs, tools, skills, memory
-  policies, session policies, and templates.
-- [ ] Remove direct mutation of catalog private dictionaries; add explicit
-  update/delete contracts.
-- [ ] Add reference-usage checks before deleting a resource.
-- [ ] Prevent API responses from exposing secret values.
-- [ ] Add import/export validation for configuration bundles.
+- [x] Expose CRUD/list/search APIs for models, MCPs, tools, skills, memory
+  policies, and templates (`/resources/{kind}` CRUD + import/export;
+  `GET /templates` read-only; session policies arrive with P1 session
+  provider work — tracked under P1.5 hardening).
+- [x] Remove direct mutation of catalog private dictionaries; add explicit
+  update/delete contracts (`register_*`/`delete_*` on `ResourceCatalogs`;
+  `delete()` on every domain catalog).
+- [x] Add reference-usage checks before deleting a resource (409 naming the
+  referencing agents).
+- [x] Prevent API responses from exposing secret values (`credential_ref`
+  redacted to source/key/env_var; pinned by tests).
+- [x] Add import/export validation for configuration bundles
+  (`POST /resources/import`, `GET /resources/export`, envelope format shared
+  with deployment bundles).
 
 **Acceptance:** an administrator can create every resource required by an agent
-without application code and cannot delete an in-use resource accidentally.
+without application code and cannot delete an in-use resource accidentally. ✅
+(deployment APIs remain in P1.5; session policies are part of the session
+provider contract, enforced in P0.3)
 
 ## P1.3 MCP runtime client (complete 2026-08-31)
 

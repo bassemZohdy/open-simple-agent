@@ -20,6 +20,7 @@ from osa.generic_agent.bundle import (
     build_catalogs,
     collect_secret_references,
     load_bundle,
+    parse_resource_document,
 )
 from osa.generic_agent.config import (
     SUPPORTED_API_VERSION,
@@ -190,6 +191,7 @@ __all__ = [
     "error_payload",
     "UnknownReferenceError",
     "build_catalogs",
+    "parse_resource_document",
     "collect_secret_references",
     "load_agent_definition",
     "load_bundle",

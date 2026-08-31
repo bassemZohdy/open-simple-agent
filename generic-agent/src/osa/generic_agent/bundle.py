@@ -304,6 +304,14 @@ def _validate_bundle_document(data: object, *, origin: str) -> DeploymentBundle:
         raise InvalidBundleError(f"{origin}: invalid deployment bundle: {exc}") from exc
 
 
+def parse_resource_document(data: object, *, origin: str = "<resource>") -> tuple[str, StrictModel]:
+    """Parse a resource envelope (``{apiVersion, kind, spec}``) into its
+    domain model. Returns ``(kind, definition)``; raises
+    :class:`InvalidBundleError` for unknown kinds, bad apiVersions, or
+    invalid specs."""
+    return _parse_resource_document(data, origin=origin)
+
+
 def _parse_resource_document(data: object, *, origin: str) -> tuple[str, StrictModel]:
     if not isinstance(data, dict):
         raise InvalidBundleError(f"{origin}: resource document must be a mapping")
