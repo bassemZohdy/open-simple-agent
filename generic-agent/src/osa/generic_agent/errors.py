@@ -33,6 +33,12 @@ class ModelConfigurationError(OsaError):
     code = "model_configuration_error"
 
 
+class MemoryConfigurationError(OsaError):
+    """A memory provider configuration is invalid or incomplete."""
+
+    code = "memory_configuration_error"
+
+
 class ModelInvocationError(OsaError):
     """A model call failed (provider error, unexpected response, cancellation)."""
 

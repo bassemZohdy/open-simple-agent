@@ -24,7 +24,7 @@ The first runtime targets [Google ADK](https://google.github.io/adk-docs/).
 | MCP | Runtime client (stdio + Streamable HTTP), lazy pooled connections, filtered namespaced tools bridged to ADK, bounded results | Resources/prompts exposure and SSE pending |
 | Skills | Catalog, search, runtime metadata resolution | No A2A Agent Card mapping |
 | Sessions | `SessionProvider` contract, ownership (agent/user/tenant), TTL, bounded history fed back to the model | In-memory only; not replica-safe |
-| Memory | Provider contract, in-memory provider, search-based context, explicit writes | Policy resolution, limits, retention, extraction, and persistence are pending |
+| Memory | Policy catalog resolution (authoritative scope/limits/retention), scope-id isolation (user/agent/tenant/application), enforcement after every write, explicit writes, PostgreSQL persistence (ADR-003) | Extraction pipeline (auto-extract) reserved; vector search deferred |
 | ADK runtime | Invocation through the ADK `Runner`; timeouts, iteration limits, stable error types | Streaming pending |
 | Control Plane | In-memory agent CRUD, lifecycle transitions, immutable versions, optimistic concurrency, validated contracts | Resource/deployment APIs and persistence are pending |
 | Deployment | Local subprocess provider contract and implementation | Not connected to the Control Plane API; no container/Kubernetes provider |

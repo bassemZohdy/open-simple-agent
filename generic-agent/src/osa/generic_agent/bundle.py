@@ -32,7 +32,7 @@ from pydantic import Field, ValidationError, model_validator
 
 from osa.generic_agent.config import AgentDefinition, SecretReference, StrictModel, load_agent_definition
 from osa.generic_agent.mcp import McpCatalog, McpDefinition
-from osa.generic_agent.memory import MemoryPolicy
+from osa.generic_agent.memory import MemoryPolicy, MemoryPolicyCatalog
 from osa.generic_agent.model import ModelCatalog, ModelDefinition
 from osa.generic_agent.skill import SkillCatalog, SkillDefinition
 from osa.generic_agent.tool import ToolCatalog, ToolDefinition
@@ -144,7 +144,7 @@ class BundleCatalogs:
     tool_catalog: ToolCatalog = field(default_factory=ToolCatalog)
     skill_catalog: SkillCatalog = field(default_factory=SkillCatalog)
     mcp_catalog: McpCatalog = field(default_factory=McpCatalog)
-    memory_policies: dict[str, MemoryPolicy] = field(default_factory=dict)
+    memory_policies: MemoryPolicyCatalog = field(default_factory=MemoryPolicyCatalog)
 
 
 def load_bundle(source: str | Path) -> DeploymentBundle:
@@ -188,7 +188,7 @@ def build_catalogs(bundle: DeploymentBundle) -> BundleCatalogs:
     for policy in bundle.memory_policies:
         if policy.name in catalogs.memory_policies:
             raise DuplicateResourceError("MemoryPolicy", policy.name)
-        catalogs.memory_policies[policy.name] = policy
+        catalogs.memory_policies.register(policy)
 
     _validate_references(bundle, catalogs)
     return catalogs

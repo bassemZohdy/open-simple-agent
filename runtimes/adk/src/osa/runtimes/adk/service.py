@@ -30,6 +30,7 @@ from osa.generic_agent import (
     EnvironmentSecretResolver,
     FakeModelProvider,
     InMemoryProvider,
+    MemoryProvider,
     SecretError,
     SecretResolver,
     SessionManager,
@@ -44,6 +45,7 @@ from osa.runtimes.adk import AdkRuntime, GenericAdkAgent, default_registry
 _TRUTHY_VALUES = {"1", "true", "yes", "on"}
 DEFAULT_BUNDLE_ENV_VAR = "OSA_BUNDLE"
 ALLOW_FAKE_PROVIDER_ENV_VAR = "OSA_ALLOW_FAKE_PROVIDER"
+MEMORY_DATABASE_URL_ENV_VAR = "OSA_MEMORY_DATABASE_URL"
 
 # Native tool implementations shipped with the runtime image. A bundle
 # declares tools as definitions; an agent referencing a definition without an
@@ -59,6 +61,24 @@ def _register_builtin_implementations(tool_catalog: ToolCatalog) -> None:
 
 def _env_flag(name: str) -> bool:
     return os.environ.get(name, "").strip().lower() in _TRUTHY_VALUES
+
+
+async def create_memory_provider() -> MemoryProvider | None:
+    """Build the memory provider from external configuration.
+
+    ``OSA_MEMORY_DATABASE_URL`` selects the PostgreSQL provider (ADR-003);
+    the schema is ensured — and connectivity verified — at startup so an
+    unreachable database aborts boot before readiness. Without the variable,
+    the in-memory provider is used (single-process deployments only).
+    """
+    dsn = os.environ.get(MEMORY_DATABASE_URL_ENV_VAR)
+    if not dsn:
+        return None
+    from osa.runtimes.adk.postgres_memory import PostgresMemoryProvider
+
+    provider = PostgresMemoryProvider(dsn)
+    await provider.ensure_schema()
+    return provider
 
 
 async def build_runtime(
@@ -92,13 +112,15 @@ async def build_runtime(
         fake_provider=FakeModelProvider() if allow_fake_provider else None,
         secret_resolver=resolver,
     )
+    memory_provider = await create_memory_provider()
 
     runtime = AdkRuntime(
         model_catalog=catalogs.model_catalog,
         tool_catalog=catalogs.tool_catalog,
         skill_catalog=catalogs.skill_catalog,
         mcp_catalog=catalogs.mcp_catalog,
-        memory_provider=InMemoryProvider(),
+        memory_policies=catalogs.memory_policies,
+        memory_provider=memory_provider if memory_provider is not None else InMemoryProvider(),
         session_provider=SessionManager(),
         model_adapters=adapters,
         secret_resolver=resolver,
@@ -136,6 +158,10 @@ def create_runtime_app(
         runtime_api.set_runtime(runtime, agent)
         yield
         await runtime.shutdown()
+        provider = runtime.memory_provider
+        close = getattr(provider, "close", None)
+        if close is not None:
+            await close()
         runtime_api.reset_runtime()
 
     try:

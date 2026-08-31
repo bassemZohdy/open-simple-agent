@@ -9,7 +9,7 @@ documentation, and appropriate failure/security behavior are complete.
 
 ## Current baseline
 
-- ~350 tests pass; strict mypy, Ruff format, and Ruff lint pass with no
+- ~360 tests pass; strict mypy, Ruff format, and Ruff lint pass with no
   project-controlled warnings.
 - Latest GitHub Actions run on `main` is green, plus a container job that
   builds the runtime image and runs a ready/invoke/SIGTERM smoke test.
@@ -17,9 +17,10 @@ documentation, and appropriate failure/security behavior are complete.
   production model adapter (ADR-001), ADK Runner invocation with native
   function calling, owned/TTL'd/bounded sessions, the `osa-runtime` CLI, a
   non-root container image, Control Plane contract hardening, lockstep
-  versioning, and the MCP runtime client (ADR-002) exist.
-- Persistent memory, persistence, production deployment providers, A2A,
-  authentication, policy, observability, and UI do not exist.
+  versioning, the MCP runtime client (ADR-002), and memory persistence with
+policy-enforced scope/limits/retention (ADR-003) exist.
+- Production deployment providers, A2A, authentication, policy,
+  observability, and UI do not exist.
 
 ## Release gate status
 
@@ -215,19 +216,28 @@ without application code and cannot delete an in-use resource accidentally.
 (through the ADK Runner with native function calling); timeout/auth/oversize/
 disconnect failures are predictable and observable. ✅
 
-## P1.4 Memory policy and persistence
+## P1.4 Memory policy and persistence (complete 2026-08-31)
 
-- [ ] Resolve `MemoryConfig.policy` through the policy catalog.
-- [ ] Define scope IDs for user, agent, tenant, and application scopes.
-- [ ] Enforce enabled state, limits, retention, and deletion.
-- [ ] Design explicit/policy-driven extraction; never persist every raw turn by
-  default.
-- [ ] Select the first persistent provider based on access/search requirements
-  (PostgreSQL vs Redis/vector extension); record an ADR.
-- [ ] Add authorization and cross-scope isolation tests.
+- [x] Resolve `MemoryConfig.policy` through the policy catalog
+  (`MemoryPolicyCatalog`; referenced policy is authoritative, missing
+  references fail fast, a disabled policy blocks writes).
+- [x] Define scope IDs for user, agent, tenant, and application scopes
+  (`memory_scope_id`; tenant from request metadata).
+- [x] Enforce enabled state, limits, retention, and deletion (per-scope
+  `max_entries` eviction and `retention_days` purging via
+  `MemoryProvider.enforce()` after writes and before reads).
+- [x] Design explicit/policy-driven extraction; never persist every raw turn by
+  default (extraction is `remember()`-only; `auto_extract` reserved, ADR-003).
+- [x] Select the first persistent provider based on access/search requirements
+  (PostgreSQL via SQLAlchemy async + asyncpg; ILIKE substring search mirroring
+  the in-memory provider; pgvector deferred — ADR-003).
+- [x] Add authorization and cross-scope isolation tests (unit matrix plus
+  PostgreSQL integration tests against a real PG 16 in CI; restart survival,
+  scope isolation, case-insensitive search, LIKE escaping, eviction,
+  retention).
 
 **Acceptance:** selected memory survives restart, respects scope/retention/limit,
-and is never visible to an unauthorized user or agent.
+and is never visible to an unauthorized user or agent. ✅
 
 ## P1.5 Deployment API and providers
 
@@ -392,13 +402,13 @@ policy are stable.*
 |---|---|---|
 | RV-016 | Control Plane resource refs not validated before deployment; deployment routes missing | P1.5 |
 | RV-017 | Resource and deployment implementations are not exposed by the API | P1.2, P1.5 |
-| RV-018 | Memory policy/limits/retention and persistence are not enforced | P1.4 |
 | RV-019 | Both APIs are unauthenticated; local deploy accepts trusted arbitrary commands | P1.5, P2.2 |
 | RV-023 | Current tests have no live provider/MCP/database/A2A coverage or coverage threshold | P3.3 |
 | RV-024 | Request metadata (beyond `tenant_id`) is accepted but not used by model/tool policy | P2.2 |
 
 Resolved on 2026-08-31 (documented here, then removed from the active table on
-the next backlog review): RV-015 (MCP runtime client, ADR-002), RV-010 (Runner
+the next backlog review): RV-018 (memory policy/limits/retention/persistence,
+ADR-003), RV-015 (MCP runtime client, ADR-002), RV-010 (Runner
 now used for invocation), RV-011
 (lifespan bundle bootstrap), RV-012 (runnable image with CMD), RV-013 (session
 ownership/TTL/bounded history), RV-014 (no silent model fallback), RV-016

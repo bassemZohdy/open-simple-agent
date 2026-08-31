@@ -98,16 +98,43 @@ tools:
 
 | Path | Type | Default | Current behavior |
 |---|---|---:|---|
-| `spec.memory.enabled` | boolean | false | Enables search-based context only when a provider is injected |
-| `spec.memory.policy` | string or null | null | Must resolve in the bundle when memory is enabled |
-| `spec.memory.scope` | enum | `user` | `user`, `agent`, `tenant`, or `application` |
-| `spec.memory.max_entries` | integer or null | null | Must be >= 1 when set; enforcement pending (P1.4) |
-| `spec.session.persistence` | boolean | false | Stored; persistent providers pending (P1) |
+| `spec.memory.enabled` | boolean | false | Enables search-based context only when a provider is configured |
+| `spec.memory.policy` | string or null | null | Must resolve in the bundle when memory is enabled; an attached policy is authoritative for scope, limits, and retention, and `enabled: false` on the policy disables memory |
+| `spec.memory.scope` | enum | `user` | `user`, `agent`, `tenant`, or `application` (used when no policy is attached) |
+| `spec.memory.max_entries` | integer or null | null | Per-scope cap; oldest entries are evicted beyond it (used when no policy is attached) |
+| `spec.session.persistence` | boolean | false | Stored; persistent session providers pending (P1) |
 | `spec.session.ttl_seconds` | integer or null | null | Must be > 0 when set; expired sessions are deleted on access |
 | `spec.session.max_history_messages` | integer | 20 | Bounds the per-session conversation history |
 | `spec.a2a.enabled` | boolean | false | Stored; A2A is not implemented |
 | `spec.runtime.timeout_seconds` | integer or null | null | Must be > 0 when set; the invocation is cancelled with `invocation_timeout` when exceeded |
 | `spec.runtime.max_iterations` | integer or null | null | Must be >= 1 when set; caps ADK function-call rounds (default 3), fails with `iteration_limit_exceeded` |
+
+## Memory runtime behavior
+
+Scope IDs are derived from the invocation context: `user` -> caller ID,
+`agent` -> agent name, `tenant` -> `tenant_id` request metadata, and
+`application` -> the deployment constant. Entries are never visible across
+scope IDs or scopes.
+
+When `spec.memory.policy` references a policy, that policy is authoritative:
+its `scope`, `max_entries`, and `retention_days` replace the spec-level
+fields, and `enabled: false` disables memory for the agent (writes raise,
+reads return nothing). Limits are enforced after every write: the oldest
+entries beyond `max_entries` are evicted per `(scope, scope_id)`, and entries
+not updated within `retention_days` are purged.
+
+Extraction is explicit — `remember()` only; raw interactions are never
+persisted automatically. `MemoryPolicy.auto_extract` is reserved for a future
+opt-in extraction pipeline (ADR-003).
+
+## Memory persistence
+
+By default memory is in-memory (single process, lost on restart). Setting
+`OSA_MEMORY_DATABASE_URL` (e.g. `postgresql+asyncpg://user:pass@host/db`)
+selects the PostgreSQL provider (ADR-003, `osa-adk-runtime[postgres]` extra):
+entries survive restarts, are shared across replicas, and the runtime
+verifies connectivity and its schema at startup — an unreachable database
+aborts boot before readiness.
 
 Timeouts, TTLs, limits, and iterations carry positive/range validation
 (`timeout_seconds > 0`, `ttl_seconds > 0`, `max_iterations >= 1`,

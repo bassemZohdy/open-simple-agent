@@ -12,6 +12,7 @@ ADK-native function calling, and ``runtime.timeout_seconds`` /
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 from typing import Any
 
@@ -26,7 +27,10 @@ from osa.generic_agent import (
     AgentRuntime,
     McpCatalog,
     MemoryEntry,
+    MemoryPolicy,
+    MemoryPolicyCatalog,
     MemoryProvider,
+    MemoryScope,
     ModelCatalog,
     ModelDefinition,
     ModelProvider,
@@ -50,6 +54,7 @@ from osa.generic_agent.errors import (
     ModelInvocationError,
     OsaError,
 )
+from osa.generic_agent.memory import APPLICATION_SCOPE_ID, memory_scope_id
 from osa.runtimes.adk.llm_agent import ProviderBackedLlm, build_llm_agent, build_runner
 from osa.runtimes.adk.mcp_client import McpConnectionPool
 from osa.runtimes.adk.mcp_toolset import OsaMcpToolset
@@ -81,6 +86,7 @@ class GenericAdkAgent(AbstractAgent):
         skill_catalog: SkillCatalog | None = None,
         mcp_catalog: McpCatalog | None = None,
         memory_provider: MemoryProvider | None = None,
+        memory_policies: MemoryPolicyCatalog | None = None,
         session_provider: SessionProvider | None = None,
         model_adapters: ModelAdapterRegistry | None = None,
         secret_resolver: SecretResolver | None = None,
@@ -93,6 +99,8 @@ class GenericAdkAgent(AbstractAgent):
         self._skill_catalog = skill_catalog if skill_catalog is not None else SkillCatalog()
         self._mcp_catalog = mcp_catalog if mcp_catalog is not None else McpCatalog()
         self._memory_provider = memory_provider
+        self._memory_policies = memory_policies if memory_policies is not None else MemoryPolicyCatalog()
+        self._memory_policy = self._resolve_memory_policy()
         self._session_provider = session_provider if session_provider is not None else SessionManager()
         self._owns_mcp_pool = mcp_pool is None
         self._mcp_pool = mcp_pool if mcp_pool is not None else McpConnectionPool(secret_resolver)
@@ -214,33 +222,87 @@ class GenericAdkAgent(AbstractAgent):
         except TimeoutError as exc:
             raise ToolTimeoutError(tool_name, timeout) from exc
 
+    def _resolve_memory_policy(self) -> MemoryPolicy | None:
+        """Resolve the referenced memory policy, failing fast when missing.
+
+        A referenced policy is authoritative for scope, limits, and
+        retention; without one, ``spec.memory`` fields apply.
+        """
+        memory_cfg = self.definition.spec.memory
+        if not memory_cfg.enabled or memory_cfg.policy is None:
+            return None
+        try:
+            return self._memory_policies.resolve(memory_cfg.policy)
+        except KeyError:
+            raise ValueError(
+                f"Memory policy '{memory_cfg.policy}' referenced by agent '{self.metadata.name}' "
+                "was not found in the memory policy catalog"
+            ) from None
+
+    def _effective_memory(self) -> tuple[MemoryScope, MemoryPolicy | None]:
+        """Effective (scope, policy) for memory operations.
+
+        Returns an inert scope when memory is disabled, including disabled by
+        policy (``MemoryPolicy.enabled = false``).
+        """
+        memory_cfg = self.definition.spec.memory
+        policy = self._memory_policy
+        if not memory_cfg.enabled or self._memory_provider is None:
+            return MemoryScope.USER, None
+        if policy is not None and not policy.enabled:
+            return MemoryScope.USER, None
+        if policy is not None:
+            return policy.scope, policy
+        return memory_cfg.scope, None
+
+    def _memory_limits(self, policy: MemoryPolicy | None) -> dict[str, int | None]:
+        memory_cfg = self.definition.spec.memory
+        if policy is not None:
+            return {"max_entries": policy.max_entries, "retention_days": policy.retention_days}
+        return {"max_entries": memory_cfg.max_entries, "retention_days": None}
+
+    async def _enforce_memory_limits(self, scope: MemoryScope, scope_id: str, policy: MemoryPolicy | None) -> None:
+        limits = self._memory_limits(policy)
+        provider = self._memory_provider
+        if provider is None:
+            return
+        with contextlib.suppress(NotImplementedError):
+            await provider.enforce(scope, scope_id, **limits)
+
     async def _load_memory_context(self, scope_id: str, query: str) -> str:
         """Load policy-controlled memory relevant to the request.
 
         Memory context is only injected when ``spec.memory.enabled`` and a
         provider are configured; raw interactions are never auto-persisted.
         """
-        memory_cfg = self.definition.spec.memory
-        if not memory_cfg.enabled or self._memory_provider is None:
+        scope, policy = self._effective_memory()
+        if self._memory_provider is None:
             return ""
-        entries = await self._memory_provider.search(query, memory_cfg.scope, scope_id=scope_id, limit=5)
+        await self._enforce_memory_limits(scope, scope_id, policy)
+        entries = await self._memory_provider.search(query, scope, scope_id=scope_id, limit=5)
         if not entries:
             return ""
         lines = "\n".join(f"- {entry.content}" for entry in entries)
         return f"Memory:\n{lines}"
 
-    async def remember(self, key: str, content: str, *, scope_id: str = "") -> None:
+    async def remember(self, key: str, content: str, *, scope_id: str | None = None) -> None:
         """Store a memory entry explicitly.
 
         Raw interactions are never persisted automatically; memory writes go
-        through this API (or future policy-driven extraction).
+        through this API (policy-driven extraction is reserved and off by
+        default). When ``scope_id`` is omitted the entry is stored under the
+        application scope ID — callers should pass the scope ID derived via
+        :func:`memory_scope_id` for user/tenant scoping.
         """
         if self._memory_provider is None:
             raise RuntimeError(f"No memory provider configured for agent '{self.metadata.name}'")
-        memory_cfg = self.definition.spec.memory
-        await self._memory_provider.store(
-            MemoryEntry(key=key, content=content, scope=memory_cfg.scope, scope_id=scope_id)
-        )
+        policy = self._memory_policy
+        if policy is not None and not policy.enabled:
+            raise RuntimeError(f"Memory is disabled by policy '{policy.name}' for agent '{self.metadata.name}'")
+        scope, policy = self._effective_memory()
+        entry = MemoryEntry(key=key, content=content, scope=scope, scope_id=scope_id or APPLICATION_SCOPE_ID)
+        await self._memory_provider.store(entry)
+        await self._enforce_memory_limits(scope, entry.scope_id, policy)
 
     def _resolve_session(self, request: AgentRequest, tenant_id: str | None) -> Session:
         """Resolve or create the OSA session with strict ownership."""
@@ -322,7 +384,11 @@ class GenericAdkAgent(AbstractAgent):
         # Policy-controlled memory context is injected into the instruction
         # for this invocation only.
         instruction = self.definition.spec.instruction or ""
-        memory_context = await self._load_memory_context(request.user_id or "", request.input)
+        memory_scope, _ = self._effective_memory()
+        memory_context = await self._load_memory_context(
+            memory_scope_id(memory_scope, user_id=request.user_id, agent_name=self.metadata.name, tenant_id=tenant_id),
+            request.input,
+        )
         if memory_context:
             self.llm_agent.instruction = f"{instruction}\n\n{memory_context}"
 
@@ -380,6 +446,7 @@ class AdkRuntime(AgentRuntime):
         skill_catalog: SkillCatalog | None = None,
         mcp_catalog: McpCatalog | None = None,
         memory_provider: MemoryProvider | None = None,
+        memory_policies: MemoryPolicyCatalog | None = None,
         session_provider: SessionProvider | None = None,
         model_adapters: ModelAdapterRegistry | None = None,
         secret_resolver: SecretResolver | None = None,
@@ -390,6 +457,7 @@ class AdkRuntime(AgentRuntime):
         self._skill_catalog = skill_catalog if skill_catalog is not None else SkillCatalog()
         self._mcp_catalog = mcp_catalog if mcp_catalog is not None else McpCatalog()
         self._memory_provider = memory_provider
+        self._memory_policies = memory_policies
         self._session_provider = session_provider if session_provider is not None else SessionManager()
         self._model_adapters = model_adapters
         self._mcp_pool = McpConnectionPool(secret_resolver)
@@ -405,6 +473,7 @@ class AdkRuntime(AgentRuntime):
             skill_catalog=self._skill_catalog,
             mcp_catalog=self._mcp_catalog,
             memory_provider=self._memory_provider,
+            memory_policies=self._memory_policies,
             session_provider=self._session_provider,
             model_adapters=self._model_adapters,
             mcp_pool=self._mcp_pool,
@@ -422,6 +491,12 @@ class AdkRuntime(AgentRuntime):
     def tool_catalog(self) -> ToolCatalog:
         """The tool catalog shared by all agents of this runtime."""
         return self._tool_catalog
+
+    @property
+    def memory_provider(self) -> MemoryProvider:
+        """The memory provider shared by all agents of this runtime."""
+        assert self._memory_provider is not None
+        return self._memory_provider
 
     async def shutdown(self) -> None:
         """Shut down all agents created by this runtime, then MCP connections."""
@@ -443,6 +518,7 @@ class AdkAgentFactory(AgentFactory):
         skill_catalog: SkillCatalog | None = None,
         mcp_catalog: McpCatalog | None = None,
         memory_provider: MemoryProvider | None = None,
+        memory_policies: MemoryPolicyCatalog | None = None,
         session_provider: SessionProvider | None = None,
         model_adapters: ModelAdapterRegistry | None = None,
         secret_resolver: SecretResolver | None = None,
@@ -453,6 +529,7 @@ class AdkAgentFactory(AgentFactory):
         self._skill_catalog = skill_catalog if skill_catalog is not None else SkillCatalog()
         self._mcp_catalog = mcp_catalog if mcp_catalog is not None else McpCatalog()
         self._memory_provider = memory_provider
+        self._memory_policies = memory_policies
         self._session_provider = session_provider if session_provider is not None else SessionManager()
         self._model_adapters = model_adapters
         self._secret_resolver = secret_resolver
@@ -467,6 +544,7 @@ class AdkAgentFactory(AgentFactory):
             skill_catalog=self._skill_catalog,
             mcp_catalog=self._mcp_catalog,
             memory_provider=self._memory_provider,
+            memory_policies=self._memory_policies,
             session_provider=self._session_provider,
             model_adapters=self._model_adapters,
             secret_resolver=self._secret_resolver,

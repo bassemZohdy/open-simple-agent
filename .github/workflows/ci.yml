@@ -32,14 +32,30 @@ jobs:
 
   test:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: osa
+          POSTGRES_PASSWORD: osa
+          POSTGRES_DB: osa_test
+        ports:
+          - 54329:5432
+        options: >-
+          --health-cmd "pg_isready -U osa"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: uv sync --all-packages
+      - run: uv sync --all-packages --extra postgres
       - run: uv run pytest --tb=short -q
+        env:
+          OSA_TEST_DATABASE_URL: postgresql+asyncpg://osa:osa@localhost:54329/osa_test
 
   container:
     runs-on: ubuntu-latest

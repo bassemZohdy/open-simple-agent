@@ -11,7 +11,7 @@ namespace `osa`:
 | Package | Import root | Responsibility |
 |---|---|---|
 | `generic-agent` | `osa.generic_agent` | Domain model, configuration, deployment bundles, catalogs, provider contracts, errors |
-| `runtimes/adk` | `osa.runtimes.adk` | ADK-specific construction, model adapters, MCP client/toolsets, session bridging, Runner invocation, runtime API, service CLI |
+| `runtimes/adk` | `osa.runtimes.adk` | ADK-specific construction, model adapters, MCP client/toolsets, memory persistence, session bridging, Runner invocation, runtime API, service CLI |
 | `control-plane/backend` | `osa.control_plane.backend` | Agent records/templates/resources, local deployment provider, management API |
 
 Namespace levels such as `src/osa/` intentionally have no `__init__.py`.
@@ -136,10 +136,21 @@ in-memory provider is single-replica; multi-replica deployments need a shared
 persistent provider (P1).
 
 Memory context is loaded only when `spec.memory.enabled` is true and a
-`MemoryProvider` is injected. Search is a case-insensitive substring match in
-the in-memory provider. Writes occur only through `agent.remember()`.
-Policy resolution, `max_entries` enforcement, retention, and extraction are
-pending (P1.4).
+memory provider is configured. Search is a case-insensitive substring match;
+writes occur only through `agent.remember()` (raw interactions are never
+auto-persisted; `auto_extract` is reserved). The effective policy comes from
+the memory policy catalog when `spec.memory.policy` is set (policy fields are
+authoritative; a disabled policy disables memory) and limits — per-scope
+`max_entries` eviction and `retention_days` purging — are enforced after
+every write and before reads (ADR-003). Scope IDs derive from the invocation
+context: `user` -> caller, `agent` -> agent name, `tenant` -> tenant
+metadata, `application` -> deployment constant; entries never cross scope
+IDs.
+
+Persistence is externalized: `OSA_MEMORY_DATABASE_URL` selects
+`PostgresMemoryProvider` (SQLAlchemy async over asyncpg, ILIKE search,
+SQL-enforced limits/retention, schema ensured at startup); without it memory
+is in-memory and single-process.
 
 ## HTTP applications
 
@@ -185,9 +196,10 @@ The current baseline is ~320 tests. CI runs:
 
 Tests use the fake provider, scripted ADK models, in-memory services, a
 deterministic stdio MCP server subprocess, and a localhost Streamable HTTP
-MCP server — no external network. There is no live-model, database,
-Kubernetes, A2A, authentication, or multi-replica test yet. There is no
-coverage threshold.
+MCP server — no external network. PostgreSQL memory tests run against a real
+PostgreSQL 16 service in CI (`OSA_TEST_DATABASE_URL`) and skip locally when
+unset. There is no live-model, Kubernetes, A2A, authentication, or
+multi-replica test yet. There is no coverage threshold.
 
 ## Dependency risks
 

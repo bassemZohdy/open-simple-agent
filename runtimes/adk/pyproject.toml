@@ -16,6 +16,9 @@ dependencies = [
 # Production LiteLLM model adapter. Kept optional so deterministic test
 # environments stay offline; the runtime image installs this extra.
 litellm = ["litellm>=1.84"]
+# PostgreSQL-backed memory persistence (ADR-003). Externalized via
+# OSA_MEMORY_DATABASE_URL; the runtime image installs this extra.
+postgres = ["sqlalchemy[asyncio]>=2.0,<3", "asyncpg>=0.29"]
 
 [project.scripts]
 osa-runtime = "osa.runtimes.adk.service:main"

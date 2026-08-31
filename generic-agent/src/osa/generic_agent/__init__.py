@@ -44,6 +44,7 @@ from osa.generic_agent.config import (
 from osa.generic_agent.errors import (
     InvocationTimeoutError,
     IterationLimitExceededError,
+    MemoryConfigurationError,
     ModelConfigurationError,
     ModelInvocationError,
     OsaError,
@@ -60,10 +61,13 @@ from osa.generic_agent.mcp import (
     McpTransport,
 )
 from osa.generic_agent.memory import (
+    APPLICATION_SCOPE_ID,
     InMemoryProvider,
     MemoryEntry,
     MemoryPolicy,
+    MemoryPolicyCatalog,
     MemoryProvider,
+    memory_scope_id,
 )
 from osa.generic_agent.model import ModelCapabilities, ModelCatalog, ModelDefinition, ModelRuntimeSettings
 from osa.generic_agent.model_provider import FakeModelProvider, ModelProvider, ModelResponse, TokenUsage
@@ -136,7 +140,11 @@ __all__ = [
     "McpTransport",
     "MemoryConfig",
     "MemoryEntry",
+    "APPLICATION_SCOPE_ID",
+    "MemoryConfigurationError",
     "MemoryPolicy",
+    "MemoryPolicyCatalog",
+    "memory_scope_id",
     "MemoryProvider",
     "MemoryScope",
     "ModelCapabilities",

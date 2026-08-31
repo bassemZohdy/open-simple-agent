@@ -12,6 +12,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added — P1.4: Memory policy and persistence
+- **Memory policy and persistence (ADR-003)**
+  - `MemoryPolicyCatalog`; a referenced policy is authoritative for scope, limits, and retention, missing references fail fast, and `enabled: false` on a policy disables memory (writes raise, reads return nothing)
+  - Scope IDs derived from invocation context: `user` -> caller, `agent` -> agent name, `tenant` -> `tenant_id` metadata, `application` -> deployment constant; entries never cross scope IDs
+  - Per-scope `max_entries` eviction (oldest first) and `retention_days` purging enforced through `MemoryProvider.enforce()` after every write and before reads; `InMemoryProvider` implements it
+  - `PostgresMemoryProvider` (ADR-003, `osa-adk-runtime[postgres]` extra): SQLAlchemy 2.0 async over asyncpg, dedicated `osa_memory_entries` table, `ILIKE` substring search with escaped metacharacters, SQL-enforced limits/retention; selected via externalized `OSA_MEMORY_DATABASE_URL`, connectivity and schema verified at startup, closed on shutdown
+  - Extraction stays explicit (`remember()`); `auto_extract` is reserved — raw turns are never auto-persisted
+  - Integration tests against PostgreSQL 16 (CI service container; local runs skip without `OSA_TEST_DATABASE_URL`): restart survival, scope isolation, case-insensitive search, LIKE escaping, eviction, retention
+
 ### Added — P1.3: MCP runtime client
 - **MCP runtime client (ADR-002)**
   - Official `mcp` SDK (`>=1.24,<2`, matching google-adk's extra) as a core dependency of `osa-adk-runtime`

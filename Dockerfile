@@ -16,7 +16,7 @@ COPY control-plane/ control-plane/
 # The runtime service only needs the ADK runtime member (plus its workspace
 # dependency); the litellm extra provides the production model adapter.
 # --no-editable installs real wheels so no source tree is needed at runtime.
-RUN uv sync --frozen --no-dev --no-editable --package osa-adk-runtime --extra litellm
+RUN uv sync --frozen --no-dev --no-editable --package osa-adk-runtime --extra litellm --extra postgres
 
 # Runtime stage: non-root, arbitrary-UID friendly, externally configured.
 FROM python:3.12-slim AS runtime
