@@ -1,5 +1,11 @@
 # Changelog
 
+### Added — P2.2: Definition resource policy
+
+- Added exact allow/deny policy rules for model, tool, MCP, skill, and inbound
+  A2A resources. Policies are checked before runtime construction and denied
+  references return the stable `policy_violation` error.
+
 All notable changes to Open Simple Agent will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).

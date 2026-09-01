@@ -162,6 +162,13 @@ The in-memory repository is the default; PostgreSQL persistence uses migration
 0006. Runtime invocation and failed/denied-request audit coverage remains open
 in P2.2.
 
+### Definition resource policy
+
+`spec.policy` provides exact `allow`/`deny` rules for `models`, `tools`,
+`mcps`, `skills`, and A2A `inbound` exposure. Policies are enforced before
+runtime resource construction; denied references produce the stable
+`policy_violation` error without exposing prompts or credentials.
+
 ### Resource and template APIs (P1.2)
 
 Tenant-scoped catalog resources are managed under `/resources/{kind}` with `kind` one of

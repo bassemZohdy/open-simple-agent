@@ -24,7 +24,7 @@ policy-enforced scope/limits/retention (ADR-003), and PostgreSQL Control
 Plane persistence with Alembic migrations (ADR-004), A2A interoperability
 (ADR-005), and a shared JWT bearer-authentication foundation with opt-in
 role/permission route enforcement and runtime tenant binding exist.
-- The Kubernetes/OpenShift deployment provider, resource policy,
+- The Kubernetes/OpenShift deployment provider,
   observability, streaming/replica
 behavior, and UI do not exist.
 
@@ -356,7 +356,9 @@ evaluation, A2A security schemes, and credential adapters are still open.
   persist resource owners in migration 0005, isolate equal names in separate
   catalog namespaces, and retain the existing domain-level session/memory
   isolation checks.
-- [ ] Add tool/MCP/skill/model/A2A allow/deny policy independent of prompts.
+- [x] Add definition-owned tool/MCP/skill/model/A2A allow/deny policy
+  independent of prompts; enforce it before runtime construction with stable
+  `policy_violation` errors.
 - [ ] Add API key/OAuth/mTLS credential adapters for MCP/A2A as required.
 - [x] Add append-only, tenant-filtered audit events for every successful
   Control Plane management mutation and external-agent invocation; expose

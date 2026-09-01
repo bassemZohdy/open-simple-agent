@@ -35,6 +35,7 @@ from osa.generic_agent import (
     ModelCatalog,
     ModelDefinition,
     OsaError,
+    PolicyViolationError,
     SecretResolver,
     SessionAccessError,
     SessionError,
@@ -127,6 +128,8 @@ def maybe_attach_a2a(agent: GenericAdkAgent) -> None:
 
     if not agent.definition.spec.a2a.enabled:
         return
+    if not agent.definition.spec.policy.a2a.permits("inbound"):
+        raise PolicyViolationError("a2a", "inbound")
     from osa.runtimes.adk.a2a import attach_a2a_routes
 
     url = os.environ.get("OSA_A2A_URL", "http://localhost:8080/")

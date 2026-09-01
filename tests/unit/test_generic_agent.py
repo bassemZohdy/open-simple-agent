@@ -7,6 +7,7 @@ from pydantic import ValidationError
 
 from osa.generic_agent import (
     AbstractAgent,
+    AccessRule,
     Agent,
     AgentCapabilities,
     AgentDefinition,
@@ -21,6 +22,7 @@ from osa.generic_agent import (
     McpRef,
     MemoryConfig,
     ModelRef,
+    ResourcePolicy,
     SecretReference,
     SessionConfig,
     SkillRef,
@@ -123,6 +125,37 @@ class TestSecretReference:
     def test_with_env_var(self) -> None:
         s = SecretReference(source="env", key="key", env_var="MY_KEY")
         assert s.env_var == "MY_KEY"
+
+
+class TestResourcePolicy:
+    def test_empty_rule_allows_and_deny_wins(self) -> None:
+        rule = AccessRule(deny=["payments"])
+        assert rule.permits("calculator") is True
+        assert rule.permits("payments") is False
+
+    def test_allow_and_deny_overlap_is_invalid(self) -> None:
+        with pytest.raises(ValidationError, match="both allowed and denied"):
+            AccessRule(allow=["calculator"], deny=["calculator"])
+
+    def test_agent_spec_has_independent_resource_policy(self) -> None:
+        definition = load_agent_definition(
+            """
+apiVersion: osa/v1alpha1
+kind: Agent
+metadata:
+  name: test
+spec:
+  policy:
+    tools:
+      allow: [calculator]
+    mcps:
+      deny: [payments]
+"""
+        )
+        assert definition.spec.policy.tools.permits("calculator") is True
+        assert definition.spec.policy.tools.permits("shell") is False
+        assert definition.spec.policy.mcps.permits("payments") is False
+        assert isinstance(definition.spec.policy, ResourcePolicy)
 
 
 class TestStrictModel:

@@ -39,6 +39,17 @@ class MemoryConfigurationError(OsaError):
     code = "memory_configuration_error"
 
 
+class PolicyViolationError(OsaError):
+    """A configured resource policy denied a runtime capability."""
+
+    code = "policy_violation"
+
+    def __init__(self, resource_type: str, resource_name: str) -> None:
+        self.resource_type = resource_type
+        self.resource_name = resource_name
+        super().__init__(f"Policy denies {resource_type} resource '{resource_name}'")
+
+
 class ModelInvocationError(OsaError):
     """A model call failed (provider error, unexpected response, cancellation)."""
 

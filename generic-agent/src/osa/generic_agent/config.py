@@ -130,6 +130,36 @@ class A2AConfig(StrictModel):
     enabled: bool = False
 
 
+class AccessRule(StrictModel):
+    """Allow/deny rule for a named runtime capability."""
+
+    allow: list[str] = Field(default_factory=list)
+    deny: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _validate_non_overlapping(self) -> AccessRule:
+        overlap = sorted(set(self.allow) & set(self.deny))
+        if overlap:
+            raise ValueError(f"Policy name(s) cannot be both allowed and denied: {', '.join(overlap)}")
+        return self
+
+    def permits(self, name: str) -> bool:
+        """Return whether this rule permits an exact resource name."""
+        if name in self.deny:
+            return False
+        return not self.allow or name in self.allow
+
+
+class ResourcePolicy(StrictModel):
+    """Definition-owned policy for runtime resources and A2A exposure."""
+
+    models: AccessRule = Field(default_factory=AccessRule)
+    tools: AccessRule = Field(default_factory=AccessRule)
+    mcps: AccessRule = Field(default_factory=AccessRule)
+    skills: AccessRule = Field(default_factory=AccessRule)
+    a2a: AccessRule = Field(default_factory=AccessRule)
+
+
 class RuntimeConfig(StrictModel):
     """Runtime-specific configuration."""
 
@@ -149,6 +179,7 @@ class AgentSpec(StrictModel):
     memory: MemoryConfig = Field(default_factory=MemoryConfig)
     session: SessionConfig = Field(default_factory=SessionConfig)
     a2a: A2AConfig = Field(default_factory=A2AConfig)
+    policy: ResourcePolicy = Field(default_factory=ResourcePolicy)
     runtime: RuntimeConfig = Field(default_factory=RuntimeConfig)
 
 
