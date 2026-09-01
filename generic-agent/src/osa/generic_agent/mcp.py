@@ -5,9 +5,9 @@ from __future__ import annotations
 from enum import StrEnum
 from typing import Any
 
-from pydantic import Field
+from pydantic import Field, model_validator
 
-from osa.generic_agent.config import SecretReference, StrictModel
+from osa.generic_agent.config import OutboundCredential, SecretReference, StrictModel
 
 
 class McpTransport(StrEnum):
@@ -40,10 +40,17 @@ class McpDefinition(StrictModel):
     # Non-secret environment variables for stdio servers; secrets go through
     # credential_ref so values stay external to definitions.
     env: dict[str, str] = Field(default_factory=dict)
+    credential: OutboundCredential | None = None
     credential_ref: SecretReference | None = None
     connection_options: McpConnectionOptions = Field(default_factory=McpConnectionOptions)
     tools_filter: list[str] = Field(default_factory=list)
     enabled: bool = True
+
+    @model_validator(mode="after")
+    def _validate_credential_fields(self) -> McpDefinition:
+        if self.credential is not None and self.credential_ref is not None:
+            raise ValueError("credential and credential_ref cannot both be configured")
+        return self
 
 
 class McpToolMetadata(StrictModel):

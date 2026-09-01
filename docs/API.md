@@ -147,8 +147,9 @@ spoofed or mismatched values. Control Plane managed agents are assigned the
 authenticated `tenant_id`/`tid` on creation; list and lifecycle/read routes
 return only the same tenant's records. Resource definitions use the same
 tenant scope, allow equal names in different tenants, and are resolved from
-tenant-scoped catalogs; PostgreSQL migration 0005 stores the owner. A2A
-security schemes and outbound API-key/OAuth/mTLS adapters remain open in P2.2.
+tenant-scoped catalogs; PostgreSQL migration 0005 stores the owner. Inbound
+A2A security-scheme enforcement remains open in P2.2. Outbound
+API-key/OAuth2/mTLS adapters are available for external-agent calls.
 
 ### Audit events
 
@@ -235,11 +236,29 @@ with the `osa-adk-runtime[a2a]` extra), the runtime API serves:
   session per conversation.
 
 External agents are A2A servers outside OSA, tracked as records distinct
-from managed agents (they are never deployed):
+from managed agents (they are never deployed). Registration may include a
+redacted credential reference, for example:
+
+```json
+{
+  "name": "partner",
+  "url": "https://partner.example.test",
+  "credential": {
+    "type": "oauth2",
+    "token_url": "https://identity.example.test/oauth/token",
+    "client_id": "osa-control-plane",
+    "client_secret_ref": {"source": "env", "key": "PARTNER_CLIENT_SECRET"},
+    "scopes": ["agent.invoke"]
+  }
+}
+```
+
+Credential values are resolved from the configured secret resolver and are
+never included in external-agent responses, audit events, or errors.
 
 | Method | Path | Behavior |
 |---|---|---|
-| `POST` | `/external-agents` | Register by URL: the Agent Card is fetched and validated (422 if unreachable/invalid); duplicate names 409 |
+| `POST` | `/external-agents` | Register by URL and optional outbound `credential`; the Agent Card is fetched and validated (422 if unreachable/invalid); duplicate names 409 |
 | `GET` | `/external-agents?status=` | List records with health status |
 | `GET` | `/external-agents/{id}` | Get one record |
 | `POST` | `/external-agents/{id}/refresh` | Re-fetch the card and update health |
@@ -248,8 +267,9 @@ from managed agents (they are never deployed):
 
 Attempts to deploy an external record are rejected with 422 — external
 agents are never deployed by OSA. A2A security-scheme enforcement remains
-open in P2.2; the generic HTTP JWT middleware does not yet enforce an A2A
-security scheme or attach credentials to outbound remote-agent calls.
+open in P2.2; the generic HTTP JWT middleware does not yet enforce an inbound
+A2A security scheme. Outbound remote-agent calls can attach the configured
+API-key, OAuth2, or mTLS credential.
 
 ## Runtime API
 

@@ -247,12 +247,13 @@ records distinct from managed agents: registration fetches and validates the
 remote Agent Card, refresh re-checks health, and invocation goes through the
 A2A client with bounded timeouts and `a2a_remote_failed` error mapping.
 External records are structurally barred from deployment. A2A security
-schemes are configuration now; enforcement for inbound A2A and outbound
-remote-agent credentials remains P2.2 work.
+schemes are configuration now; inbound A2A security-scheme enforcement remains
+P2.2 work. Outbound remote-agent credentials use the shared API-key, OAuth2,
+and mTLS adapters in `osa.generic_agent.credentials`.
 
 ## Tests and CI
 
-The current baseline is 442 collected tests: 421 pass locally and 21
+The current baseline is 456 collected tests: 435 pass locally and 21
 PostgreSQL tests are skipped when `OSA_TEST_DATABASE_URL` is unset. CI runs:
 
 - `ruff format --check .`;

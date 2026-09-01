@@ -25,9 +25,12 @@ from mcp.client.stdio import stdio_client
 from mcp.client.streamable_http import streamable_http_client
 
 from osa.generic_agent import (
+    CredentialResolutionError,
     McpDefinition,
+    ResolvedOutboundCredential,
     SecretError,
     SecretResolver,
+    resolve_outbound_credential,
 )
 from osa.generic_agent.errors import (
     McpConnectionError,
@@ -96,43 +99,56 @@ class McpConnection:
     def is_connected(self) -> bool:
         return self._session is not None
 
-    def _resolve_headers(self) -> dict[str, str]:
-        """HTTP headers including a bearer credential when configured."""
+    async def _resolve_credentials(self) -> ResolvedOutboundCredential:
+        """Resolve configured credentials for one transport connection."""
         headers: dict[str, str] = {}
+        environment: dict[str, str] = {}
         reference = self._definition.credential_ref
+        credential = self._definition.credential
+        if reference is not None and credential is not None:
+            raise CredentialResolutionError("mcp", "credential and credential_ref cannot both be configured")
+        if credential is not None:
+            material = await resolve_outbound_credential(credential, self._secret_resolver)
+            if self._definition.transport == "stdio" and not material.environment:
+                raise McpConnectionError(
+                    self.name,
+                    "stdio credentials require an explicit environment_variable",
+                )
+            return material
         if reference is not None:
             if self._secret_resolver is None:
                 raise McpConnectionError(
                     self.name,
                     f"credential '{reference.key}' requires a secret resolver",
                 )
-            headers[_HTTP_HEADERS_KEY] = f"Bearer {self._secret_resolver.resolve(reference)}"
-        return headers
+            value = self._secret_resolver.resolve(reference)
+            headers[_HTTP_HEADERS_KEY] = f"Bearer {value}"
+            var_name = reference.env_var or reference.key
+            environment[var_name] = value
+        return ResolvedOutboundCredential(headers=headers, environment=environment)
 
-    def _resolve_stdio_env(self) -> dict[str, str]:
-        """Stdio environment including the credential when configured."""
+    async def _resolve_stdio_env(self) -> dict[str, str]:
+        """Stdio environment including configured credentials."""
         import os
 
         env = {**os.environ, **self._definition.env}
-        reference = self._definition.credential_ref
-        if reference is not None:
-            if self._secret_resolver is None:
-                raise McpConnectionError(
-                    self.name,
-                    f"credential '{reference.key}' requires a secret resolver",
-                )
-            var_name = reference.env_var or reference.key
-            env[var_name] = self._secret_resolver.resolve(reference)
+        material = await self._resolve_credentials()
+        env.update(material.environment)
         return env
 
-    def _build_httpx_client(self) -> Any:
+    async def _build_httpx_client(self) -> Any:
         """HTTP client with TLS, timeout, and credential settings resolved."""
         import httpx
 
         options = self._definition.connection_options
+        material = await self._resolve_credentials()
+        verify: str | bool = options.tls_verify
+        if options.tls_verify and material.verify is not None:
+            verify = material.verify
         return httpx.AsyncClient(
-            verify=options.tls_verify,
-            headers=self._resolve_headers(),
+            verify=verify,
+            cert=material.cert,
+            headers=material.headers,
             timeout=httpx.Timeout(options.timeout_seconds),
         )
 
@@ -144,14 +160,14 @@ class McpConnection:
             server = StdioServerParameters(
                 command=definition.command,
                 args=list(definition.args),
-                env=self._resolve_stdio_env(),
+                env=await self._resolve_stdio_env(),
             )
             read_stream, write_stream = await stack.enter_async_context(stdio_client(server))
             return read_stream, write_stream
         if definition.transport == "streamable_http":
             if not definition.endpoint:
                 raise McpConnectionError(self.name, "streamable_http transport requires 'endpoint'")
-            http_client = await stack.enter_async_context(self._build_httpx_client())
+            http_client = await stack.enter_async_context(await self._build_httpx_client())
             transport_stack: Any = await stack.enter_async_context(
                 streamable_http_client(
                     url=definition.endpoint,

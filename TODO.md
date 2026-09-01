@@ -2,15 +2,15 @@
 
 This backlog is based on a source, test, CI, packaging, and documentation review
 of `main` on 2026-08-30, updated on 2026-09-01 after the A2A, deployment,
-repository-boundary, authentication, authorization, and resource-ownership
-slices landed.
+repository-boundary, authentication, authorization, resource-ownership, and
+outbound-credential slices landed.
 
 A task is complete only after implementation, automated tests, relevant
 documentation, and appropriate failure/security behavior are complete.
 
 ## Current baseline
 
-- 442 tests are collected; 421 pass locally and 21 PostgreSQL integration tests
+- 454 tests are collected; 433 pass locally and 21 PostgreSQL integration tests
   skip when `OSA_TEST_DATABASE_URL` is unset. Strict mypy, Ruff format, and
   Ruff lint pass with no project-controlled warnings.
 - Latest GitHub Actions run on `main` is green, plus a container job that
@@ -333,7 +333,7 @@ deployments, and resources now use the same tenant boundary. Append-only,
 tenant-filtered audit events now cover every successful management mutation
 and privileged external-agent invocation. This remains a bounded
 authorization slice: OIDC token introspection/live-provider coverage, policy
-evaluation, A2A security schemes, and credential adapters are still open.
+evaluation, and inbound A2A security schemes are still open.
 
 - [x] Resolve standard OIDC discovery metadata to a validated `jwks_uri` when
   no explicit JWKS URL is configured; support an explicit discovery URL and
@@ -359,7 +359,9 @@ evaluation, A2A security schemes, and credential adapters are still open.
 - [x] Add definition-owned tool/MCP/skill/model/A2A allow/deny policy
   independent of prompts; enforce it before runtime construction with stable
   `policy_violation` errors.
-- [ ] Add API key/OAuth/mTLS credential adapters for MCP/A2A as required.
+- [x] Add shared API-key, OAuth2 client-credentials, and mTLS adapters for
+  MCP and outbound A2A calls; preserve the legacy `credential_ref` shorthand,
+  resolve secrets only at connection/call time, and redact credential values.
 - [x] Add append-only, tenant-filtered audit events for every successful
   Control Plane management mutation and external-agent invocation; expose
   the redaction-safe `/audit-events` read API and persist PostgreSQL events in
@@ -489,7 +491,7 @@ policy are stable.*
 |---|---|---|
 | RV-016 | Control Plane deployment routes missing (refs are validated at activation) | P1.5 |
 | RV-017 | Resource and deployment implementations are not exposed by the API | P1.2, P1.5 |
-| RV-019 | JWT bearer authentication and opt-in role/permission route enforcement are available but disabled by default; A2A credential enforcement, policy authorization, and runtime/denied-request audit coverage remain open | P2.2 |
+| RV-019 | JWT bearer authentication and opt-in role/permission route enforcement are available but disabled by default; inbound A2A security-scheme enforcement and enterprise policy remain open | P2.2 |
 | RV-023 | Current tests have no live-provider, Kubernetes, live-identity-provider, multi-replica, or coverage-threshold gate | P2.2, P2.4, P3.3 |
 | RV-024 | Runtime binds `tenant_id`/`tid` claims to invocation metadata; Control Plane agents, deployments, and resources are tenant-owned, while model/tool policy still does not use tenant metadata | P2.2 |
 

@@ -43,11 +43,15 @@ from osa.generic_agent.config import (
     AgentDefinition,
     AgentMetadataConfig,
     AgentSpec,
+    ApiKeyCredential,
     ConfigurationError,
     McpRef,
     MemoryConfig,
     MemoryScope,
     ModelRef,
+    MtlsCredential,
+    OAuth2Credential,
+    OutboundCredential,
     ResourcePolicy,
     RuntimeConfig,
     SecretReference,
@@ -56,6 +60,12 @@ from osa.generic_agent.config import (
     StrictModel,
     ToolRef,
     load_agent_definition,
+)
+from osa.generic_agent.credentials import (
+    CredentialResolutionError,
+    ResolvedOutboundCredential,
+    credential_secret_references,
+    resolve_outbound_credential,
 )
 from osa.generic_agent.errors import (
     InvocationTimeoutError,
@@ -119,6 +129,7 @@ from osa.generic_agent.tool import (
 
 __all__ = [
     "A2AConfig",
+    "ApiKeyCredential",
     "AccessRule",
     "AuditEvent",
     "AuditEventSink",
@@ -185,6 +196,9 @@ __all__ = [
     "ModelInvocationError",
     "ModelProvider",
     "ModelRef",
+    "MtlsCredential",
+    "OAuth2Credential",
+    "OutboundCredential",
     "ModelResponse",
     "ModelRuntimeSettings",
     "OsaError",
@@ -198,6 +212,10 @@ __all__ = [
     "SecretResolutionError",
     "SecretResolver",
     "SecretSourceError",
+    "CredentialResolutionError",
+    "ResolvedOutboundCredential",
+    "credential_secret_references",
+    "resolve_outbound_credential",
     "Session",
     "SessionAccessError",
     "SessionConfig",

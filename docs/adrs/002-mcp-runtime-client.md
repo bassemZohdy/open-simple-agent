@@ -58,8 +58,10 @@ catalog/schema types (`osa.generic_agent.mcp`).
   agent runtime, bounded retries (`max_retries`, `retry_delay_seconds`),
   timeouts (`timeout_seconds`), TLS verification (`tls_verify`), response
   size caps (`max_response_bytes`), and credential resolution from
-  `credential_ref` via the `SecretResolver` contract (values are resolved at
-  connect time and never stored, logged, or logged in errors).
+  `credential` via the shared outbound credential adapters and
+  `SecretResolver` contract (values are resolved at connect time and never
+  stored, logged, or included in errors). The legacy `credential_ref`
+  bearer/stdio shorthand remains supported.
 - Server tools are filtered by the server definition's `tools_filter`
   intersected with the agent reference's `tools_filter`, namespaced as
   `<server>_<tool>` (sanitized ADK identifiers), and bridged to ADK as

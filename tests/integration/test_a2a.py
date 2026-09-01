@@ -21,10 +21,12 @@ from osa.generic_agent import (
     AgentMetadataConfig,
     AgentRequest,
     AgentSpec,
+    ApiKeyCredential,
     FakeModelProvider,
     ModelCatalog,
     ModelDefinition,
     ModelRef,
+    SecretReference,
     SkillCatalog,
     SkillDefinition,
     SkillRef,
@@ -106,7 +108,7 @@ class TestAgentCardGeneration:
 
 class TestA2aServer:
     @staticmethod
-    def _serve(agent: GenericAdkAgent) -> int:
+    def _serve(agent: GenericAdkAgent, *, require_api_key: str | None = None) -> int:
         """Serve an agent over A2A on a localhost port; returns the port."""
         from fastapi import FastAPI
 
@@ -114,6 +116,16 @@ class TestA2aServer:
 
         port = _free_port()
         app = FastAPI()
+        if require_api_key is not None:
+
+            @app.middleware("http")
+            async def require_key(request, call_next):  # noqa: ANN001
+                if request.headers.get("x-api-key") != require_api_key:
+                    from starlette.responses import JSONResponse
+
+                    return JSONResponse({"error": "unauthorized"}, status_code=401)
+                return await call_next(request)
+
         attach_a2a_routes(app, agent, url=f"http://127.0.0.1:{port}")
         config = uvicorn.Config(app, host="127.0.0.1", port=port, log_level="error")
         server = uvicorn.Server(config)
@@ -149,8 +161,61 @@ class TestA2aServer:
         with pytest.raises(RemoteA2aError, match="boom"):
             await invoke_remote_agent(f"http://127.0.0.1:{port}", "trigger", timeout_seconds=20)
 
+    async def test_api_key_credential_is_sent_to_remote_agent(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from osa.generic_agent import EnvironmentSecretResolver
+
+        monkeypatch.setenv("REMOTE_A2A_KEY", "api-key")
+        port = self._serve(
+            _make_agent("secure-server", provider=FakeModelProvider(response="secure answer")),
+            require_api_key="api-key",
+        )
+        output = await invoke_remote_agent(
+            f"http://127.0.0.1:{port}",
+            "hello",
+            timeout_seconds=20,
+            credential=ApiKeyCredential(secret_ref=SecretReference(source="env", key="REMOTE_A2A_KEY")),
+            secret_resolver=EnvironmentSecretResolver(),
+        )
+        assert output == "secure answer"
+
 
 class TestExternalAgentRecords:
+    async def test_registered_credential_is_used_and_redacted(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from httpx import ASGITransport, AsyncClient
+
+        from osa.control_plane.backend.external_agents import ExternalAgentCatalog
+        from osa.control_plane.backend.service import create_control_plane_app
+        from osa.generic_agent import EnvironmentSecretResolver
+
+        monkeypatch.setenv("PARTNER_A2A_KEY", "api-key")
+        agent = _make_agent("secure-external", provider=FakeModelProvider(response="remote reply"))
+        port = TestA2aServer._serve(agent, require_api_key="api-key")
+        app = create_control_plane_app(secret_resolver=EnvironmentSecretResolver())
+        app.state.external_agent_catalog = ExternalAgentCatalog()
+
+        async with (
+            app.router.lifespan_context(app),
+            AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c,
+        ):
+            registered = await c.post(
+                "/external-agents",
+                json={
+                    "name": "partner",
+                    "url": f"http://127.0.0.1:{port}",
+                    "credential": {
+                        "type": "api_key",
+                        "secret_ref": {"source": "env", "key": "PARTNER_A2A_KEY"},
+                    },
+                },
+            )
+            assert registered.status_code == 201, registered.text
+            assert "credential" not in registered.json()
+
+            external_id = registered.json()["external_id"]
+            invoked = await c.post(f"/external-agents/{external_id}/invoke", params={"message": "ping"})
+            assert invoked.status_code == 200
+            assert invoked.json()["output"] == "remote reply"
+
     async def test_register_refresh_invoke_and_health(self) -> None:
         from httpx import ASGITransport, AsyncClient
 

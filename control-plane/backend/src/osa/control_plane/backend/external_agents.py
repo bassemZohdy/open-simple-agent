@@ -17,6 +17,7 @@ from fastapi import FastAPI, HTTPException, Query, Request
 from pydantic import BaseModel, ConfigDict, Field
 
 from osa.control_plane.backend.audit import record_audit_event
+from osa.generic_agent import EnvironmentSecretResolver, OutboundCredential, SecretResolver
 from osa.generic_agent.a2a_client import RemoteA2aError, resolve_agent_card
 
 AGENT_TYPE_EXTERNAL = "external"
@@ -33,6 +34,7 @@ class ExternalAgentRecord:
     status: str = "unknown"
     detail: str = ""
     last_checked_at: datetime | None = None
+    credential: OutboundCredential | None = None
     agent_type: str = AGENT_TYPE_EXTERNAL
 
 
@@ -75,6 +77,7 @@ class RegisterExternalAgentRequest(BaseModel):
 
     name: str
     url: str
+    credential: OutboundCredential | None = None
 
 
 class ExternalAgentResponse(BaseModel):
@@ -105,8 +108,14 @@ def _response(record: ExternalAgentRecord) -> ExternalAgentResponse:
     )
 
 
-def configure_external_agent_routes(app: FastAPI) -> FastAPI:
+def configure_external_agent_routes(
+    app: FastAPI,
+    *,
+    secret_resolver: SecretResolver | None = None,
+) -> FastAPI:
     """Attach external-agent routes (requires app.state.external_agent_catalog)."""
+
+    resolver = secret_resolver if secret_resolver is not None else EnvironmentSecretResolver()
 
     @app.post("/external-agents", response_model=ExternalAgentResponse, status_code=201)
     async def register_external_agent(
@@ -119,7 +128,14 @@ def configure_external_agent_routes(app: FastAPI) -> FastAPI:
         import asyncio
 
         try:
-            card = await asyncio.wait_for(resolve_agent_card(request.url), timeout=timeout_seconds)
+            card = await asyncio.wait_for(
+                resolve_agent_card(
+                    request.url,
+                    credential=request.credential,
+                    secret_resolver=resolver,
+                ),
+                timeout=timeout_seconds,
+            )
         except RemoteA2aError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         record = ExternalAgentRecord(
@@ -128,6 +144,7 @@ def configure_external_agent_routes(app: FastAPI) -> FastAPI:
             card=card,
             status="healthy",
             last_checked_at=datetime.now(UTC),
+            credential=request.credential,
         )
         try:
             catalog.register(record)
@@ -175,7 +192,14 @@ def configure_external_agent_routes(app: FastAPI) -> FastAPI:
         import asyncio
 
         try:
-            card = await asyncio.wait_for(resolve_agent_card(record.url), timeout=timeout_seconds)
+            card = await asyncio.wait_for(
+                resolve_agent_card(
+                    record.url,
+                    credential=record.credential,
+                    secret_resolver=resolver,
+                ),
+                timeout=timeout_seconds,
+            )
         except RemoteA2aError as exc:
             record.status = "unreachable"
             record.detail = str(exc)
@@ -224,7 +248,15 @@ def configure_external_agent_routes(app: FastAPI) -> FastAPI:
         import asyncio
 
         try:
-            output = await asyncio.wait_for(invoke_remote_agent(record.url, message), timeout=timeout_seconds)
+            output = await asyncio.wait_for(
+                invoke_remote_agent(
+                    record.url,
+                    message,
+                    credential=record.credential,
+                    secret_resolver=resolver,
+                ),
+                timeout=timeout_seconds,
+            )
         except RemoteA2aError as exc:
             raise HTTPException(status_code=502, detail=str(exc)) from None
         await record_audit_event(http_request, action="external_agent.invoke", target=external_id)

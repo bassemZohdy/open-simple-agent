@@ -12,7 +12,8 @@ from __future__ import annotations
 import os
 from enum import StrEnum
 from pathlib import Path
-from typing import Any
+from typing import Annotated, Any, Literal
+from urllib.parse import urlparse
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -50,6 +51,53 @@ class SecretReference(StrictModel):
     source: str
     key: str
     env_var: str | None = None
+
+
+_HTTP_HEADER_PATTERN = r"^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$"
+_ENVIRONMENT_VARIABLE_PATTERN = r"^[A-Za-z_][A-Za-z0-9_]*$"
+
+
+class ApiKeyCredential(StrictModel):
+    """API-key credential for outbound MCP/A2A HTTP calls."""
+
+    type: Literal["api_key"] = "api_key"
+    secret_ref: SecretReference
+    header_name: str = Field(default="X-API-Key", pattern=_HTTP_HEADER_PATTERN)
+    value_prefix: str | None = Field(default=None, min_length=1, pattern=r"^[^\r\n]+$")
+    environment_variable: str | None = Field(default=None, pattern=_ENVIRONMENT_VARIABLE_PATTERN)
+
+
+class OAuth2Credential(StrictModel):
+    """OAuth 2.0 client-credentials configuration for outbound calls."""
+
+    type: Literal["oauth2"] = "oauth2"
+    token_url: str = Field(min_length=1)
+    client_id: str = Field(min_length=1)
+    client_secret_ref: SecretReference
+    scopes: list[str] = Field(default_factory=list)
+    audience: str | None = None
+    header_name: str = Field(default="Authorization", pattern=_HTTP_HEADER_PATTERN)
+    environment_variable: str | None = Field(default=None, pattern=_ENVIRONMENT_VARIABLE_PATTERN)
+    timeout_seconds: float = Field(default=10.0, gt=0, le=60)
+
+    @model_validator(mode="after")
+    def _validate_token_url(self) -> OAuth2Credential:
+        parsed = urlparse(self.token_url)
+        if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+            raise ValueError("token_url must be an absolute HTTP or HTTPS URL")
+        return self
+
+
+class MtlsCredential(StrictModel):
+    """mTLS credential using resolver values as certificate file paths."""
+
+    type: Literal["mtls"] = "mtls"
+    certificate_ref: SecretReference
+    private_key_ref: SecretReference
+    ca_bundle_ref: SecretReference | None = None
+
+
+OutboundCredential = Annotated[ApiKeyCredential | OAuth2Credential | MtlsCredential, Field(discriminator="type")]
 
 
 class ModelRef(StrictModel):

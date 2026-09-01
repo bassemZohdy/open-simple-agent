@@ -29,7 +29,14 @@ from osa.control_plane.backend.repositories import (
 )
 from osa.control_plane.backend.resource_catalogs import ResourceCatalogs
 from osa.control_plane.backend.templates import create_default_template_catalog
-from osa.generic_agent import McpDefinition, MemoryPolicy, ModelDefinition, SkillDefinition, ToolDefinition
+from osa.generic_agent import (
+    McpDefinition,
+    MemoryPolicy,
+    ModelDefinition,
+    SecretResolver,
+    SkillDefinition,
+    ToolDefinition,
+)
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
@@ -65,6 +72,7 @@ def create_control_plane_app(
     database_url: str | None = None,
     agent_repository: AgentRepository | None = None,
     resource_repository: ResourceDefinitionRepository | None = None,
+    secret_resolver: SecretResolver | None = None,
 ) -> FastAPI:
     """Build the Control Plane API app.
 
@@ -107,6 +115,7 @@ def create_control_plane_app(
         resource_catalogs=resource_catalogs,
         template_catalog=create_default_template_catalog(),
         resource_repository=resources,
+        secret_resolver=secret_resolver,
         audit_repository=audit_repository,
     )
     if deployment_records is not None:

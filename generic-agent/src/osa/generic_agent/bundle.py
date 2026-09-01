@@ -31,6 +31,7 @@ import yaml
 from pydantic import Field, ValidationError, model_validator
 
 from osa.generic_agent.config import AgentDefinition, SecretReference, StrictModel, load_agent_definition
+from osa.generic_agent.credentials import credential_secret_references
 from osa.generic_agent.mcp import McpCatalog, McpDefinition
 from osa.generic_agent.memory import MemoryPolicy, MemoryPolicyCatalog
 from osa.generic_agent.model import ModelCatalog, ModelDefinition
@@ -207,6 +208,8 @@ def collect_secret_references(bundle: DeploymentBundle) -> list[SecretReference]
     for mcp in bundle.mcps:
         if mcp.credential_ref is not None:
             references.append(mcp.credential_ref)
+        if mcp.credential is not None:
+            references.extend(credential_secret_references(mcp.credential))
     return references
 
 

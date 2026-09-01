@@ -113,7 +113,8 @@ spec:
 ```
 
 Allow/deny overlap is invalid. The policy is independent of the prompt;
-outbound A2A credentials and enterprise policy evaluation remain open.
+inbound A2A security-scheme enforcement and enterprise policy evaluation remain
+open.
 
 | Path | Type | Default | Current behavior |
 |---|---|---:|---|
@@ -237,8 +238,9 @@ records inherit agent tenant ownership and are protected by the same boundary.
 Resource definitions use the same tenant boundary, with equal names allowed in
 different tenants and tenant-scoped catalog resolution during activation and
 deployment bundle export. PostgreSQL migration 0005 stores resource ownership.
-Resource policy, API-key and mTLS adapters, and A2A
-security-scheme enforcement remain open.
+Inbound A2A security-scheme enforcement and enterprise policy evaluation remain
+open. Outbound API-key, OAuth2, and mTLS adapters are available for MCP and
+external A2A calls.
 Token material is never logged or retained after validation.
 
 ## Secret references
@@ -260,6 +262,56 @@ environment variables: `source` must be `env`, and the variable is `env_var`
 when set, otherwise `key` itself. Unresolvable secrets raise
 `SecretResolutionError`, which identifies the reference - never the value.
 Service bootstraps resolve every bundle secret before reporting ready.
+
+## Outbound credentials
+
+MCP definitions and external A2A agent records may use a `credential` object.
+It contains references only; the configured `SecretResolver` resolves values
+when the connection is created. Resolved values are never stored in a
+definition, returned by an API, logged, or included in an error.
+
+API keys are sent in a named HTTP header. An optional
+`environment_variable` is useful for stdio MCP servers:
+
+```yaml
+credential:
+  type: api_key
+  secret_ref:
+    source: env
+    key: PARTNER_API_KEY
+  header_name: X-API-Key
+```
+
+OAuth 2.0 uses the client-credentials grant and sends the resulting bearer
+token to the remote endpoint. `client_secret_ref` is resolved only for the
+token request; `scopes` and `audience` are optional:
+
+```yaml
+credential:
+  type: oauth2
+  token_url: https://identity.example.test/oauth/token
+  client_id: osa-runtime
+  client_secret_ref:
+    source: env
+    key: OSA_OAUTH_CLIENT_SECRET
+  scopes: [agent.invoke]
+```
+
+mTLS resolves certificate and private-key references as file paths, with an
+optional CA bundle path:
+
+```yaml
+credential:
+  type: mtls
+  certificate_ref: {source: env, key: OSA_CLIENT_CERT_PATH}
+  private_key_ref: {source: env, key: OSA_CLIENT_KEY_PATH}
+  ca_bundle_ref: {source: env, key: OSA_CA_BUNDLE_PATH}
+```
+
+The legacy `credential_ref` field remains supported: MCP HTTP and A2A calls
+treat it as a bearer token, while stdio MCP injects it under `env_var` or
+`key`. A definition must not configure both `credential` and
+`credential_ref`.
 
 ## Deployment bundles
 
@@ -332,10 +384,12 @@ MCP servers referenced by an agent connect lazily at invocation time
 - **Transports:** `stdio` (uses `command`/`args`/`env`) and
   `streamable_http` (uses `endpoint`). Legacy `sse` is not supported at
   runtime and fails with `mcp_transport_not_supported`.
-- **Credentials:** `credential_ref` resolves through the `SecretResolver` at
-  connect time; stdio injects the value into the subprocess environment
-  (`env_var` or `key`), HTTP sends `Authorization: Bearer <value>`. Values
-  are never stored or logged.
+- **Credentials:** `credential` resolves through the shared outbound adapter
+  at connect time; API-key and OAuth2 credentials are sent as configured HTTP
+  headers, and mTLS supplies the client certificate/key and optional CA bundle.
+  For stdio, API-key/OAuth2 credentials can be injected into an explicitly
+  configured environment variable. The legacy `credential_ref` shorthand
+  retains its bearer/stdio behavior. Values are never stored or logged.
 - **Options:** `timeout_seconds` bounds connection and call attempts;
   `max_retries`/`retry_delay_seconds` bound transient failures;
   `tls_verify` disables certificate verification for HTTP servers;

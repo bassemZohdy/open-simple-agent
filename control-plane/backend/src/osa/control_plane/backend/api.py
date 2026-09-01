@@ -50,6 +50,7 @@ from osa.generic_agent import (
     AuthorizationError,
     AuthorizationPolicy,
     AuthSettings,
+    EnvironmentSecretResolver,
     JwtAuthenticator,
     error_payload,
 )
@@ -295,6 +296,7 @@ def configure_control_plane_app(
     deployment_provider: Any = None,
     auth_settings: AuthSettings | None = None,
     authenticator: JwtAuthenticator | None = None,
+    secret_resolver: Any = None,
 ) -> FastAPI:
     """Attach routes and error mapping to a Control Plane app.
 
@@ -618,7 +620,10 @@ def configure_control_plane_app(
         resource_repository=resource_repository,
     )
     configure_deployment_routes(app)
-    configure_external_agent_routes(app)
+    configure_external_agent_routes(
+        app,
+        secret_resolver=secret_resolver if secret_resolver is not None else EnvironmentSecretResolver(),
+    )
 
     @app.get("/health/live")
     async def health_live() -> dict[str, str]:

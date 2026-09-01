@@ -16,6 +16,7 @@ from pathlib import Path
 import pytest
 
 from osa.generic_agent import (
+    ApiKeyCredential,
     EnvironmentSecretResolver,
     McpConnectionOptions,
     McpDefinition,
@@ -183,7 +184,12 @@ class TestStreamableHttp:
         raise RuntimeError(f"localhost server on port {port} did not start")
 
     @staticmethod
-    def _serve(port: int, *, require_token: str | None = None) -> threading.Event:
+    def _serve(
+        port: int,
+        *,
+        require_token: str | None = None,
+        require_api_key: str | None = None,
+    ) -> threading.Event:
         """Serve the echo tools over Streamable HTTP on a localhost port."""
         import uvicorn
         from mcp.server.fastmcp import FastMCP
@@ -203,6 +209,8 @@ class TestStreamableHttp:
                     header = request.headers.get("authorization", "")
                     if header != f"Bearer {require_token}":
                         return JSONResponse({"error": "unauthorized"}, status_code=401)
+                if require_api_key is not None and request.headers.get("x-api-key") != require_api_key:
+                    return JSONResponse({"error": "unauthorized"}, status_code=401)
                 return await call_next(request)
 
         http_app = http.streamable_http_app()
@@ -280,3 +288,23 @@ class TestStreamableHttp:
                 await connection.close()
         finally:
             await __import__("asyncio").sleep(0.1)
+
+    async def test_http_api_key_credential_is_sent(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        port = self._free_port()
+        self._serve(port, require_api_key="api-key")
+        monkeypatch.setenv("HTTP_MCP_API_KEY", "api-key")
+        connection = McpConnection(
+            McpDefinition(
+                name="http-api-key",
+                transport=McpTransport.STREAMABLE_HTTP,
+                endpoint=f"http://127.0.0.1:{port}/mcp",
+                credential=ApiKeyCredential(secret_ref=SecretReference(source="env", key="HTTP_MCP_API_KEY")),
+                connection_options=McpConnectionOptions(timeout_seconds=10, max_retries=0),
+            ),
+            secret_resolver=EnvironmentSecretResolver(),
+        )
+        try:
+            handles = await connection.list_tools()
+            assert [handle.server_tool_name for handle in handles] == ["add"]
+        finally:
+            await connection.close()
