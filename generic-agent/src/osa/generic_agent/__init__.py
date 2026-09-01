@@ -7,6 +7,15 @@ from osa.generic_agent.agent_metadata import AgentMetadata
 from osa.generic_agent.agent_request import AgentRequest
 from osa.generic_agent.agent_response import AgentResponse
 from osa.generic_agent.agent_status import AgentStatus
+from osa.generic_agent.auth import (
+    AuthenticatedPrincipal,
+    AuthenticationError,
+    AuthMode,
+    AuthorizationError,
+    AuthSettings,
+    JwksClient,
+    JwtAuthenticator,
+)
 from osa.generic_agent.bundle import (
     API_VERSION,
     BUNDLE_KIND,
@@ -117,6 +126,11 @@ __all__ = [
     "AgentRuntime",
     "AgentSpec",
     "AgentStatus",
+    "AuthMode",
+    "AuthSettings",
+    "AuthenticatedPrincipal",
+    "AuthenticationError",
+    "AuthorizationError",
     "BUNDLE_KIND",
     "BundleCatalogs",
     "BundleError",
@@ -131,6 +145,8 @@ __all__ = [
     "InvalidBundleError",
     "InvocationTimeoutError",
     "IterationLimitExceededError",
+    "JwksClient",
+    "JwtAuthenticator",
     "McpCatalog",
     "McpConnectionOptions",
     "McpDefinition",
