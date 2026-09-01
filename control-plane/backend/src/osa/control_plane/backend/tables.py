@@ -80,10 +80,11 @@ resource_definitions_table = Table(
     "osa_resource_definitions",
     METADATA,
     Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("tenant_id", Text, nullable=False, server_default=""),
     Column("kind", Text, nullable=False),
     Column("name", Text, nullable=False),
     Column("spec", JSON, nullable=False),
     Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
     Column("updated_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
-    UniqueConstraint("kind", "name", name="uq_osa_resource_definitions_kind_name"),
+    UniqueConstraint("tenant_id", "kind", "name", name="uq_osa_resource_definitions_tenant_kind_name"),
 )
