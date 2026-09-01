@@ -25,3 +25,7 @@ htmlcov/
 
 # Linting
 .ruff_cache/
+
+# Generated SBOMs (CI artifacts)
+*.cdx.json
+requirements-audit.txt
