@@ -15,7 +15,7 @@ Error responses use the stable OSA schema ``{"error": {"code", "message"}}``.
 from __future__ import annotations
 
 from importlib import metadata
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
@@ -24,7 +24,13 @@ from pydantic import BaseModel, ConfigDict, Field
 from osa.generic_agent import (
     AgentDefinition,
     AgentRequest,
+    AuthenticatedPrincipal,
+    AuthenticationError,
+    AuthMode,
+    AuthorizationError,
+    AuthSettings,
     FakeModelProvider,
+    JwtAuthenticator,
     ModelCatalog,
     ModelDefinition,
     OsaError,
@@ -35,6 +41,11 @@ from osa.generic_agent import (
     error_payload,
 )
 from osa.runtimes.adk import AdkRuntime, GenericAdkAgent
+
+if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable
+
+    from starlette.responses import Response
 
 
 def _package_version() -> str:
@@ -148,13 +159,60 @@ def set_runtime(runtime: AdkRuntime, agent: GenericAdkAgent) -> None:
     _start_error = None
 
 
-def configure_runtime_app(app: FastAPI) -> FastAPI:
+def _install_authentication(
+    app: FastAPI,
+    settings: AuthSettings,
+    authenticator: JwtAuthenticator | None,
+) -> None:
+    app.state.auth_settings = settings
+    if settings.mode is AuthMode.DISABLED:
+        return
+    token_authenticator = authenticator or JwtAuthenticator(settings)
+    app.state.authenticator = token_authenticator
+    public_paths = {"/health/live", "/health/ready", "/docs", "/redoc", "/openapi.json"}
+
+    @app.middleware("http")
+    async def _authenticate_request(
+        request: Request,
+        call_next: Callable[[Request], Awaitable[Response]],
+    ) -> Response:
+        if settings.mode is AuthMode.OPTIONAL and "authorization" not in request.headers:
+            return await call_next(request)
+        if request.url.path in public_paths:
+            return await call_next(request)
+        try:
+            principal = await token_authenticator.authenticate(request.headers.get("authorization"))
+        except AuthenticationError as exc:
+            return JSONResponse(
+                status_code=401,
+                headers={"WWW-Authenticate": "Bearer"},
+                content=error_payload(exc.code, str(exc)),
+            )
+        except AuthorizationError as exc:
+            return JSONResponse(status_code=403, content=error_payload(exc.code, str(exc)))
+        request.state.osa_principal = principal
+        return await call_next(request)
+
+
+def configure_runtime_app(
+    app: FastAPI,
+    *,
+    auth_settings: AuthSettings | None = None,
+    authenticator: JwtAuthenticator | None = None,
+) -> FastAPI:
     """Attach the runtime routes and error mapping to a FastAPI app.
 
     Used both by the module-level ``runtime_app`` and by the service factory
     (``osa.runtimes.adk.service.create_runtime_app``), which supplies its own
     bundle-driven lifespan.
     """
+
+    settings = auth_settings or AuthSettings.from_env()
+    _install_authentication(app, settings, authenticator)
+
+    @app.exception_handler(AuthorizationError)
+    async def _authorization_error_handler(request: Request, exc: AuthorizationError) -> JSONResponse:
+        return JSONResponse(status_code=403, content=error_payload(exc.code, str(exc)))
 
     @app.exception_handler(SessionNotFoundError)
     async def _session_not_found_handler(request: Request, exc: SessionNotFoundError) -> JSONResponse:
@@ -173,16 +231,26 @@ def configure_runtime_app(app: FastAPI) -> FastAPI:
         return JSONResponse(status_code=502, content=error_payload(exc.code, str(exc)))
 
     @app.post("/v1/invoke", response_model=InvokeResponse)
-    async def invoke_agent(request: InvokeRequest) -> Any:
+    async def invoke_agent(http_request: Request, request: InvokeRequest) -> Any:
         """Invoke the agent."""
         if _agent is None:
             return JSONResponse(status_code=503, content=error_payload("not_initialized", "Agent not initialized"))
 
+        principal = getattr(http_request.state, "osa_principal", None)
+        user_id = request.user_id
+        request_metadata = dict(request.metadata)
+        if isinstance(principal, AuthenticatedPrincipal):
+            if user_id is None:
+                user_id = principal.subject
+            elif user_id != principal.subject:
+                raise AuthorizationError("Request user_id must match the authenticated subject")
+            request_metadata.setdefault("caller_subject", principal.subject)
+
         agent_request = AgentRequest(
             input=request.input,
             session_id=request.session_id,
-            user_id=request.user_id,
-            metadata=request.metadata,
+            user_id=user_id,
+            metadata=request_metadata,
         )
 
         response = await _agent.invoke(agent_request)
