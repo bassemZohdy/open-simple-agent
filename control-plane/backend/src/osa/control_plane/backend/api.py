@@ -19,7 +19,7 @@ for PostgreSQL-backed persistence; the module-level app below is in-memory.
 from __future__ import annotations
 
 from importlib import metadata
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.exceptions import RequestValidationError
@@ -39,7 +39,20 @@ from osa.control_plane.backend.repositories import (
 )
 from osa.control_plane.backend.resource_catalogs import ResourceCatalogs
 from osa.control_plane.backend.templates import TemplateCatalog, create_default_template_catalog
-from osa.generic_agent import AgentDefinition, error_payload
+from osa.generic_agent import (
+    AgentDefinition,
+    AuthenticationError,
+    AuthMode,
+    AuthorizationError,
+    AuthSettings,
+    JwtAuthenticator,
+    error_payload,
+)
+
+if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable
+
+    from starlette.responses import Response
 
 
 def _package_version_safe() -> str:
@@ -185,6 +198,41 @@ def _record_to_response(record: AgentRecord) -> AgentResponse:
     )
 
 
+def _install_authentication(
+    app: FastAPI,
+    settings: AuthSettings,
+    authenticator: JwtAuthenticator | None,
+) -> None:
+    app.state.auth_settings = settings
+    if settings.mode is AuthMode.DISABLED:
+        return
+    token_authenticator = authenticator or JwtAuthenticator(settings)
+    app.state.authenticator = token_authenticator
+    public_paths = {"/health/live", "/health/ready", "/docs", "/redoc", "/openapi.json"}
+
+    @app.middleware("http")
+    async def _authenticate_request(
+        request: Request,
+        call_next: Callable[[Request], Awaitable[Response]],
+    ) -> Response:
+        if settings.mode is AuthMode.OPTIONAL and "authorization" not in request.headers:
+            return await call_next(request)
+        if request.url.path in public_paths:
+            return await call_next(request)
+        try:
+            principal = await token_authenticator.authenticate(request.headers.get("authorization"))
+        except AuthenticationError as exc:
+            return JSONResponse(
+                status_code=401,
+                headers={"WWW-Authenticate": "Bearer"},
+                content=error_payload(exc.code, str(exc)),
+            )
+        except AuthorizationError as exc:
+            return JSONResponse(status_code=403, content=error_payload(exc.code, str(exc)))
+        request.state.osa_principal = principal
+        return await call_next(request)
+
+
 # --- App configuration ---
 
 
@@ -196,6 +244,8 @@ def configure_control_plane_app(
     template_catalog: TemplateCatalog,
     resource_repository: ResourceDefinitionRepository | None = None,
     deployment_provider: Any = None,
+    auth_settings: AuthSettings | None = None,
+    authenticator: JwtAuthenticator | None = None,
 ) -> FastAPI:
     """Attach routes and error mapping to a Control Plane app.
 
@@ -219,6 +269,7 @@ def configure_control_plane_app(
     app.state.template_catalog = template_catalog
     app.state.resource_repository = resource_repository
     app.state.external_agent_catalog = ExternalAgentCatalog()
+    _install_authentication(app, auth_settings or AuthSettings.from_env(), authenticator)
     app.state.deployment_service = DeploymentService(
         provider=deployment_provider if deployment_provider is not None else LocalDeploymentProvider(),
         record_repository=InMemoryDeploymentRecordRepository(),
@@ -236,6 +287,18 @@ def configure_control_plane_app(
         }.get(exc.status_code, "error")
         detail = exc.detail if isinstance(exc.detail, str) else "request failed"
         return JSONResponse(status_code=exc.status_code, content=error_payload(code, detail))
+
+    @app.exception_handler(AuthenticationError)
+    async def _authentication_error_handler(request: Request, exc: AuthenticationError) -> JSONResponse:
+        return JSONResponse(
+            status_code=401,
+            headers={"WWW-Authenticate": "Bearer"},
+            content=error_payload(exc.code, str(exc)),
+        )
+
+    @app.exception_handler(AuthorizationError)
+    async def _authorization_error_handler(request: Request, exc: AuthorizationError) -> JSONResponse:
+        return JSONResponse(status_code=403, content=error_payload(exc.code, str(exc)))
 
     @app.exception_handler(RequestValidationError)
     async def _validation_error_handler(request: Request, exc: RequestValidationError) -> JSONResponse:

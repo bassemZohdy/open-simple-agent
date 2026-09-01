@@ -1,8 +1,11 @@
 # HTTP API Reference
 
-This document describes routes implemented on `main`. Both applications are
-in-memory and have no authentication, persistence, or rate limits; both use
-the stable OSA error envelope `{"error": {"code", "message"}}`.
+This document describes routes implemented on `main`. The Control Plane uses
+in-memory repositories by default and can use PostgreSQL; the runtime keeps
+session state in its configured provider and memory can use PostgreSQL. Neither
+application currently provides rate limiting. Both use the stable OSA error
+envelope `{"error": {"code", "message"}}` and share the optional JWT Bearer
+authentication boundary described below.
 
 ## Control Plane API
 
@@ -113,7 +116,27 @@ Every error response uses:
 ```
 
 Documented codes: `not_found` (404), `conflict` (409), `bad_request` (400),
-`invalid_transition` (400), `validation_error` (422). ### Resource and template APIs (P1.2)
+`invalid_transition` (400), `validation_error` (422),
+`authentication_failed` (401), and `authorization_denied` (403).
+
+### Authentication
+
+Both applications accept `auth_settings`/`authenticator` when constructed and
+otherwise read `OSA_AUTH_*` environment variables. `disabled` is the default;
+`optional` permits anonymous requests but validates a supplied Bearer token;
+`required` rejects anonymous non-public requests. `/health/live`,
+`/health/ready`, `/docs`, `/redoc`, and `/openapi.json` remain public. Invalid
+or missing credentials return 401 with `WWW-Authenticate: Bearer`; a valid
+token lacking configured scopes or violating an identity check returns 403.
+
+The current validator accepts signed RS256/384/512 and ES256/384/512 JWTs,
+checks `exp`, `iss`, `sub`, issuer, audience, and configured scopes against the
+external JWKS URL. On `/v1/invoke`, an omitted `user_id` uses the token `sub`;
+an explicitly different `user_id` is denied. This is an authentication
+foundation, not full role/tenant/resource authorization. A2A security schemes,
+outbound API-key/OAuth/mTLS adapters, and audit events remain open in P2.2.
+
+### Resource and template APIs (P1.2)
 
 Catalog resources are managed under `/resources/{kind}` with `kind` one of
 `Model`, `Tool`, `Skill`, `Mcp`, or `MemoryPolicy` (unknown kinds return
@@ -188,8 +211,9 @@ from managed agents (they are never deployed):
 | `DELETE` | `/external-agents/{id}` | Delete the record |
 
 Attempts to deploy an external record are rejected with 422 — external
-agents are never deployed by OSA. A2A security-scheme enforcement lands with
-authentication (P2.2).
+agents are never deployed by OSA. A2A security-scheme enforcement remains
+open in P2.2; the generic HTTP JWT middleware does not yet enforce an A2A
+security scheme or attach credentials to outbound remote-agent calls.
 
 ## Runtime API
 
@@ -268,8 +292,10 @@ the `model_invocation_failed` code when raised to the HTTP layer.
 - Invocation flows through the ADK `Runner`; tools execute through ADK-native
   function calling with declarations from `ToolDefinition.capabilities`.
 - One agent is stored in module-level state, matching the bundle model.
-- Session and memory data are in memory and not replica-safe (P1).
+- Sessions are in memory and not replica-safe; memory can use the PostgreSQL
+  provider when `OSA_MEMORY_DATABASE_URL` is set.
 - The `fake` model provider requires explicit opt-in via
   `OSA_ALLOW_FAKE_PROVIDER=1` in service bootstraps.
-- Capabilities are not yet an A2A Agent Card.
-- Streaming and A2A endpoints are not implemented.
+- A2A Agent Card and JSON-RPC routes are available when `spec.a2a.enabled` and
+  the optional A2A extra are installed.
+- Streaming is not implemented; A2A security-scheme enforcement is pending.

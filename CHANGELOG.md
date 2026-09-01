@@ -12,6 +12,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added — P2.2: Authentication foundation
+- **Shared JWT/OIDC authentication boundary**
+  - `AuthSettings` reads `OSA_AUTH_*` configuration for disabled, optional, or required Bearer authentication in both FastAPI applications
+  - JWKS-backed validation checks issuer, audience, expiry, subject, allowed signing algorithms, and configured scopes without retaining or logging token material
+  - Non-public HTTP routes return stable 401/403 envelopes; runtime invocations derive omitted `user_id` from the validated subject and reject identity spoofing
+  - Offline generated-key tests cover configuration, signature/claim failures, scope denial, Control Plane middleware, and runtime middleware; role/tenant/resource authorization, A2A security schemes, credential adapters, and audit events remain open
+
 ### Added — P2.1: A2A and external agents
 - **A2A and external agents (ADR-005)**
   - `a2a-sdk[http-server]>=1.0,<2` (matching google-adk's a2a range) as the optional `osa-adk-runtime[a2a]` extra; client utilities available through `osa-generic-agent[a2a]`

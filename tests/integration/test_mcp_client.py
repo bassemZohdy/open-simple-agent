@@ -10,6 +10,7 @@ from __future__ import annotations
 import socket
 import sys
 import threading
+import time
 from pathlib import Path
 
 import pytest
@@ -172,6 +173,16 @@ class TestStreamableHttp:
             return int(sock.getsockname()[1])
 
     @staticmethod
+    def _wait_for_server(port: int) -> None:
+        for _ in range(100):
+            try:
+                with socket.create_connection(("127.0.0.1", port), timeout=0.1):
+                    return
+            except OSError:
+                time.sleep(0.01)
+        raise RuntimeError(f"localhost server on port {port} did not start")
+
+    @staticmethod
     def _serve(port: int, *, require_token: str | None = None) -> threading.Event:
         """Serve the echo tools over Streamable HTTP on a localhost port."""
         import uvicorn
@@ -212,6 +223,7 @@ class TestStreamableHttp:
 
         thread = threading.Thread(target=run, daemon=True)
         thread.start()
+        TestStreamableHttp._wait_for_server(port)
         return stop
 
     async def test_http_discovery_and_invocation(self) -> None:

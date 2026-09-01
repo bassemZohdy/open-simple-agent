@@ -1983,7 +1983,9 @@ name = "osa-generic-agent"
 version = "0.1.0"
 source = { editable = "generic-agent" }
 dependencies = [
+    { name = "httpx" },
     { name = "pydantic" },
+    { name = "pyjwt", extra = ["crypto"] },
     { name = "pyyaml" },
 ]
 
@@ -1995,7 +1997,9 @@ a2a = [
 [package.metadata]
 requires-dist = [
     { name = "a2a-sdk", marker = "extra == 'a2a'", specifier = ">=1.0,<2" },
+    { name = "httpx", specifier = ">=0.28,<1" },
     { name = "pydantic", specifier = ">=2.9" },
+    { name = "pyjwt", extras = ["crypto"], specifier = ">=2.9,<3" },
     { name = "pyyaml", specifier = ">=6.0" },
 ]
 provides-extras = ["a2a"]

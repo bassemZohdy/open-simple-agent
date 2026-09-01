@@ -105,7 +105,7 @@ tools:
 | `spec.session.persistence` | boolean | false | Stored; persistent session providers pending (P1) |
 | `spec.session.ttl_seconds` | integer or null | null | Must be > 0 when set; expired sessions are deleted on access |
 | `spec.session.max_history_messages` | integer | 20 | Bounds the per-session conversation history |
-| `spec.a2a.enabled` | boolean | false | Stored; A2A is not implemented |
+| `spec.a2a.enabled` | boolean | false | Enables the runtime Agent Card and JSON-RPC A2A routes when the optional A2A extra is installed |
 | `spec.runtime.timeout_seconds` | integer or null | null | Must be > 0 when set; the invocation is cancelled with `invocation_timeout` when exceeded |
 | `spec.runtime.max_iterations` | integer or null | null | Must be >= 1 when set; caps ADK function-call rounds (default 3), fails with `iteration_limit_exceeded` |
 
@@ -141,9 +141,9 @@ Timeouts, TTLs, limits, and iterations carry positive/range validation
 `max_entries >= 1`, model `temperature` in 0..2, `top_p` in 0..1, token
 limits > 0, MCP connection options likewise).
 
-## Environment overrides
+## Agent-definition environment overrides
 
-Only these environment variables are recognized:
+These environment variables override fields in an agent definition:
 
 | Variable | Target field | Parsing |
 |---|---|---|
@@ -163,6 +163,40 @@ outright: `model: default` plus `OSA_MODEL_REF=other` resolves to
 
 If an intermediate YAML value is some other non-mapping, the override is
 skipped and schema validation reports the underlying problem.
+
+## HTTP authentication
+
+Control Plane and runtime HTTP applications share
+`osa.generic_agent.auth`. Authentication is disabled by default for local
+development. Set `OSA_AUTH_MODE=required` in a deployed service to require a
+signed JWT Bearer token on every endpoint except liveness, readiness, and
+OpenAPI discovery. `optional` validates a token when one is supplied but
+permits anonymous requests. Required mode fails configuration if issuer,
+audience, or JWKS URL is missing.
+
+OSA validates the JWT locally against the configured JWKS document. The
+supported signing algorithms are RS256/384/512 and ES256/384/512. The token
+must contain `exp`, `iss`, and `sub`, and its issuer/audience must match the
+configured values. `OSA_AUTH_REQUIRED_SCOPES` is a space-separated list; a
+missing scope returns 403. JWKS is cached and refreshed when an unknown key ID
+is encountered.
+
+| Variable | Meaning | Default |
+|---|---|---:|
+| `OSA_AUTH_MODE` | `disabled`, `optional`, or `required` | `disabled` |
+| `OSA_AUTH_ISSUER` | Expected JWT `iss` and OIDC issuer URL | unset |
+| `OSA_AUTH_AUDIENCE` | Expected JWT `aud` value | unset |
+| `OSA_AUTH_JWKS_URL` | HTTP JSON Web Key Set URL | unset |
+| `OSA_AUTH_REQUIRED_SCOPES` | Required scopes separated by spaces | empty |
+| `OSA_AUTH_CLOCK_SKEW_SECONDS` | JWT clock leeway, 0..300 seconds | `30` |
+| `OSA_AUTH_JWKS_TIMEOUT_SECONDS` | JWKS request timeout, >0 and <=30 seconds | `2.0` |
+| `OSA_AUTH_JWKS_CACHE_SECONDS` | JWKS cache lifetime, >0 and <=86400 seconds | `300` |
+
+The current authorization behavior is intentionally narrow: the validated
+token subject is the runtime caller identity when `user_id` is omitted, and a
+different supplied `user_id` is rejected. Role/tenant/resource policies, audit
+events, API-key and mTLS adapters, and A2A security-scheme enforcement remain
+P2.2 work. Token material is never logged or retained after validation.
 
 ## Secret references
 

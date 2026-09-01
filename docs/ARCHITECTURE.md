@@ -184,7 +184,17 @@ arbitrary-UID-friendly layout, a health check, and an externally mounted
 bundle; CI builds it and runs a container smoke test (ready → invoke →
 SIGTERM).
 
-Both APIs are unauthenticated (P2.2).
+Both APIs install the shared authentication boundary from
+`osa.generic_agent.auth`. Authentication is disabled by default for local
+development; `optional` accepts anonymous requests but validates a supplied
+Bearer token, and `required` protects every non-public endpoint. Health and
+OpenAPI discovery paths remain public. The current implementation validates
+RS256/384/512 and ES256/384/512 JWTs against a configured JWKS URL, issuer, and
+audience, enforces configured scopes, and returns the stable 401/403 error
+envelope. On runtime invocation, an omitted `user_id` is derived from the
+validated token subject and a supplied different value is rejected. Full
+roles, tenant claims, resource policy, audit events, and A2A security-scheme
+enforcement remain open in P2.2.
 
 ## Deployment
 
@@ -216,11 +226,13 @@ records distinct from managed agents: registration fetches and validates the
 remote Agent Card, refresh re-checks health, and invocation goes through the
 A2A client with bounded timeouts and `a2a_remote_failed` error mapping.
 External records are structurally barred from deployment. A2A security
-schemes are configuration now; enforcement is P2.2.
+schemes are configuration now; enforcement for inbound A2A and outbound
+remote-agent credentials remains P2.2 work.
 
 ## Tests and CI
 
-The current baseline is ~320 tests. CI runs:
+The current baseline is 424 collected tests: 404 pass locally and 20
+PostgreSQL tests are skipped when `OSA_TEST_DATABASE_URL` is unset. CI runs:
 
 - `ruff format --check .`;
 - `ruff check .`;
@@ -232,11 +244,11 @@ The current baseline is ~320 tests. CI runs:
   exit.
 
 Tests use the fake provider, scripted ADK models, in-memory services, a
-deterministic stdio MCP server subprocess, and a localhost Streamable HTTP
-MCP server — no external network. PostgreSQL memory and Control Plane
-persistence tests run against a real PostgreSQL 16 service in CI
-(`OSA_TEST_DATABASE_URL`) and skip locally when unset. There is no
-live-model, Kubernetes, A2A, authentication, or multi-replica deployment
+deterministic stdio MCP server subprocess, localhost Streamable HTTP and A2A
+servers, and generated JWT/JWKS material — no external network. PostgreSQL
+memory and Control Plane persistence tests run against a real PostgreSQL 16
+service in CI (`OSA_TEST_DATABASE_URL`) and skip locally when unset. There is
+no live-model, Kubernetes, live-identity-provider, or multi-replica deployment
 test yet. There is no coverage threshold.
 
 ## Dependency risks

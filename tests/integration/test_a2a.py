@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import socket
 import threading
+import time
 
 import pytest
 import uvicorn
@@ -41,6 +42,16 @@ def _free_port() -> int:
     with socket.socket() as sock:
         sock.bind(("127.0.0.1", 0))
         return int(sock.getsockname()[1])
+
+
+def _wait_for_server(port: int) -> None:
+    for _ in range(100):
+        try:
+            with socket.create_connection(("127.0.0.1", port), timeout=0.1):
+                return
+        except OSError:
+            time.sleep(0.01)
+    raise RuntimeError(f"localhost server on port {port} did not start")
 
 
 def _catalog() -> ModelCatalog:
@@ -107,6 +118,7 @@ class TestA2aServer:
         config = uvicorn.Config(app, host="127.0.0.1", port=port, log_level="error")
         server = uvicorn.Server(config)
         threading.Thread(target=server.run, daemon=True).start()
+        _wait_for_server(port)
         return port
 
     async def test_card_served_at_well_known_path(self) -> None:

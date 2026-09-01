@@ -10,9 +10,11 @@ The first runtime targets [Google ADK](https://google.github.io/adk-docs/).
 > **Development status:** OSA is an early-stage framework. The domain model,
 > deployment bundles, in-memory catalogs, control-plane API, a runnable
 > real-model ADK runtime (LiteLLM adapter, native function calling, session
-> isolation), the `osa-runtime` service CLI, a production-oriented container
-> image, and deterministic tests are implemented. MCP runtime, persistent
-> storage, A2A, authentication, and the UI are not implemented yet.
+> isolation), MCP runtime, PostgreSQL persistence, A2A interoperability, the
+> `osa-runtime` service CLI, a production-oriented container image, and
+> deterministic tests are implemented. JWT bearer authentication is now
+> available as an externally configured foundation; role/tenant authorization,
+> observability, streaming, and the UI remain open.
 
 ## What works today
 
@@ -22,14 +24,14 @@ The first runtime targets [Google ADK](https://google.github.io/adk-docs/).
 | Models | Catalog, provider contract, LiteLLM production adapter (ADR-001), deterministic fake bridge | Live-model CI job pending |
 | Native tools | Catalog, declared parameter schemas, ADK-native function calling, timeout enforcement | Built-in implementations only (`calculator`); custom toolsets need code |
 | MCP | Runtime client (stdio + Streamable HTTP), lazy pooled connections, filtered namespaced tools bridged to ADK, bounded results | Resources/prompts exposure and SSE pending |
-| Skills | Catalog, search, runtime metadata resolution | No A2A Agent Card mapping |
+| Skills | Catalog, search, runtime metadata resolution, A2A Agent Card mapping | Skill policy enforcement pending |
 | Sessions | `SessionProvider` contract, ownership (agent/user/tenant), TTL, bounded history fed back to the model | In-memory only; not replica-safe |
 | Memory | Policy catalog resolution (authoritative scope/limits/retention), scope-id isolation (user/agent/tenant/application), enforcement after every write, explicit writes, PostgreSQL persistence (ADR-003) | Extraction pipeline (auto-extract) reserved; vector search deferred |
 | ADK runtime | Invocation through the ADK `Runner`; timeouts, iteration limits, stable error types; A2A Agent Card + JSON-RPC server for A2A-enabled agents (ADR-005) | Streaming pending |
-| Control Plane | Agent CRUD, lifecycle transitions, immutable versions, optimistic concurrency, validated contracts; resource CRUD/list/search APIs with reference checks and bundle import/export; deployment APIs (deploy/status/stop/restart/logs/rollback); external A2A agent registry with card validation and health; in-memory default or PostgreSQL repositories via `OSA_CONTROL_PLANE_DATABASE_URL` (ADR-004), Alembic schema (`osa-cp-migrate`) | Authentication pending (P2.2) |
+| Control Plane | Agent CRUD, lifecycle transitions, immutable versions, optimistic concurrency, validated contracts; resource CRUD/list/search APIs with reference checks and bundle import/export; deployment APIs (deploy/status/stop/restart/logs/rollback); external A2A agent registry with card validation and health; in-memory default or PostgreSQL repositories via `OSA_CONTROL_PLANE_DATABASE_URL` (ADR-004), Alembic schema (`osa-cp-migrate`); shared JWT bearer authentication | Role/tenant/policy authorization and audit events pending (P2.2) |
 | Deployment | Local provider with bounded logs, health probing, and startup-failure capture; deploy/status/stop/restart/logs/rollback APIs through the Control Plane with persisted records | Kubernetes provider pending |
-| Runtime API | Invoke, capabilities, liveness, readiness; `osa-runtime` CLI with bundle bootstrap | Streaming and A2A endpoints pending |
-| CI | Format, lint, strict mypy, ~320 automated tests, container build + smoke test | No coverage gate, security scan, or release automation |
+| Runtime API | Invoke, capabilities, liveness, readiness, optional A2A Agent Card/JSON-RPC, and shared JWT bearer authentication; `osa-runtime` CLI with bundle bootstrap | Streaming and A2A security-scheme enforcement pending |
+| CI | Format, lint, strict mypy, 424 collected tests (404 local plus 20 PostgreSQL tests in CI), container build + smoke test | No coverage gate, security scan, or release automation |
 
 ## Architecture
 
@@ -215,7 +217,10 @@ uv run uvicorn osa.control_plane.backend.api:app --reload
 
 Both APIs use the stable error envelope `{"error": {"code", "message"}}` and
 enforce session ownership, lifecycle transitions, and optimistic concurrency
-where applicable. See [API reference](docs/API.md) for the exact endpoints.
+where applicable. Authentication is disabled by default for development; set
+`OSA_AUTH_MODE=required` with an issuer, audience, and JWKS URL to require
+signed JWT bearer tokens on non-health endpoints. See the
+[API reference](docs/API.md) for the exact endpoints and auth contract.
 
 ## Repository structure
 
@@ -263,8 +268,9 @@ The P0 "runnable agent" gate is implemented: external bundle loading, secret
 resolution, live-model invocation through the ADK Runner with native function
 calling, isolated session continuity, and a CLI/container service path — the
 same acceptance test passes locally and from the built container. Remaining
-work is tracked in [TODO.md](TODO.md) (persistence, MCP runtime, A2A,
-authentication, observability).
+work is tracked in [TODO.md](TODO.md): Kubernetes/OpenShift deployment,
+authorization policy, observability, streaming/replica behavior, UI, and
+release automation.
 
 ## License
 
