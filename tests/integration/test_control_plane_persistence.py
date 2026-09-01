@@ -46,6 +46,7 @@ async def engine(dsn: str) -> Any:
     async with engine.begin() as connection:
         await connection.execute(text("DELETE FROM osa_agents"))
         await connection.execute(text("DELETE FROM osa_resource_definitions"))
+        await connection.execute(text("DELETE FROM osa_audit_events"))
     await engine.dispose()
 
 
@@ -131,6 +132,28 @@ class TestMigrationsAndRestartSurvival:
         await repo.add_version(created.agent_id, AgentVersion(version="1.0.0"))
         with pytest.raises(DuplicateVersionError, match="1.0.0"):
             await repo.add_version(created.agent_id, AgentVersion(version="1.0.0"))
+
+    async def test_audit_events_survive_restart(self, engine: Any, dsn: str) -> None:
+        from osa.control_plane.backend.db import create_db_engine
+        from osa.control_plane.backend.repositories import AuditEvent, PostgresAuditEventRepository
+
+        first = PostgresAuditEventRepository(engine)
+        await first.append(
+            AuditEvent(event_id="audit-survivor", actor="user-1", action="agent.create", target="agent-1")
+        )
+
+        fresh_engine = create_db_engine(dsn)
+        try:
+            restarted = PostgresAuditEventRepository(fresh_engine)
+            events = await restarted.list_events()
+            assert [event.event_id for event in events] == ["audit-survivor"]
+            assert events[0].actor == "user-1"
+        finally:
+            from sqlalchemy import text
+
+            async with fresh_engine.begin() as connection:
+                await connection.execute(text("DELETE FROM osa_audit_events WHERE event_id = 'audit-survivor'"))
+            await fresh_engine.dispose()
 
 
 class TestConcurrencyAndTransitions:

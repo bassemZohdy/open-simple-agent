@@ -10,7 +10,7 @@ documentation, and appropriate failure/security behavior are complete.
 
 ## Current baseline
 
-- 434 tests are collected; 414 pass locally and 20 PostgreSQL integration tests
+- 437 tests are collected; 416 pass locally and 21 PostgreSQL integration tests
   skip when `OSA_TEST_DATABASE_URL` is unset. Strict mypy, Ruff format, and
   Ruff lint pass with no project-controlled warnings.
 - Latest GitHub Actions run on `main` is green, plus a container job that
@@ -24,7 +24,7 @@ policy-enforced scope/limits/retention (ADR-003), and PostgreSQL Control
 Plane persistence with Alembic migrations (ADR-004), A2A interoperability
 (ADR-005), and a shared JWT bearer-authentication foundation with opt-in
 role/permission route enforcement and runtime tenant binding exist.
-- The Kubernetes/OpenShift deployment provider, resource policy, audit events,
+- The Kubernetes/OpenShift deployment provider, resource policy,
   observability, streaming/replica
 behavior, and UI do not exist.
 
@@ -329,10 +329,11 @@ checks. `OSA_AUTH_MODE=required` protects non-public routes. With
 `OSA_AUTH_ENFORCE_PERMISSIONS=true`, common role/permission claims and scopes
 enforce stable route permissions; runtime invocations bind omitted `user_id`
 and `tenant_id` to token claims and reject spoofing. Control Plane agents,
-deployments, and resources now use the same tenant boundary. This remains a
-bounded authorization slice: OIDC token introspection/live-provider coverage,
-policy evaluation, A2A security schemes, credential adapters, and audit events
-are still open.
+deployments, and resources now use the same tenant boundary. Append-only,
+tenant-filtered audit events now cover every successful management mutation
+and privileged external-agent invocation. This remains a bounded
+authorization slice: OIDC token introspection/live-provider coverage, policy
+evaluation, A2A security schemes, and credential adapters are still open.
 
 - [x] Resolve standard OIDC discovery metadata to a validated `jwks_uri` when
   no explicit JWKS URL is configured; support an explicit discovery URL and
@@ -357,7 +358,12 @@ are still open.
   isolation checks.
 - [ ] Add tool/MCP/skill/model/A2A allow/deny policy independent of prompts.
 - [ ] Add API key/OAuth/mTLS credential adapters for MCP/A2A as required.
-- [ ] Add audit events for every management mutation and privileged invocation.
+- [x] Add append-only, tenant-filtered audit events for every successful
+  Control Plane management mutation and external-agent invocation; expose
+  the redaction-safe `/audit-events` read API and persist PostgreSQL events in
+  migration 0006.
+- [ ] Extend audit coverage to runtime/A2A invocations and failed or denied
+  privileged requests without capturing prompts, credentials, or payloads.
 
 **Acceptance:** no production management or invocation endpoint is anonymous;
 authorization and secret-redaction tests cover deny paths.
@@ -480,7 +486,7 @@ policy are stable.*
 |---|---|---|
 | RV-016 | Control Plane deployment routes missing (refs are validated at activation) | P1.5 |
 | RV-017 | Resource and deployment implementations are not exposed by the API | P1.2, P1.5 |
-| RV-019 | JWT bearer authentication and opt-in role/permission route enforcement are available but disabled by default; A2A credential enforcement, policy authorization, and audit events remain open | P2.2 |
+| RV-019 | JWT bearer authentication and opt-in role/permission route enforcement are available but disabled by default; A2A credential enforcement, policy authorization, and runtime/denied-request audit coverage remain open | P2.2 |
 | RV-023 | Current tests have no live-provider, Kubernetes, live-identity-provider, multi-replica, or coverage-threshold gate | P2.2, P2.4, P3.3 |
 | RV-024 | Runtime binds `tenant_id`/`tid` claims to invocation metadata; Control Plane agents, deployments, and resources are tenant-owned, while model/tool policy still does not use tenant metadata | P2.2 |
 

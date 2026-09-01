@@ -210,8 +210,10 @@ PostgreSQL schema uses migration 0003. Deployments inherit agent tenant
 ownership and migration 0004 persists it. Resource definitions use isolated
 tenant namespaces, allow equal names across tenants, and migration 0005 stores
 the owner; activation and deployment bundle export resolve the matching
-namespace. Resource policy, audit events, and A2A security-scheme enforcement
-remain open in P2.2.
+namespace. Successful management mutations and privileged external-agent
+invocations append tenant-filtered, redaction-safe audit events; PostgreSQL
+persists them with migration 0006. Resource policy and A2A security-scheme
+enforcement remain open in P2.2.
 
 ## Deployment
 
@@ -248,7 +250,7 @@ remote-agent credentials remains P2.2 work.
 
 ## Tests and CI
 
-The current baseline is 434 collected tests: 414 pass locally and 20
+The current baseline is 437 collected tests: 416 pass locally and 21
 PostgreSQL tests are skipped when `OSA_TEST_DATABASE_URL` is unset. CI runs:
 
 - `ruff format --check .`;

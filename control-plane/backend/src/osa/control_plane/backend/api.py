@@ -27,12 +27,15 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from osa.control_plane.backend.agent_catalog import AgentCatalogError, AgentRecord, AgentRecordStatus
+from osa.control_plane.backend.audit import record_audit_event
 from osa.control_plane.backend.repositories import (
     AgentRepository,
+    AuditEventRepository,
     ConcurrentUpdateError,
     DuplicateAgentError,
     DuplicateVersionError,
     InMemoryAgentRepository,
+    InMemoryAuditEventRepository,
     InMemoryResourceDefinitionRepository,
     InvalidTransitionError,
     ResourceDefinitionRepository,
@@ -129,6 +132,18 @@ class AgentListResponse(BaseModel):
     total: int
     limit: int
     offset: int
+
+
+class AuditEventResponse(BaseModel):
+    """Redaction-safe audit event returned by the Control Plane."""
+
+    event_id: str
+    actor: str
+    action: str
+    target: str
+    occurred_at: str
+    tenant_id: str | None
+    detail: dict[str, Any]
 
 
 _SORT_FIELDS = {
@@ -276,6 +291,7 @@ def configure_control_plane_app(
     resource_catalogs: ResourceCatalogs,
     template_catalog: TemplateCatalog,
     resource_repository: ResourceDefinitionRepository | None = None,
+    audit_repository: AuditEventRepository | None = None,
     deployment_provider: Any = None,
     auth_settings: AuthSettings | None = None,
     authenticator: JwtAuthenticator | None = None,
@@ -301,6 +317,7 @@ def configure_control_plane_app(
     app.state.resource_catalogs = resource_catalogs
     app.state.template_catalog = template_catalog
     app.state.resource_repository = resource_repository
+    app.state.audit_repository = audit_repository if audit_repository is not None else InMemoryAuditEventRepository()
     app.state.external_agent_catalog = ExternalAgentCatalog()
     _install_authentication(app, auth_settings or AuthSettings.from_env(), authenticator)
     app.state.deployment_service = DeploymentService(
@@ -392,6 +409,12 @@ def configure_control_plane_app(
         if definition is not None:
             _sync_derived_fields(record)
         await agent_repository.create(record)
+        await record_audit_event(
+            http_request,
+            action="agent.create",
+            target=record.agent_id,
+            detail={"name": record.name, "status": record.status.value},
+        )
 
         return _record_to_response(record)
 
@@ -480,6 +503,12 @@ def configure_control_plane_app(
 
         updated = await agent_repository.update(agent_id, expected_version=request.expected_version, **updates)
         _sync_derived_fields(updated)
+        await record_audit_event(
+            http_request,
+            action="agent.update",
+            target=agent_id,
+            detail={"fields": sorted(updates)},
+        )
         return _record_to_response(updated)
 
     @app.post("/agents/{agent_id}/versions", response_model=AgentResponse, status_code=201)
@@ -498,6 +527,12 @@ def configure_control_plane_app(
         await agent_repository.add_version(
             agent_id,
             AgentVersion(version=request.version, change_summary=request.change_summary),
+        )
+        await record_audit_event(
+            http_request,
+            action="agent.version.create",
+            target=agent_id,
+            detail={"version": request.version},
         )
         refreshed = await agent_repository.get(agent_id)
         assert refreshed is not None
@@ -519,6 +554,7 @@ def configure_control_plane_app(
                 detail="Cannot activate agent; missing resources: " + ", ".join(missing),
             )
         updated = await agent_repository.transition(agent_id, AgentRecordStatus.ACTIVE)
+        await record_audit_event(http_request, action="agent.activate", target=agent_id)
         return _record_to_response(updated)
 
     @app.post("/agents/{agent_id}/disable", response_model=AgentResponse)
@@ -529,6 +565,7 @@ def configure_control_plane_app(
             raise HTTPException(status_code=404, detail=f"Agent not found: {agent_id}")
         _owned_record(record, http_request)
         updated = await agent_repository.transition(agent_id, AgentRecordStatus.DISABLED)
+        await record_audit_event(http_request, action="agent.disable", target=agent_id)
         return _record_to_response(updated)
 
     @app.post("/agents/{agent_id}/archive", response_model=AgentResponse)
@@ -539,6 +576,7 @@ def configure_control_plane_app(
             raise HTTPException(status_code=404, detail=f"Agent not found: {agent_id}")
         _owned_record(record, http_request)
         updated = await agent_repository.transition(agent_id, AgentRecordStatus.ARCHIVED)
+        await record_audit_event(http_request, action="agent.archive", target=agent_id)
         return _record_to_response(updated)
 
     @app.delete("/agents/{agent_id}", status_code=204)
@@ -550,6 +588,28 @@ def configure_control_plane_app(
         _owned_record(record, http_request)
         if not await agent_repository.delete(agent_id):
             raise HTTPException(status_code=404, detail=f"Agent not found: {agent_id}")
+        await record_audit_event(http_request, action="agent.delete", target=agent_id)
+
+    @app.get("/audit-events", response_model=list[AuditEventResponse])
+    async def list_audit_events(
+        http_request: Request,
+        limit: int = Query(default=100, ge=1, le=1000),
+    ) -> list[AuditEventResponse]:
+        """List recent audit events within the caller's tenant scope."""
+        repository: AuditEventRepository = app.state.audit_repository
+        events = await repository.list_events(limit=limit, tenant_id=_request_tenant(http_request))
+        return [
+            AuditEventResponse(
+                event_id=event.event_id,
+                actor=event.actor,
+                action=event.action,
+                target=event.target,
+                occurred_at=event.occurred_at.isoformat(),
+                tenant_id=event.tenant_id,
+                detail=event.detail,
+            )
+            for event in events
+        ]
 
     configure_resource_routes(
         app,

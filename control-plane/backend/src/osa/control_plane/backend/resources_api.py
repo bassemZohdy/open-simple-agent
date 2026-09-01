@@ -22,6 +22,7 @@ from typing import TYPE_CHECKING, Any
 from fastapi import FastAPI, HTTPException, Query, Request
 from pydantic import BaseModel, ConfigDict, Field
 
+from osa.control_plane.backend.audit import record_audit_event
 from osa.generic_agent import (
     AuthenticatedPrincipal,
     InvalidBundleError,
@@ -276,6 +277,12 @@ def configure_resource_routes(
             await resource_repository.upsert(kind, name, serialized, tenant_id=tenant_id)
             imported.setdefault(kind, []).append(name)
             envelopes.append({"apiVersion": API_VERSION, "kind": kind, "spec": serialized})
+        await record_audit_event(
+            http_request,
+            action="resource.import",
+            target="resources",
+            detail={"counts": {kind: len(names) for kind, names in imported.items()}},
+        )
         return ResourceBundleResponse(resources=envelopes, imported=imported)
 
     @app.get("/resources/export", response_model=ResourceBundleResponse)
@@ -320,6 +327,7 @@ def configure_resource_routes(
         binding.register(catalogs, definition)
         serialized = _serialize(definition)
         await resource_repository.upsert(kind, name, serialized, tenant_id=tenant_id)
+        await record_audit_event(http_request, action="resource.create", target=f"{binding.kind}/{name}")
         return {"apiVersion": API_VERSION, "kind": kind, "spec": serialized}
 
     @app.get("/resources/{kind}/{name}", response_model=dict[str, Any])
@@ -351,6 +359,7 @@ def configure_resource_routes(
         binding.register(catalogs, definition)
         serialized = _serialize(definition)
         await resource_repository.upsert(kind, name, serialized, tenant_id=tenant_id)
+        await record_audit_event(http_request, action="resource.replace", target=f"{binding.kind}/{name}")
         return {"apiVersion": API_VERSION, "kind": kind, "spec": serialized}
 
     @app.delete("/resources/{kind}/{name}", status_code=204)
@@ -374,6 +383,7 @@ def configure_resource_routes(
         if not binding.delete(catalogs, name):
             raise HTTPException(status_code=404, detail=f"{binding.kind} not found: {name}")
         await resource_repository.delete(kind, name, tenant_id=tenant_id)
+        await record_audit_event(http_request, action="resource.delete", target=f"{binding.kind}/{name}")
 
     @app.get("/templates", response_model=list[TemplateResponse])
     async def list_templates() -> list[TemplateResponse]:

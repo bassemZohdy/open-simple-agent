@@ -201,7 +201,7 @@ is encountered.
 When enabled, `OSA_AUTH_ENFORCE_PERMISSIONS` maps known routes to stable
 permissions: `agent:invoke`, `agent:read`, `agent:write`, `resource:read`,
 `resource:write`, `deployment:read`, `deployment:write`,
-`external-agent:read`, and `external-agent:write`. The validator accepts
+`external-agent:read`, `external-agent:write`, and `audit:read`. The validator accepts
 roles from `roles`/`role` and Keycloak `realm_access.roles`, explicit
 permissions from `permissions`/`permission`, and configured scopes. Built-in
 role mappings are: `administrator`/`admin` wildcard; `operator` all
@@ -218,7 +218,7 @@ records inherit agent tenant ownership and are protected by the same boundary.
 Resource definitions use the same tenant boundary, with equal names allowed in
 different tenants and tenant-scoped catalog resolution during activation and
 deployment bundle export. PostgreSQL migration 0005 stores resource ownership.
-Resource policy, audit events, API-key and mTLS adapters, and A2A
+Resource policy, API-key and mTLS adapters, and A2A
 security-scheme enforcement remain open.
 Token material is never logged or retained after validation.
 

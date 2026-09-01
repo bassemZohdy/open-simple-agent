@@ -47,6 +47,7 @@ __all__ = [
     "InMemoryAuditEventRepository",
     "InMemoryDeploymentRecordRepository",
     "InMemoryResourceDefinitionRepository",
+    "PostgresAuditEventRepository",
     "InvalidTransitionError",
     "PostgresAgentRepository",
     "PostgresDeploymentRecordRepository",
@@ -808,6 +809,7 @@ class AuditEvent:
     target: str
     occurred_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     detail: dict[str, Any] = field(default_factory=dict)
+    tenant_id: str | None = None
 
 
 class AuditEventRepository(ABC):
@@ -817,7 +819,7 @@ class AuditEventRepository(ABC):
     async def append(self, event: AuditEvent) -> None: ...
 
     @abstractmethod
-    async def list_events(self, limit: int = 100) -> list[AuditEvent]: ...
+    async def list_events(self, limit: int = 100, *, tenant_id: str | None = None) -> list[AuditEvent]: ...
 
 
 class InMemoryAuditEventRepository(AuditEventRepository):
@@ -827,5 +829,57 @@ class InMemoryAuditEventRepository(AuditEventRepository):
     async def append(self, event: AuditEvent) -> None:
         self._events.append(event)
 
-    async def list_events(self, limit: int = 100) -> list[AuditEvent]:
-        return list(self._events[-limit:])
+    async def list_events(self, limit: int = 100, *, tenant_id: str | None = None) -> list[AuditEvent]:
+        events = [event for event in self._events if event.tenant_id == tenant_id]
+        return list(events[-limit:])
+
+
+class PostgresAuditEventRepository(AuditEventRepository):
+    """PostgreSQL persistence for append-only audit events."""
+
+    def __init__(self, engine: Any) -> None:
+        self._engine = engine
+
+    async def append(self, event: AuditEvent) -> None:
+        from sqlalchemy import insert
+
+        from osa.control_plane.backend.tables import audit_events_table
+
+        async with self._engine.begin() as connection:
+            await connection.execute(
+                insert(audit_events_table).values(
+                    event_id=event.event_id,
+                    tenant_id=event.tenant_id,
+                    actor=event.actor,
+                    action=event.action,
+                    target=event.target,
+                    occurred_at=event.occurred_at,
+                    detail=event.detail,
+                )
+            )
+
+    async def list_events(self, limit: int = 100, *, tenant_id: str | None = None) -> list[AuditEvent]:
+        from sqlalchemy import select
+
+        from osa.control_plane.backend.tables import audit_events_table
+
+        async with self._engine.begin() as connection:
+            result = await connection.execute(
+                select(audit_events_table)
+                .where(audit_events_table.c.tenant_id == tenant_id)
+                .order_by(audit_events_table.c.occurred_at.asc(), audit_events_table.c.event_id.asc())
+                .limit(limit)
+            )
+            rows = result.fetchall()
+        return [
+            AuditEvent(
+                event_id=row.event_id,
+                tenant_id=row.tenant_id,
+                actor=row.actor,
+                action=row.action,
+                target=row.target,
+                occurred_at=row.occurred_at,
+                detail=dict(row.detail or {}),
+            )
+            for row in rows
+        ]

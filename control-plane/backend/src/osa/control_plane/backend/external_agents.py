@@ -13,9 +13,10 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Request
 from pydantic import BaseModel, ConfigDict, Field
 
+from osa.control_plane.backend.audit import record_audit_event
 from osa.generic_agent.a2a_client import RemoteA2aError, resolve_agent_card
 
 AGENT_TYPE_EXTERNAL = "external"
@@ -109,6 +110,7 @@ def configure_external_agent_routes(app: FastAPI) -> FastAPI:
 
     @app.post("/external-agents", response_model=ExternalAgentResponse, status_code=201)
     async def register_external_agent(
+        http_request: Request,
         request: RegisterExternalAgentRequest,
         timeout_seconds: float = Query(default=10.0, gt=0, le=60),
     ) -> ExternalAgentResponse:
@@ -131,6 +133,12 @@ def configure_external_agent_routes(app: FastAPI) -> FastAPI:
             catalog.register(record)
         except ValueError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
+        await record_audit_event(
+            http_request,
+            action="external_agent.register",
+            target=record.external_id,
+            detail={"name": record.name},
+        )
         return _response(record)
 
     @app.get("/external-agents", response_model=list[ExternalAgentResponse])
@@ -155,6 +163,7 @@ def configure_external_agent_routes(app: FastAPI) -> FastAPI:
 
     @app.post("/external-agents/{external_id}/refresh", response_model=ExternalAgentResponse)
     async def refresh_external_agent(
+        http_request: Request,
         external_id: str,
         timeout_seconds: float = Query(default=10.0, gt=0, le=60),
     ) -> ExternalAgentResponse:
@@ -171,22 +180,36 @@ def configure_external_agent_routes(app: FastAPI) -> FastAPI:
             record.status = "unreachable"
             record.detail = str(exc)
             record.last_checked_at = datetime.now(UTC)
+            await record_audit_event(
+                http_request,
+                action="external_agent.refresh",
+                target=record.external_id,
+                detail={"status": record.status},
+            )
             return _response(record)
         record.card = card
         record.status = "healthy"
         record.detail = ""
         record.last_checked_at = datetime.now(UTC)
+        await record_audit_event(
+            http_request,
+            action="external_agent.refresh",
+            target=record.external_id,
+            detail={"status": record.status},
+        )
         return _response(record)
 
     @app.delete("/external-agents/{external_id}", status_code=204)
-    async def delete_external_agent(external_id: str) -> None:
+    async def delete_external_agent(http_request: Request, external_id: str) -> None:
         """Delete an external agent record."""
         catalog: ExternalAgentCatalog = app.state.external_agent_catalog
         if not catalog.delete(external_id):
             raise HTTPException(status_code=404, detail=f"External agent not found: {external_id}")
+        await record_audit_event(http_request, action="external_agent.delete", target=external_id)
 
     @app.post("/external-agents/{external_id}/invoke", response_model=dict[str, str])
     async def invoke_external_agent(
+        http_request: Request,
         external_id: str,
         message: str = Query(description="Text message to send"),
         timeout_seconds: float = Query(default=30.0, gt=0, le=300),
@@ -204,6 +227,7 @@ def configure_external_agent_routes(app: FastAPI) -> FastAPI:
             output = await asyncio.wait_for(invoke_remote_agent(record.url, message), timeout=timeout_seconds)
         except RemoteA2aError as exc:
             raise HTTPException(status_code=502, detail=str(exc)) from None
+        await record_audit_event(http_request, action="external_agent.invoke", target=external_id)
         return {"output": output}
 
     return app

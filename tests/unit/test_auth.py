@@ -280,6 +280,7 @@ def test_authorization_policy_expands_roles_and_explicit_permissions() -> None:
     )
 
     policy.require(viewer, AuthPermission.AGENT_READ)
+    assert policy.permission_for_request("/audit-events", "GET") == AuthPermission.AUDIT_READ
     with pytest.raises(AuthorizationError):
         policy.require(viewer, AuthPermission.AGENT_WRITE)
     policy.require(custom, AuthPermission.AGENT_WRITE)

@@ -44,6 +44,7 @@ class AuthPermission(StrEnum):
     DEPLOYMENT_WRITE = "deployment:write"
     EXTERNAL_AGENT_READ = "external-agent:read"
     EXTERNAL_AGENT_WRITE = "external-agent:write"
+    AUDIT_READ = "audit:read"
 
 
 _ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
@@ -60,6 +61,7 @@ _ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
             AuthPermission.DEPLOYMENT_WRITE,
             AuthPermission.EXTERNAL_AGENT_READ,
             AuthPermission.EXTERNAL_AGENT_WRITE,
+            AuthPermission.AUDIT_READ,
         }
     ),
     "viewer": frozenset(
@@ -198,6 +200,8 @@ class AuthorizationPolicy:
                 if normalized_method == "GET"
                 else AuthPermission.EXTERNAL_AGENT_WRITE
             )
+        if path == "/audit-events" and normalized_method == "GET":
+            return AuthPermission.AUDIT_READ
         if path == "/agents" or path.startswith("/agents/"):
             return AuthPermission.AGENT_READ if normalized_method == "GET" else AuthPermission.AGENT_WRITE
         return None
