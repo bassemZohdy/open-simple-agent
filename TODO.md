@@ -23,7 +23,7 @@ policy-enforced scope/limits/retention (ADR-003), and PostgreSQL Control
 Plane persistence with Alembic migrations (ADR-004), A2A interoperability
 (ADR-005), and a shared JWT bearer-authentication foundation with opt-in
 role/permission route enforcement and runtime tenant binding exist.
-- The Kubernetes/OpenShift deployment provider, resource/deployment tenant
+- The Kubernetes/OpenShift deployment provider, resource tenant
 ownership, resource policy, audit events, observability, streaming/replica
 behavior, and UI do not exist.
 
@@ -342,8 +342,11 @@ audit events are still open.
 - [x] Enforce tenant ownership for Control Plane managed agent creation,
   listing, reads, updates, versions, lifecycle transitions, and deletion;
   persist the owner in PostgreSQL migration 0003.
-- [ ] Extend HTTP ownership/tenant boundaries to Control Plane resources and
-  deployments; retain the existing domain-level session/memory isolation checks.
+- [x] Extend tenant ownership to Control Plane deployment records and
+  operations; deployments inherit agent ownership and persist it in migration
+  0004.
+- [ ] Extend HTTP ownership/tenant boundaries to Control Plane resources;
+  retain the existing domain-level session/memory isolation checks.
 - [ ] Add tool/MCP/skill/model/A2A allow/deny policy independent of prompts.
 - [ ] Add API key/OAuth/mTLS credential adapters for MCP/A2A as required.
 - [ ] Add audit events for every management mutation and privileged invocation.
@@ -469,9 +472,9 @@ policy are stable.*
 |---|---|---|
 | RV-016 | Control Plane deployment routes missing (refs are validated at activation) | P1.5 |
 | RV-017 | Resource and deployment implementations are not exposed by the API | P1.2, P1.5 |
-| RV-019 | JWT bearer authentication and opt-in role/permission route enforcement are available but disabled by default; resource/deployment tenant authorization, A2A credential enforcement, and audit events remain open | P2.2 |
+| RV-019 | JWT bearer authentication and opt-in role/permission route enforcement are available but disabled by default; resource tenant authorization, A2A credential enforcement, and audit events remain open | P2.2 |
 | RV-023 | Current tests have no live-provider, Kubernetes, live-identity-provider, multi-replica, or coverage-threshold gate | P2.2, P2.4, P3.3 |
-| RV-024 | Runtime binds `tenant_id`/`tid` claims to invocation metadata and Control Plane agents are tenant-owned; resources, deployments, and model/tool policy still do not use tenant metadata | P2.2 |
+| RV-024 | Runtime binds `tenant_id`/`tid` claims to invocation metadata; Control Plane agents and deployments are tenant-owned, while resources and model/tool policy still do not use tenant metadata | P2.2 |
 
 Resolved on 2026-08-31 (documented here, then removed from the active table on
 the next backlog review): RV-018 (memory policy/limits/retention/persistence,
