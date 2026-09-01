@@ -88,3 +88,15 @@ resource_definitions_table = Table(
     Column("updated_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
     UniqueConstraint("tenant_id", "kind", "name", name="uq_osa_resource_definitions_tenant_kind_name"),
 )
+
+audit_events_table = Table(
+    "osa_audit_events",
+    METADATA,
+    Column("event_id", Text, primary_key=True),
+    Column("tenant_id", Text, nullable=True),
+    Column("actor", Text, nullable=False),
+    Column("action", Text, nullable=False),
+    Column("target", Text, nullable=False),
+    Column("occurred_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    Column("detail", JSON, nullable=False),
+)

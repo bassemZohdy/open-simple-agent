@@ -148,8 +148,19 @@ authenticated `tenant_id`/`tid` on creation; list and lifecycle/read routes
 return only the same tenant's records. Resource definitions use the same
 tenant scope, allow equal names in different tenants, and are resolved from
 tenant-scoped catalogs; PostgreSQL migration 0005 stores the owner. A2A
-security schemes, outbound API-key/OAuth/mTLS adapters, and audit events remain
-open in P2.2.
+security schemes and outbound API-key/OAuth/mTLS adapters remain open in P2.2.
+
+### Audit events
+
+`GET /audit-events?limit=` returns recent append-only management and external
+agent invocation events within the caller's tenant scope. The `audit:read`
+permission is granted to administrators and operators when permission
+enforcement is enabled. Event details contain only safe identifiers, action
+names, statuses, versions, and changed-field names; request payloads,
+definitions, prompts, credentials, and remote outputs are never recorded.
+The in-memory repository is the default; PostgreSQL persistence uses migration
+0006. Runtime invocation and failed/denied-request audit coverage remains open
+in P2.2.
 
 ### Resource and template APIs (P1.2)
 

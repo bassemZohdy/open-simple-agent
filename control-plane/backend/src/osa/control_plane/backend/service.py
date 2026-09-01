@@ -20,8 +20,10 @@ from osa.control_plane.backend.db import create_db_engine, database_url_from_env
 from osa.control_plane.backend.repositories import (
     AgentRepository,
     InMemoryAgentRepository,
+    InMemoryAuditEventRepository,
     InMemoryResourceDefinitionRepository,
     PostgresAgentRepository,
+    PostgresAuditEventRepository,
     PostgresResourceDefinitionRepository,
     ResourceDefinitionRepository,
 )
@@ -74,13 +76,16 @@ def create_control_plane_app(
     dsn = database_url if database_url is not None else database_url_from_env()
     engine: Any = None
     deployment_records: Any = None
+    audit_repository: Any
     if dsn:
         engine = create_db_engine(dsn)
         agents: AgentRepository = PostgresAgentRepository(engine)
         resources: ResourceDefinitionRepository = PostgresResourceDefinitionRepository(engine)
+        audit_repository = PostgresAuditEventRepository(engine)
     else:
         agents = agent_repository if agent_repository is not None else InMemoryAgentRepository()
         resources = resource_repository if resource_repository is not None else InMemoryResourceDefinitionRepository()
+        audit_repository = InMemoryAuditEventRepository()
 
     resource_catalogs = ResourceCatalogs()
 
@@ -102,6 +107,7 @@ def create_control_plane_app(
         resource_catalogs=resource_catalogs,
         template_catalog=create_default_template_catalog(),
         resource_repository=resources,
+        audit_repository=audit_repository,
     )
     if deployment_records is not None:
         from osa.control_plane.backend.deployment import LocalDeploymentProvider

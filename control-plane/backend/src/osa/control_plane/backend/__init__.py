@@ -29,6 +29,7 @@ from osa.control_plane.backend.repositories import (
     InMemoryDeploymentRecordRepository,
     InMemoryResourceDefinitionRepository,
     PostgresAgentRepository,
+    PostgresAuditEventRepository,
     PostgresResourceDefinitionRepository,
     ResourceDefinitionRepository,
 )
@@ -72,6 +73,7 @@ __all__ = [
     "RESEARCH_TEMPLATE",
     "LocalDeploymentProvider",
     "PostgresAgentRepository",
+    "PostgresAuditEventRepository",
     "PostgresResourceDefinitionRepository",
     "ResourceCatalogs",
     "ResourceDefinitionRepository",

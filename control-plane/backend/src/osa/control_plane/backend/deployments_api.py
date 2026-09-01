@@ -22,6 +22,7 @@ from typing import Any
 from fastapi import FastAPI, HTTPException, Query, Request
 from pydantic import BaseModel, ConfigDict
 
+from osa.control_plane.backend.audit import record_audit_event
 from osa.control_plane.backend.deployment_service import DeploymentError, DeploymentService
 from osa.generic_agent import AuthenticatedPrincipal
 
@@ -96,6 +97,12 @@ def configure_deployment_routes(app: FastAPI) -> FastAPI:
             raise HTTPException(status_code=404, detail=str(exc.args[0])) from exc
         except DeploymentError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
+        await record_audit_event(
+            http_request,
+            action="deployment.deploy",
+            target=record.deployment_id,
+            detail={"agent_id": record.agent_id, "version": record.version},
+        )
         return _response(record)
 
     @app.get("/agents/{agent_id}/deployments", response_model=list[DeploymentResponse])
@@ -115,6 +122,7 @@ def configure_deployment_routes(app: FastAPI) -> FastAPI:
             record = await service.status(deployment_id)
         except KeyError as exc:
             raise HTTPException(status_code=404, detail=str(exc.args[0])) from exc
+        await record_audit_event(http_request, action="deployment.stop", target=deployment_id)
         return _response(record)
 
     @app.post("/deployments/{deployment_id}/stop", response_model=DeploymentResponse)
@@ -126,6 +134,7 @@ def configure_deployment_routes(app: FastAPI) -> FastAPI:
             record = await service.stop(deployment_id)
         except KeyError as exc:
             raise HTTPException(status_code=404, detail=str(exc.args[0])) from exc
+        await record_audit_event(http_request, action="deployment.restart", target=deployment_id)
         return _response(record)
 
     @app.post("/deployments/{deployment_id}/restart", response_model=DeploymentResponse)
@@ -169,6 +178,12 @@ def configure_deployment_routes(app: FastAPI) -> FastAPI:
             raise HTTPException(status_code=404, detail=str(exc.args[0])) from exc
         except DeploymentError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
+        await record_audit_event(
+            http_request,
+            action="deployment.rollback",
+            target=deployment_id,
+            detail={"version": record.version},
+        )
         return _response(record)
 
     return app

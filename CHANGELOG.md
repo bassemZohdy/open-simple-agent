@@ -26,7 +26,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   - Non-public HTTP routes return stable 401/403 envelopes; runtime invocations derive omitted `user_id` from the validated subject and reject identity spoofing
   - Optional `OSA_AUTH_ENFORCE_PERMISSIONS` maps stable route permissions from roles, explicit permission claims, and scopes; built-in administrator/operator/viewer/agent/caller/user/service mappings are covered by tests
   - Runtime `tenant_id`/`tid` claims bind to invocation metadata, with injection for omitted metadata and rejection of mismatches or tenant spoofing
-  - Offline generated-key tests cover configuration, signature/claim failures, scope denial, role/permission extraction, Control Plane middleware, runtime middleware, and tenant binding; resource policy, A2A security schemes, credential adapters, and audit events remain open
+  - Offline generated-key tests cover configuration, signature/claim failures, scope denial, role/permission extraction, Control Plane middleware, runtime middleware, and tenant binding; resource policy, A2A security schemes, and credential adapters remain open
+
+### Added — P2.2: Audit events
+- Successful Control Plane agent, resource, deployment, external-agent, and privileged external-agent invocation operations now append redaction-safe, tenant-scoped audit events.
+- Added `GET /audit-events`, the `audit:read` permission, in-memory and PostgreSQL repositories, and migration 0006; event details exclude prompts, definitions, credentials, request payloads, and remote outputs.
 
 ### Added — P2.1: A2A and external agents
 - **A2A and external agents (ADR-005)**
