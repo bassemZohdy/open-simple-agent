@@ -142,8 +142,11 @@ permissions. Roles are read from `roles`/`role` or Keycloak
 (`agent:invoke` plus `resource:read`). Runtime invocations also bind
 `tenant_id`/`tid` to request metadata, injecting an omitted value and rejecting
 spoofed or mismatched values. This remains opt-in route authorization rather
-than full control-plane tenant/resource policy. A2A security schemes, outbound
-API-key/OAuth/mTLS adapters, and audit events remain open in P2.2.
+than full control-plane tenant/resource policy. Control Plane managed agents
+are assigned the authenticated `tenant_id`/`tid` on creation; list and
+lifecycle/read routes return only the same tenant's records. A2A security
+schemes, outbound API-key/OAuth/mTLS adapters, and audit events remain open in
+P2.2.
 
 ### Resource and template APIs (P1.2)
 
