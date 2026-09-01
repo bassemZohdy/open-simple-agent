@@ -445,14 +445,23 @@ policy are stable.*
 
 ## P3.3 Packaging, CI/CD, and release
 
-- [ ] Add separate runtime, Control Plane, and UI images.
+- [x] Add separate runtime and Control Plane images (`Dockerfile`,
+  `Dockerfile.control-plane`; the Control Plane image is built and
+  health-smoke-tested in CI). The UI image arrives with the Control Panel
+  (P3.1).
 - [x] Add container build and smoke test to CI (ready → invoke → SIGTERM).
-- [ ] Add unit, integration, protocol compatibility, database, and end-to-end
-  CI stages with appropriate gates.
+- [x] Add unit, integration, protocol compatibility, database, and end-to-end
+  CI stages with appropriate gates (test job runs the full suite with PG +
+  A2A extras/services and the coverage gate; container job builds and
+  smoke-tests both images end-to-end).
 - [ ] Add a live-provider acceptance job (opt-in secret; runs the P0.2
   acceptance test against one real model).
-- [ ] Add coverage reporting and a justified threshold.
-- [ ] Add dependency/license/security scans, SBOM, and image signing.
+- [x] Add coverage reporting and a justified threshold (CI test job runs
+  `--cov=osa --cov-fail-under=84`; the gate holds with the PG/A2A integration
+  suites active in that job).
+- [x] Add dependency/security scanning (CI `security` job: pip-audit over
+  the exported full lock on every push/PR).
+- [ ] Add license scanning, SBOM generation, and image signing.
 - [ ] Publish versioned images and packages with provenance.
 - [ ] Automate tags, changelog validation, GitHub releases, and rollback.
 
@@ -461,8 +470,13 @@ policy are stable.*
 - [x] Separate project definition from current implementation documentation.
 - [x] Add current architecture, configuration, and API references.
 - [x] Add a runnable smoke bundle example (`examples/smoke-bundle`).
-- [ ] Add runnable minimal, native-tool, memory, and support-agent examples.
-- [ ] Add runnable MCP, A2A, and external-agent examples as those features land.
+- [x] Add runnable minimal, native-tool, and memory examples
+  (`examples/minimal`, `examples/native-tool`, `examples/memory`;
+  schema- and reference-validated in CI by `tests/unit/test_examples.py`).
+- [x] Add runnable MCP, A2A, and external-agent examples as those features land
+  (`examples/mcp` bundles a real stdio MCP server; external-agent usage is
+  documented under the `/external-agents` API in docs/API.md; the A2A
+  protocol itself is exercised end-to-end in `tests/integration/test_a2a.py`).
 - [ ] Add operations, deployment, security, observability, upgrade, and recovery
   guides before production release.
 - [ ] Generate or validate API/schema reference from source in CI.

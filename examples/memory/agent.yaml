@@ -1,0 +1,14 @@
+apiVersion: osa/v1alpha1
+kind: Agent
+metadata:
+  name: memory-agent
+  version: 1.0.0
+  description: Agent with user-scoped memory behind an explicit policy.
+spec:
+  instruction: |
+    Remember useful facts the user shares. Recall them when relevant.
+  model:
+    ref: default
+  memory:
+    enabled: true
+    policy: user-memory

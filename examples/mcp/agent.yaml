@@ -1,0 +1,15 @@
+apiVersion: osa/v1alpha1
+kind: Agent
+metadata:
+  name: mcp-agent
+  version: 1.0.0
+  description: Agent that uses a tool from a local stdio MCP server.
+spec:
+  instruction: |
+    Use the greet tool from the example MCP server when asked to greet someone.
+  model:
+    ref: default
+  mcps:
+    - ref: example-tools
+      tools_filter:
+        - greet

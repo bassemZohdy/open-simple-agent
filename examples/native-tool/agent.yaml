@@ -1,0 +1,13 @@
+apiVersion: osa/v1alpha1
+kind: Agent
+metadata:
+  name: calculator-agent
+  version: 1.0.0
+  description: Agent that answers arithmetic questions with a native tool.
+spec:
+  instruction: |
+    Solve arithmetic with the calculator tool. Always show the operation used.
+  model:
+    ref: default
+  tools:
+    - calculator

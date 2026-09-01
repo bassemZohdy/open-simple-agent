@@ -183,6 +183,22 @@ Load a deployment bundle and serve it:
 OSA_ALLOW_FAKE_PROVIDER=1 uv run osa-runtime --config examples/smoke-bundle --port 8080
 ```
 
+Runnable example bundles live under `examples/`, each loadable as-is:
+
+| Example | Demonstrates |
+|---|---|
+| `examples/minimal` | Smallest possible agent: one model reference, no tools |
+| `examples/native-tool` | A native tool definition (the builtin `calculator`) with `tools_filter`-free wiring |
+| `examples/memory` | User-scoped memory behind an explicit `MemoryPolicy` (limits + retention) |
+| `examples/mcp` | A local stdio MCP server (`examples/mcp/server.py`) with a tool filter |
+| `examples/smoke-bundle` | The CI container smoke configuration |
+
+Every example is schema-validated and reference-checked by
+`tests/unit/test_examples.py` in CI; the MCP example's bundled server is
+spawned by the runtime over stdio. Point `spec.model` at a live provider
+(e.g. `provider: litellm` with credentials in the environment) to move an
+example from deterministic to real-model execution.
+
 A production bundle uses a live provider (see
 [ADR-001](docs/adrs/001-litellm-model-adapter.md)) and resolves credentials
 from the environment:

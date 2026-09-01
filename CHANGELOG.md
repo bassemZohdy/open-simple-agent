@@ -1,5 +1,16 @@
 # Changelog
 
+### Added — P3.3/P3.4: Packaging, CI hardening, and runnable examples
+- **Runnable examples (P3.4)**: `examples/minimal`, `examples/native-tool`,
+  `examples/memory`, and `examples/mcp` (bundles a real stdio MCP server) —
+  each schema- and reference-validated in CI by
+  `tests/unit/test_examples.py`; the MCP server is spawned over stdio by the
+  runtime.
+- **CI/Packaging (P3.3)**: coverage reporting with an 84% gate in the test
+  job; new `security` job running pip-audit over the exported full lock;
+  `Dockerfile.control-plane` (non-root, health check, PG-ready) built and
+  health-smoke-tested in CI alongside the runtime image.
+
 ### Added — P2.4: Streaming and replica behavior
 
 - `POST /v1/invoke/stream` (SSE): stable OSA event contract (`osa.started`,

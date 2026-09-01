@@ -55,9 +55,25 @@ jobs:
         with:
           python-version: "3.12"
       - run: uv sync --all-packages --extra postgres --extra a2a
-      - run: uv run pytest --tb=short -q
+      # Coverage gate: 84% justified — protocol/DB integration suites run in
+      # this job (with extras + services); local runs skip them and sit ~86%.
+      - run: uv run pytest --tb=short -q --cov=osa --cov-report=term --cov-fail-under=84
         env:
           OSA_TEST_DATABASE_URL: postgresql+asyncpg://osa:osa@localhost:54329/osa_test
+
+  security:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: uv sync --all-packages --extra postgres --extra a2a
+      - name: Audit locked dependencies for known vulnerabilities (pip-audit)
+        run: |
+          uv export --format requirements-txt --no-hashes --no-dev --all-packages             --no-emit-package osa-generic-agent             --no-emit-package osa-adk-runtime             --no-emit-package osa-control-plane > requirements-audit.txt
+          uvx pip-audit -r requirements-audit.txt --no-deps --progress-spinner off
 
   container:
     runs-on: ubuntu-latest
@@ -95,3 +111,22 @@ jobs:
             echo "::error::container exited with $exit_code on SIGTERM"; docker logs osa-smoke; exit 1
           fi
           echo "Container smoke test passed."
+      - name: Build Control Plane image
+        run: docker build -f Dockerfile.control-plane -t osa-control-plane:ci .
+      - name: Control Plane smoke test (health)
+        run: |
+          docker run -d --name osa-cp-smoke -p 8000:8000 osa-control-plane:ci
+          ready=0
+          for i in $(seq 1 30); do
+            if curl -fsS http://localhost:8000/health/live >/dev/null 2>&1; then ready=1; break; fi
+            sleep 1
+          done
+          if [ "$ready" != "1" ]; then
+            echo "::error::control plane never became healthy"; docker logs osa-cp-smoke; exit 1
+          fi
+          docker stop --time 10 osa-cp-smoke >/dev/null
+          exit_code=$(docker inspect osa-cp-smoke --format '{{.State.ExitCode}}')
+          if [ "$exit_code" != "0" ]; then
+            echo "::error::control plane exited with $exit_code on SIGTERM"; docker logs osa-cp-smoke; exit 1
+          fi
+          echo "Control Plane image smoke test passed."

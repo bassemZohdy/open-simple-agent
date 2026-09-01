@@ -1,0 +1,6 @@
+apiVersion: osa/v1alpha1
+kind: Tool
+spec:
+  name: calculator
+  description: Basic arithmetic operations
+  timeout_seconds: 5

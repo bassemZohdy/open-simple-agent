@@ -1,0 +1,42 @@
+# Control Plane image (P3.3): management API, non-root, externally
+# configured via OSA_CONTROL_PLANE_DATABASE_URL (optional; in-memory
+# without it).
+# syntax=docker/dockerfile:1
+
+FROM python:3.12-slim AS build
+
+RUN pip install --no-cache-dir uv
+
+WORKDIR /app
+
+COPY pyproject.toml uv.lock README.md ./
+COPY generic-agent/ generic-agent/
+COPY runtimes/ runtimes/
+COPY control-plane/ control-plane/
+
+# The Control Plane needs its own member plus the generic-agent workspace
+# dependency; the postgres extra provides the persistence stack (ADR-004).
+RUN uv sync --frozen --no-dev --no-editable --package osa-control-plane --extra postgres
+
+FROM python:3.12-slim AS runtime
+
+WORKDIR /app
+
+COPY --from=build /app/.venv /app/.venv
+
+ENV PATH="/app/.venv/bin:$PATH" \
+    PYTHONDONTWRITEBYTECODE=1
+
+# Fixed non-root UID with no home directory or login shell so the image runs
+# under an arbitrary UID at runtime.
+RUN useradd --no-create-home --shell /usr/sbin/nologin --uid 10001 osa
+USER 10001
+
+EXPOSE 8000
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD ["python", "-c", "import sys,urllib.request; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health/live', timeout=3).status == 200 else 1)"]
+
+# In-memory by default; set OSA_CONTROL_PLANE_DATABASE_URL for shared
+# PostgreSQL state, and run `osa-cp-migrate` before first rollout (ADR-004).
+CMD ["uvicorn", "osa.control_plane.backend.api:app", "--host", "0.0.0.0", "--port", "8000"]

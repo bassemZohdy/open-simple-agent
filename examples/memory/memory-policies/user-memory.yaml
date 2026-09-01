@@ -1,0 +1,8 @@
+apiVersion: osa/v1alpha1
+kind: MemoryPolicy
+spec:
+  name: user-memory
+  scope: user
+  enabled: true
+  max_entries: 100
+  retention_days: 30

@@ -1,0 +1,12 @@
+apiVersion: osa/v1alpha1
+kind: Mcp
+spec:
+  name: example-tools
+  transport: stdio
+  command: python
+  args:
+    - server.py
+  connection_options:
+    timeout_seconds: 20
+  tools_filter:
+    - greet

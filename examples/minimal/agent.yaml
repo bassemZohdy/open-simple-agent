@@ -1,0 +1,11 @@
+apiVersion: osa/v1alpha1
+kind: Agent
+metadata:
+  name: minimal
+  version: 1.0.0
+  description: Minimal OSA agent with no tools or memory.
+spec:
+  instruction: |
+    You are a minimal assistant. Answer briefly.
+  model:
+    ref: default
