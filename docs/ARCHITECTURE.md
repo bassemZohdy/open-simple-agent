@@ -169,10 +169,11 @@ Routes enforce create/transition validation, cumulative list filters with
 pagination/sorting, immutable version snapshots, optimistic concurrency, and
 the stable error envelope (`{"error": {"code", "message"}}`). Resource APIs
 (P1.2) provide CRUD/list/search for models, tools, skills, MCPs, and memory
-policies with write-through persistence, reference-usage checks before
-deletion (a resource used by any agent cannot be deleted), credential
-redaction, and bundle import/export. Deployment provider routes are pending
-(P1.5).
+policies with tenant-scoped write-through persistence, reference-usage checks
+before deletion (a resource used by an agent in the same tenant cannot be
+deleted), credential redaction, and bundle import/export. Deployment provider
+routes are available for the local provider; Kubernetes scheduling remains
+open (P1.5).
 
 The runtime application owns one module-level runtime and agent. The
 production path is the `osa-runtime` CLI (or `create_runtime_app`), which
@@ -204,8 +205,11 @@ claim, a mismatch is rejected, and an unscoped token cannot spoof a tenant.
 Control Plane managed agents now carry optional tenant ownership, assigned from
 the authenticated claim and enforced across list/read/lifecycle routes; the
 PostgreSQL schema uses migration 0003. Deployments inherit agent tenant
-ownership and migration 0004 persists it. Resource ownership, resource policy,
-audit events, and A2A security-scheme enforcement remain open in P2.2.
+ownership and migration 0004 persists it. Resource definitions use isolated
+tenant namespaces, allow equal names across tenants, and migration 0005 stores
+the owner; activation and deployment bundle export resolve the matching
+namespace. Resource policy, audit events, and A2A security-scheme enforcement
+remain open in P2.2.
 
 ## Deployment
 
@@ -242,7 +246,7 @@ remote-agent credentials remains P2.2 work.
 
 ## Tests and CI
 
-The current baseline is 426 collected tests: 406 pass locally and 20
+The current baseline is 428 collected tests: 408 pass locally and 20
 PostgreSQL tests are skipped when `OSA_TEST_DATABASE_URL` is unset. CI runs:
 
 - `ruff format --check .`;
