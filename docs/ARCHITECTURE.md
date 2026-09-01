@@ -201,8 +201,10 @@ On runtime invocation, an omitted `user_id` is derived from the validated token
 subject and a supplied different value is rejected. A `tenant_id` or `tid`
 claim is bound to invocation metadata: omitted metadata is filled from the
 claim, a mismatch is rejected, and an unscoped token cannot spoof a tenant.
-Control-plane tenant/resource ownership, resource policy, audit events, and A2A
-security-scheme enforcement remain open in P2.2.
+Control Plane managed agents now carry optional tenant ownership, assigned from
+the authenticated claim and enforced across list/read/lifecycle routes; the
+PostgreSQL schema uses migration 0003. Resource/deployment ownership, resource
+policy, audit events, and A2A security-scheme enforcement remain open in P2.2.
 
 ## Deployment
 
