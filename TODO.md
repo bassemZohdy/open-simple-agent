@@ -482,9 +482,14 @@ policy are stable.*
   (`examples/mcp` bundles a real stdio MCP server; external-agent usage is
   documented under the `/external-agents` API in docs/API.md; the A2A
   protocol itself is exercised end-to-end in `tests/integration/test_a2a.py`).
-- [ ] Add operations, deployment, security, observability, upgrade, and recovery
-  guides before production release.
-- [ ] Generate or validate API/schema reference from source in CI.
+- [x] Add operations, deployment, security, and upgrade guides
+  (`docs/guides/`; observability coverage lives in the operations guide;
+  disaster-recovery guidance is folded into the upgrade guide's backup and
+  downgrade sections).
+- [x] Generate or validate API/schema reference from source in CI
+  (`tests/unit/test_openapi_contract.py`: both FastAPI apps must emit
+  spec-valid OpenAPI, every route documented in docs/API.md must exist in
+  the matching schema, and undocumented schema routes fail the suite).
 
 ---
 

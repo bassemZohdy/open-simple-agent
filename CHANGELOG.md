@@ -1,5 +1,18 @@
 # Changelog
 
+### Added — P3.4: API schema validation in CI + operations guides
+- `tests/unit/test_openapi_contract.py`: both FastAPI applications must emit
+  spec-valid OpenAPI 3.1, every route documented in `docs/API.md` must exist
+  in the matching app's schema (path-parameter wildcards normalized), and
+  undocumented Control Plane routes fail the suite — the API reference
+  cannot drift from the code.
+- `docs/guides/`: operations (health, observability, deployments, database,
+  upgrades), deployment (runtime/Control Plane configuration, containers,
+  migrations, multi-replica notes), security (auth, tenancy, secrets,
+  policy, supply chain, audit), and upgrade (lockstep versions, migrations,
+  rolling replicas, rollback) guides, linked from the documentation index.
+
+
 ### Added — P3.3: License scanning and SBOMs
 - **License scanning + SBOMs (P3.3)**
   - CI `security` job: pip-licenses exact-string allow-list over the

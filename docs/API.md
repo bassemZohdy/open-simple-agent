@@ -157,6 +157,11 @@ for external-agent calls.
 
 ### Audit events
 
+| Method | Path | Behavior |
+|---|---|---|
+| `GET` | `/audit-events?limit=` | Recent append-only management/invocation audit events (tenant-filtered, redaction-safe) |
+| `GET` | `/metrics` | Prometheus counters and duration summaries |
+
 `GET /audit-events?limit=` returns recent append-only management and external
 agent invocation events within the caller's tenant scope. The `audit:read`
 permission is granted to administrators and operators when permission
@@ -264,10 +269,10 @@ never included in external-agent responses, audit events, or errors.
 |---|---|---|
 | `POST` | `/external-agents` | Register by URL and optional outbound `credential`; the Agent Card is fetched and validated (422 if unreachable/invalid); duplicate names 409 |
 | `GET` | `/external-agents?status=` | List records with health status |
-| `GET` | `/external-agents/{id}` | Get one record |
-| `POST` | `/external-agents/{id}/refresh` | Re-fetch the card and update health |
-| `POST` | `/external-agents/{id}/invoke?message=` | Invoke the external agent over A2A (502 on remote failure) |
-| `DELETE` | `/external-agents/{id}` | Delete the record |
+| `GET` | `/external-agents/{external_id}` | Get one record |
+| `POST` | `/external-agents/{external_id}/refresh` | Re-fetch the card and update health |
+| `POST` | `/external-agents/{external_id}/invoke?message=` | Invoke the external agent over A2A (502 on remote failure) |
+| `DELETE` | `/external-agents/{external_id}` | Delete the record |
 
 Attempts to deploy an external record are rejected with 422 — external
 agents are never deployed by OSA. A2A JSON-RPC uses the same shared

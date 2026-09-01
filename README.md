@@ -281,6 +281,10 @@ The planned React Control Panel does not exist in the repository yet.
 - [API reference](docs/API.md) — implemented HTTP endpoints
 - [Contributing](CONTRIBUTING.md) — setup, checks, and contribution rules
 - [Backlog](TODO.md) — prioritized work and acceptance criteria
+- [Operations guide](docs/guides/operations.md) — health, observability, deployments, upgrades
+- [Deployment guide](docs/guides/deployment.md) — runtime/Control Plane configuration and containers
+- [Security guide](docs/guides/security.md) — authentication, tenancy, secrets, policy, supply chain
+- [Upgrade guide](docs/guides/upgrade.md) — lockstep versions, migrations, rollbacks
 - [Changelog](CHANGELOG.md) — development history
 
 ## Release status

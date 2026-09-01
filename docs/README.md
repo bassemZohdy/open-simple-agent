@@ -11,6 +11,7 @@ Use these documents according to the question being answered:
 | [Contributing](../CONTRIBUTING.md) | Development setup, checks, and contribution workflow |
 | [Backlog](../TODO.md) | Prioritized work, dependencies, and acceptance criteria |
 | [Changelog](../CHANGELOG.md) | Development history and milestone snapshots |
+| [Guides](guides/) | Task-oriented operations, deployment, security, and upgrade walkthroughs |
 | [ADRs](adrs/) | Architectural decisions and their consequences |
 
 ## Documentation rule
