@@ -12,6 +12,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added — P2.2: Resource tenant ownership
+- Control Plane resource definitions now have tenant-scoped repository keys and catalog namespaces; equal model, tool, skill, MCP, and memory-policy names can exist independently across tenants.
+- Resource CRUD, import/export, deletion reference checks, agent activation, and deployment bundle export resolve only the authenticated tenant's resources.
+- PostgreSQL migration 0005 adds the resource tenant owner, preserves existing unauthenticated data in the shared scope, and changes uniqueness to `(tenant_id, kind, name)`.
+- Authentication regression coverage verifies cross-tenant reads are hidden and activation cannot resolve another tenant's resource.
+
 ### Added — P2.2: Authentication foundation
 - **Shared JWT/OIDC authentication boundary**
   - `AuthSettings` reads `OSA_AUTH_*` configuration for disabled, optional, or required Bearer authentication in both FastAPI applications
@@ -19,7 +25,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   - Non-public HTTP routes return stable 401/403 envelopes; runtime invocations derive omitted `user_id` from the validated subject and reject identity spoofing
   - Optional `OSA_AUTH_ENFORCE_PERMISSIONS` maps stable route permissions from roles, explicit permission claims, and scopes; built-in administrator/operator/viewer/agent/caller/user/service mappings are covered by tests
   - Runtime `tenant_id`/`tid` claims bind to invocation metadata, with injection for omitted metadata and rejection of mismatches or tenant spoofing
-  - Offline generated-key tests cover configuration, signature/claim failures, scope denial, role/permission extraction, Control Plane middleware, runtime middleware, and tenant binding; control-plane tenant/resource policy, A2A security schemes, credential adapters, and audit events remain open
+  - Offline generated-key tests cover configuration, signature/claim failures, scope denial, role/permission extraction, Control Plane middleware, runtime middleware, and tenant binding; resource policy, A2A security schemes, credential adapters, and audit events remain open
 
 ### Added — P2.1: A2A and external agents
 - **A2A and external agents (ADR-005)**
