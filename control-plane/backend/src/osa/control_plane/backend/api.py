@@ -158,10 +158,15 @@ def _definition_problems(definition: AgentDefinition, name: str) -> list[str]:
     return problems
 
 
-def _missing_resource_refs(resource_catalogs: ResourceCatalogs, definition: AgentDefinition) -> list[str]:
+def _missing_resource_refs(
+    resource_catalogs: ResourceCatalogs,
+    definition: AgentDefinition,
+    tenant_id: str | None = None,
+) -> list[str]:
     """Resource references that do not resolve in the resource catalogs."""
     missing: list[str] = []
     spec = definition.spec
+    catalogs = resource_catalogs.for_tenant(tenant_id)
 
     def check(kind: str, ref: str, lookup) -> None:  # type: ignore[no-untyped-def]
         try:
@@ -170,15 +175,15 @@ def _missing_resource_refs(resource_catalogs: ResourceCatalogs, definition: Agen
             missing.append(f"{kind} '{ref}' not found")
 
     if spec.model is not None:
-        check("model", spec.model.ref, resource_catalogs.get_model)
+        check("model", spec.model.ref, catalogs.get_model)
     for tool_ref in spec.tools:
-        check("tool", tool_ref.ref, resource_catalogs.get_tool)
+        check("tool", tool_ref.ref, catalogs.get_tool)
     for skill_ref in spec.skills:
-        check("skill", skill_ref.ref, resource_catalogs.get_skill)
+        check("skill", skill_ref.ref, catalogs.get_skill)
     for mcp_ref in spec.mcps:
-        check("mcp", mcp_ref.ref, resource_catalogs.get_mcp)
+        check("mcp", mcp_ref.ref, catalogs.get_mcp)
     if spec.memory.enabled and spec.memory.policy is not None:
-        check("memory policy", spec.memory.policy, resource_catalogs.get_memory_policy)
+        check("memory policy", spec.memory.policy, catalogs.get_memory_policy)
     return missing
 
 
@@ -507,7 +512,7 @@ def configure_control_plane_app(
         _owned_record(record, http_request)
         if record.definition is None:
             raise HTTPException(status_code=422, detail="Agent cannot be activated without a definition")
-        missing = _missing_resource_refs(resource_catalogs, record.definition)
+        missing = _missing_resource_refs(resource_catalogs, record.definition, record.tenant_id)
         if missing:
             raise HTTPException(
                 status_code=422,
