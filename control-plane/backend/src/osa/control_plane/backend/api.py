@@ -41,6 +41,7 @@ from osa.control_plane.backend.resource_catalogs import ResourceCatalogs
 from osa.control_plane.backend.templates import TemplateCatalog, create_default_template_catalog
 from osa.generic_agent import (
     AgentDefinition,
+    AuthenticatedPrincipal,
     AuthenticationError,
     AuthMode,
     AuthorizationError,
@@ -116,6 +117,7 @@ class AgentResponse(BaseModel):
     status: str
     current_version: str
     runtime: str
+    tenant_id: str | None
     skills: list[str]
     labels: dict[str, str]
 
@@ -194,9 +196,21 @@ def _record_to_response(record: AgentRecord) -> AgentResponse:
         status=record.status.value,
         current_version=record.current_version,
         runtime=record.runtime,
+        tenant_id=record.tenant_id,
         skills=record.skills,
         labels=record.labels,
     )
+
+
+def _request_tenant(request: Request) -> str | None:
+    principal = getattr(request.state, "osa_principal", None)
+    return principal.tenant_id if isinstance(principal, AuthenticatedPrincipal) else None
+
+
+def _owned_record(record: AgentRecord, request: Request) -> AgentRecord:
+    if record.tenant_id != _request_tenant(request):
+        raise HTTPException(status_code=404, detail=f"Agent not found: {record.agent_id}")
+    return record
 
 
 def _install_authentication(
@@ -341,7 +355,7 @@ def configure_control_plane_app(
         return JSONResponse(status_code=404, content=error_payload("not_found", str(message)))
 
     @app.post("/agents", response_model=AgentResponse, status_code=201)
-    async def create_agent(request: CreateAgentRequest) -> AgentResponse:
+    async def create_agent(http_request: Request, request: CreateAgentRequest) -> AgentResponse:
         """Create a new agent.
 
         With both ``template`` and ``definition`` the request is rejected;
@@ -367,6 +381,7 @@ def configure_control_plane_app(
             name=request.name,
             description=request.description,
             definition=definition,
+            tenant_id=_request_tenant(http_request),
             labels=request.labels,
         )
         if definition is not None:
@@ -377,6 +392,7 @@ def configure_control_plane_app(
 
     @app.get("/agents", response_model=AgentListResponse)
     async def list_agents(
+        http_request: Request,
         status: str | None = None,
         skill: str | None = None,
         runtime: str | None = None,
@@ -395,6 +411,8 @@ def configure_control_plane_app(
             raise HTTPException(status_code=422, detail=f"Unknown sort order: '{order}'")
 
         records = await agent_repository.list_all()
+        tenant_id = _request_tenant(http_request)
+        records = [r for r in records if r.tenant_id == tenant_id]
         if status is not None:
             records = [r for r in records if r.status.value == status]
         if skill is not None:
@@ -418,19 +436,20 @@ def configure_control_plane_app(
         )
 
     @app.get("/agents/{agent_id}", response_model=AgentResponse)
-    async def get_agent(agent_id: str) -> AgentResponse:
+    async def get_agent(http_request: Request, agent_id: str) -> AgentResponse:
         """Get an agent by ID."""
         record = await agent_repository.get(agent_id)
         if record is None:
             raise HTTPException(status_code=404, detail=f"Agent not found: {agent_id}")
-        return _record_to_response(record)
+        return _record_to_response(_owned_record(record, http_request))
 
     @app.patch("/agents/{agent_id}", response_model=AgentResponse)
-    async def update_agent(agent_id: str, request: UpdateAgentRequest) -> AgentResponse:
+    async def update_agent(http_request: Request, agent_id: str, request: UpdateAgentRequest) -> AgentResponse:
         """Update an agent (optionally guarded by optimistic concurrency)."""
         record = await agent_repository.get(agent_id)
         if record is None:
             raise HTTPException(status_code=404, detail=f"Agent not found: {agent_id}")
+        _owned_record(record, http_request)
         if request.expected_version is not None and request.expected_version != record.current_version:
             raise HTTPException(
                 status_code=409,
@@ -459,13 +478,16 @@ def configure_control_plane_app(
         return _record_to_response(updated)
 
     @app.post("/agents/{agent_id}/versions", response_model=AgentResponse, status_code=201)
-    async def create_agent_version(agent_id: str, request: CreateVersionRequest) -> AgentResponse:
+    async def create_agent_version(
+        http_request: Request, agent_id: str, request: CreateVersionRequest
+    ) -> AgentResponse:
         """Snapshot the current definition as a new immutable version."""
         from osa.control_plane.backend.agent_catalog import AgentVersion
 
         record = await agent_repository.get(agent_id)
         if record is None:
             raise HTTPException(status_code=404, detail=f"Agent not found: {agent_id}")
+        _owned_record(record, http_request)
         if record.definition is None:
             raise HTTPException(status_code=422, detail="Agent has no definition to snapshot")
         await agent_repository.add_version(
@@ -477,11 +499,12 @@ def configure_control_plane_app(
         return _record_to_response(refreshed)
 
     @app.post("/agents/{agent_id}/activate", response_model=AgentResponse)
-    async def activate_agent(agent_id: str) -> AgentResponse:
+    async def activate_agent(http_request: Request, agent_id: str) -> AgentResponse:
         """Transition an agent to active, after validating its configuration."""
         record = await agent_repository.get(agent_id)
         if record is None:
             raise HTTPException(status_code=404, detail=f"Agent not found: {agent_id}")
+        _owned_record(record, http_request)
         if record.definition is None:
             raise HTTPException(status_code=422, detail="Agent cannot be activated without a definition")
         missing = _missing_resource_refs(resource_catalogs, record.definition)
@@ -494,20 +517,32 @@ def configure_control_plane_app(
         return _record_to_response(updated)
 
     @app.post("/agents/{agent_id}/disable", response_model=AgentResponse)
-    async def disable_agent(agent_id: str) -> AgentResponse:
+    async def disable_agent(http_request: Request, agent_id: str) -> AgentResponse:
         """Transition an agent to disabled."""
+        record = await agent_repository.get(agent_id)
+        if record is None:
+            raise HTTPException(status_code=404, detail=f"Agent not found: {agent_id}")
+        _owned_record(record, http_request)
         updated = await agent_repository.transition(agent_id, AgentRecordStatus.DISABLED)
         return _record_to_response(updated)
 
     @app.post("/agents/{agent_id}/archive", response_model=AgentResponse)
-    async def archive_agent(agent_id: str) -> AgentResponse:
+    async def archive_agent(http_request: Request, agent_id: str) -> AgentResponse:
         """Transition an agent to archived (terminal)."""
+        record = await agent_repository.get(agent_id)
+        if record is None:
+            raise HTTPException(status_code=404, detail=f"Agent not found: {agent_id}")
+        _owned_record(record, http_request)
         updated = await agent_repository.transition(agent_id, AgentRecordStatus.ARCHIVED)
         return _record_to_response(updated)
 
     @app.delete("/agents/{agent_id}", status_code=204)
-    async def delete_agent(agent_id: str) -> None:
+    async def delete_agent(http_request: Request, agent_id: str) -> None:
         """Delete an agent."""
+        record = await agent_repository.get(agent_id)
+        if record is None:
+            raise HTTPException(status_code=404, detail=f"Agent not found: {agent_id}")
+        _owned_record(record, http_request)
         if not await agent_repository.delete(agent_id):
             raise HTTPException(status_code=404, detail=f"Agent not found: {agent_id}")
 
