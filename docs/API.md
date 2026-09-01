@@ -133,8 +133,17 @@ The current validator accepts signed RS256/384/512 and ES256/384/512 JWTs,
 checks `exp`, `iss`, `sub`, issuer, audience, and configured scopes against the
 external JWKS URL. On `/v1/invoke`, an omitted `user_id` uses the token `sub`;
 an explicitly different `user_id` is denied. This is an authentication
-foundation, not full role/tenant/resource authorization. A2A security schemes,
-outbound API-key/OAuth/mTLS adapters, and audit events remain open in P2.2.
+foundation. Set `OSA_AUTH_ENFORCE_PERMISSIONS=true` to enforce stable route
+permissions. Roles are read from `roles`/`role` or Keycloak
+`realm_access.roles`; explicit permissions are read from `permissions` or
+`permission`, and scopes also count as permissions. Built-in roles are
+`administrator`/`admin` (wildcard), `operator` (all), `viewer` (read),
+`agent`/`caller`/`user` (`agent:invoke`), and `service`
+(`agent:invoke` plus `resource:read`). Runtime invocations also bind
+`tenant_id`/`tid` to request metadata, injecting an omitted value and rejecting
+spoofed or mismatched values. This remains opt-in route authorization rather
+than full control-plane tenant/resource policy. A2A security schemes, outbound
+API-key/OAuth/mTLS adapters, and audit events remain open in P2.2.
 
 ### Resource and template APIs (P1.2)
 
