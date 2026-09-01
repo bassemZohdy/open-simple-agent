@@ -30,6 +30,8 @@ from osa.control_plane.backend.agent_catalog import (
 )
 
 if TYPE_CHECKING:
+    import builtins
+
     from osa.generic_agent import AgentDefinition
 
 __all__ = [
@@ -477,16 +479,26 @@ class ResourceDefinitionRepository(ABC):
     """Persistence contract for catalog resource definitions (kind + JSONB)."""
 
     @abstractmethod
-    async def upsert(self, kind: str, name: str, spec: dict[str, Any]) -> None: ...
+    async def upsert(
+        self,
+        kind: str,
+        name: str,
+        spec: dict[str, Any],
+        *,
+        tenant_id: str | None = None,
+    ) -> None: ...
 
     @abstractmethod
-    async def get(self, kind: str, name: str) -> dict[str, Any] | None: ...
+    async def get(self, kind: str, name: str, *, tenant_id: str | None = None) -> dict[str, Any] | None: ...
 
     @abstractmethod
-    async def list(self, kind: str) -> dict[str, dict[str, Any]]: ...
+    async def list(self, kind: str, *, tenant_id: str | None = None) -> dict[str, dict[str, Any]]: ...
 
     @abstractmethod
-    async def delete(self, kind: str, name: str) -> bool: ...
+    async def list_all(self, kind: str) -> builtins.list[tuple[str | None, dict[str, Any]]]: ...
+
+    @abstractmethod
+    async def delete(self, kind: str, name: str, *, tenant_id: str | None = None) -> bool: ...
 
     @abstractmethod
     async def close(self) -> None: ...
@@ -494,19 +506,35 @@ class ResourceDefinitionRepository(ABC):
 
 class InMemoryResourceDefinitionRepository(ResourceDefinitionRepository):
     def __init__(self) -> None:
-        self._items: dict[tuple[str, str], dict[str, Any]] = {}
+        self._items: dict[tuple[str, str, str], dict[str, Any]] = {}
 
-    async def upsert(self, kind: str, name: str, spec: dict[str, Any]) -> None:
-        self._items[(kind, name)] = spec
+    @staticmethod
+    def _scope(tenant_id: str | None) -> str:
+        """Use one stable key for the shared, unauthenticated scope."""
+        return tenant_id or ""
 
-    async def get(self, kind: str, name: str) -> dict[str, Any] | None:
-        return self._items.get((kind, name))
+    async def upsert(
+        self,
+        kind: str,
+        name: str,
+        spec: dict[str, Any],
+        *,
+        tenant_id: str | None = None,
+    ) -> None:
+        self._items[(self._scope(tenant_id), kind, name)] = spec
 
-    async def list(self, kind: str) -> dict[str, dict[str, Any]]:
-        return {name: spec for (k, name), spec in self._items.items() if k == kind}
+    async def get(self, kind: str, name: str, *, tenant_id: str | None = None) -> dict[str, Any] | None:
+        return self._items.get((self._scope(tenant_id), kind, name))
 
-    async def delete(self, kind: str, name: str) -> bool:
-        return self._items.pop((kind, name), None) is not None
+    async def list(self, kind: str, *, tenant_id: str | None = None) -> dict[str, dict[str, Any]]:
+        scope = self._scope(tenant_id)
+        return {name: spec for (item_scope, k, name), spec in self._items.items() if item_scope == scope and k == kind}
+
+    async def list_all(self, kind: str) -> builtins.list[tuple[str | None, dict[str, Any]]]:
+        return [(scope or None, spec) for (scope, item_kind, _name), spec in self._items.items() if item_kind == kind]
+
+    async def delete(self, kind: str, name: str, *, tenant_id: str | None = None) -> bool:
+        return self._items.pop((self._scope(tenant_id), kind, name), None) is not None
 
     async def close(self) -> None:
         return None
@@ -519,7 +547,22 @@ class PostgresResourceDefinitionRepository(ResourceDefinitionRepository):
     async def close(self) -> None:
         await self._engine.dispose()
 
-    async def upsert(self, kind: str, name: str, spec: dict[str, Any]) -> None:
+    @staticmethod
+    def _scope(tenant_id: str | None) -> str:
+        return tenant_id or ""
+
+    @staticmethod
+    def _tenant_from_storage(value: str) -> str | None:
+        return value or None
+
+    async def upsert(
+        self,
+        kind: str,
+        name: str,
+        spec: dict[str, Any],
+        *,
+        tenant_id: str | None = None,
+    ) -> None:
         from sqlalchemy.dialects.postgresql import insert
 
         from osa.control_plane.backend.tables import resource_definitions_table
@@ -527,14 +570,14 @@ class PostgresResourceDefinitionRepository(ResourceDefinitionRepository):
         async with self._engine.begin() as connection:
             await connection.execute(
                 insert(resource_definitions_table)
-                .values(kind=kind, name=name, spec=spec)
+                .values(tenant_id=self._scope(tenant_id), kind=kind, name=name, spec=spec)
                 .on_conflict_do_update(
-                    index_elements=["kind", "name"],
+                    index_elements=["tenant_id", "kind", "name"],
                     set_={"spec": spec, "updated_at": datetime.now(UTC)},
                 )
             )
 
-    async def get(self, kind: str, name: str) -> dict[str, Any] | None:
+    async def get(self, kind: str, name: str, *, tenant_id: str | None = None) -> dict[str, Any] | None:
         from sqlalchemy import select
 
         from osa.control_plane.backend.tables import resource_definitions_table
@@ -542,6 +585,7 @@ class PostgresResourceDefinitionRepository(ResourceDefinitionRepository):
         async with self._engine.begin() as connection:
             result = await connection.execute(
                 select(resource_definitions_table.c.spec).where(
+                    resource_definitions_table.c.tenant_id == self._scope(tenant_id),
                     resource_definitions_table.c.kind == kind,
                     resource_definitions_table.c.name == name,
                 )
@@ -549,7 +593,7 @@ class PostgresResourceDefinitionRepository(ResourceDefinitionRepository):
             row = result.first()
         return dict(row.spec) if row is not None else None
 
-    async def list(self, kind: str) -> dict[str, dict[str, Any]]:
+    async def list(self, kind: str, *, tenant_id: str | None = None) -> dict[str, dict[str, Any]]:
         from sqlalchemy import select
 
         from osa.control_plane.backend.tables import resource_definitions_table
@@ -557,13 +601,29 @@ class PostgresResourceDefinitionRepository(ResourceDefinitionRepository):
         async with self._engine.begin() as connection:
             result = await connection.execute(
                 select(resource_definitions_table.c.name, resource_definitions_table.c.spec).where(
-                    resource_definitions_table.c.kind == kind
+                    resource_definitions_table.c.tenant_id == self._scope(tenant_id),
+                    resource_definitions_table.c.kind == kind,
                 )
             )
             rows = result.fetchall()
         return {row.name: dict(row.spec) for row in rows}
 
-    async def delete(self, kind: str, name: str) -> bool:
+    async def list_all(self, kind: str) -> builtins.list[tuple[str | None, dict[str, Any]]]:
+        from sqlalchemy import select
+
+        from osa.control_plane.backend.tables import resource_definitions_table
+
+        async with self._engine.begin() as connection:
+            result = await connection.execute(
+                select(
+                    resource_definitions_table.c.tenant_id,
+                    resource_definitions_table.c.spec,
+                ).where(resource_definitions_table.c.kind == kind)
+            )
+            rows = result.fetchall()
+        return [(self._tenant_from_storage(row.tenant_id), dict(row.spec)) for row in rows]
+
+    async def delete(self, kind: str, name: str, *, tenant_id: str | None = None) -> bool:
         from sqlalchemy import delete
 
         from osa.control_plane.backend.tables import resource_definitions_table
@@ -571,6 +631,7 @@ class PostgresResourceDefinitionRepository(ResourceDefinitionRepository):
         async with self._engine.begin() as connection:
             result = await connection.execute(
                 delete(resource_definitions_table).where(
+                    resource_definitions_table.c.tenant_id == self._scope(tenant_id),
                     resource_definitions_table.c.kind == kind,
                     resource_definitions_table.c.name == name,
                 )

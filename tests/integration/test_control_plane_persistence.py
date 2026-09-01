@@ -230,12 +230,31 @@ class TestResourceDefinitionRepository:
         repo = PostgresResourceDefinitionRepository(engine)
         await repo.upsert("Model", "gpt", {"name": "gpt", "provider": "litellm", "model_id": "openai/gpt"})
         await repo.upsert("Model", "gpt", {"name": "gpt", "provider": "litellm", "model_id": "openai/gpt-4o"})
+        await repo.upsert(
+            "Model",
+            "gpt",
+            {"name": "gpt", "provider": "fake", "model_id": "tenant-a-model"},
+            tenant_id="tenant-a",
+        )
+        await repo.upsert(
+            "Model",
+            "gpt",
+            {"name": "gpt", "provider": "fake", "model_id": "tenant-b-model"},
+            tenant_id="tenant-b",
+        )
         await repo.upsert("Skill", "support", {"name": "support"})
 
         spec = await repo.get("Model", "gpt")
         assert spec is not None
         assert spec["model_id"] == "openai/gpt-4o"
         assert set(await repo.list("Model")) == {"gpt"}
+        tenant_a = await repo.get("Model", "gpt", tenant_id="tenant-a")
+        tenant_b = await repo.get("Model", "gpt", tenant_id="tenant-b")
+        assert tenant_a is not None
+        assert tenant_b is not None
+        assert tenant_a["model_id"] == "tenant-a-model"
+        assert tenant_b["model_id"] == "tenant-b-model"
+        assert len(await repo.list_all("Model")) == 3
         assert (await repo.list("Skill"))["support"]["name"] == "support"
 
         assert await repo.delete("Model", "gpt") is True

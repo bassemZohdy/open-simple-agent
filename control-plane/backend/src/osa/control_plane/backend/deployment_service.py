@@ -217,6 +217,7 @@ class DeploymentService:
 
         definition = override_definition if override_definition is not None else record.definition
         assert definition is not None
+        catalogs = self._catalogs.for_tenant(record.tenant_id)
         root = deploy_root() / f"{record.name}-{record.current_version or 'draft'}"
         root.mkdir(parents=True, exist_ok=True)
         (root / "agent.yaml").write_text(
@@ -246,12 +247,12 @@ class DeploymentService:
             target = root / directory
             target.mkdir(exist_ok=True)
             for name in sorted(names):
-                if not self._catalogs_has(kind, name):
+                if not self._catalogs_has(catalogs, kind, name):
                     raise DeploymentError(
                         f"Agent '{record.name}' references {kind.lower()} '{name}' "
                         "which is not present in the resource catalogs"
                     )
-                definition_obj = self._catalogs_get(kind, name)
+                definition_obj = self._catalogs_get(catalogs, kind, name)
                 (target / f"{name}.yaml").write_text(
                     yaml.safe_dump(
                         {
@@ -265,22 +266,22 @@ class DeploymentService:
                 )
         return str(root)
 
-    def _catalogs_has(self, kind: str, name: str) -> bool:
+    def _catalogs_has(self, catalogs: ResourceCatalogs, kind: str, name: str) -> bool:
         checks = {
-            "Model": self._catalogs.has_model,
-            "Tool": self._catalogs.has_tool,
-            "Skill": self._catalogs.has_skill,
-            "Mcp": self._catalogs.has_mcp,
-            "MemoryPolicy": self._catalogs.has_memory_policy,
+            "Model": catalogs.has_model,
+            "Tool": catalogs.has_tool,
+            "Skill": catalogs.has_skill,
+            "Mcp": catalogs.has_mcp,
+            "MemoryPolicy": catalogs.has_memory_policy,
         }
         return checks[kind](name)
 
-    def _catalogs_get(self, kind: str, name: str) -> Any:
+    def _catalogs_get(self, catalogs: ResourceCatalogs, kind: str, name: str) -> Any:
         getters = {
-            "Model": self._catalogs.get_model,
-            "Tool": self._catalogs.get_tool,
-            "Skill": self._catalogs.get_skill,
-            "Mcp": self._catalogs.get_mcp,
-            "MemoryPolicy": self._catalogs.get_memory_policy,
+            "Model": catalogs.get_model,
+            "Tool": catalogs.get_tool,
+            "Skill": catalogs.get_skill,
+            "Mcp": catalogs.get_mcp,
+            "MemoryPolicy": catalogs.get_memory_policy,
         }
         return getters[kind](name)

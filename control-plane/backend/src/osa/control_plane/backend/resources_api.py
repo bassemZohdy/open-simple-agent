@@ -19,10 +19,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Request
 from pydantic import BaseModel, ConfigDict, Field
 
 from osa.generic_agent import (
+    AuthenticatedPrincipal,
     InvalidBundleError,
     McpDefinition,
     MemoryPolicy,
@@ -205,10 +206,17 @@ def _envelope(kind: str, definition: Any) -> dict[str, Any]:
     return {"apiVersion": API_VERSION, "kind": kind, "spec": _serialize(definition)}
 
 
-async def _referencing_agents(agent_repository: AgentRepository, binding: _KindBinding, name: str) -> list[str]:
+async def _referencing_agents(
+    agent_repository: AgentRepository,
+    binding: _KindBinding,
+    name: str,
+    tenant_id: str | None,
+) -> list[str]:
     """Names of agent records whose definitions reference this resource."""
     referencing: list[str] = []
     for record in await agent_repository.list_all():
+        if record.tenant_id != tenant_id:
+            continue
         definition = record.definition
         if definition is None:
             continue
@@ -238,8 +246,15 @@ def configure_resource_routes(
 ) -> FastAPI:
     """Attach resource and template routes to a Control Plane app."""
 
+    def request_tenant(request: Request) -> str | None:
+        principal = getattr(request.state, "osa_principal", None)
+        return principal.tenant_id if isinstance(principal, AuthenticatedPrincipal) else None
+
+    def scoped_catalogs(request: Request) -> ResourceCatalogs:
+        return resource_catalogs.for_tenant(request_tenant(request))
+
     @app.post("/resources/import", response_model=ResourceBundleResponse)
-    async def import_resources(request: ResourceImportRequest) -> ResourceBundleResponse:
+    async def import_resources(http_request: Request, request: ResourceImportRequest) -> ResourceBundleResponse:
         """Import resource envelopes (same format as bundle resource files).
 
         Each resource is validated and written through to the repository and
@@ -247,37 +262,41 @@ def configure_resource_routes(
         """
         imported: dict[str, list[str]] = {}
         envelopes: list[dict[str, Any]] = []
+        tenant_id = request_tenant(http_request)
+        catalogs = scoped_catalogs(http_request)
         for index, document in enumerate(request.resources):
             try:
                 kind, definition = parse_resource_document(document, origin=f"resources[{index}]")
             except InvalidBundleError as exc:
                 raise HTTPException(status_code=422, detail=str(exc)) from exc
             binding = _binding(kind)
-            binding.register(resource_catalogs, definition)
+            binding.register(catalogs, definition)
             serialized = _serialize(definition)
             name = binding.get_name(definition)
-            await resource_repository.upsert(kind, name, serialized)
+            await resource_repository.upsert(kind, name, serialized, tenant_id=tenant_id)
             imported.setdefault(kind, []).append(name)
             envelopes.append({"apiVersion": API_VERSION, "kind": kind, "spec": serialized})
         return ResourceBundleResponse(resources=envelopes, imported=imported)
 
     @app.get("/resources/export", response_model=ResourceBundleResponse)
-    async def export_resources() -> ResourceBundleResponse:
+    async def export_resources(http_request: Request) -> ResourceBundleResponse:
         """Export every resource as bundle-compatible envelopes."""
         envelopes: list[dict[str, Any]] = []
+        catalogs = scoped_catalogs(http_request)
         for binding in _KIND_BINDINGS.values():
-            for definition in sorted(binding.list(resource_catalogs), key=lambda d: d.name):
+            for definition in sorted(binding.list(catalogs), key=lambda d: d.name):
                 envelopes.append(_envelope(binding.kind, definition))
         return ResourceBundleResponse(resources=envelopes)
 
     @app.get("/resources/{kind}", response_model=ResourceListResponse)
     async def list_resources(
+        http_request: Request,
         kind: str,
         q: str | None = Query(default=None, description="Substring filter on resource name"),
     ) -> ResourceListResponse:
         """List resources of one kind (optionally filtered by name substring)."""
         binding = _binding(kind)
-        definitions = binding.list(resource_catalogs)
+        definitions = binding.list(scoped_catalogs(http_request))
         if q is not None:
             needle = q.lower()
             definitions = [d for d in definitions if needle in d.name.lower()]
@@ -289,31 +308,38 @@ def configure_resource_routes(
         )
 
     @app.post("/resources/{kind}", response_model=dict[str, Any], status_code=201)
-    async def create_resource(kind: str, request: ResourceEnvelope) -> dict[str, Any]:
+    async def create_resource(http_request: Request, kind: str, request: ResourceEnvelope) -> dict[str, Any]:
         """Create a resource; a name that already exists is a conflict."""
         binding = _binding(kind)
         name = _spec_name(binding.kind, request.spec)
-        if binding.has(resource_catalogs, name):
+        catalogs = scoped_catalogs(http_request)
+        tenant_id = request_tenant(http_request)
+        if binding.has(catalogs, name):
             raise HTTPException(status_code=409, detail=f"{binding.kind} '{name}' already exists")
         definition = _validate_spec(binding, request.spec, name)
-        binding.register(resource_catalogs, definition)
+        binding.register(catalogs, definition)
         serialized = _serialize(definition)
-        await resource_repository.upsert(kind, name, serialized)
+        await resource_repository.upsert(kind, name, serialized, tenant_id=tenant_id)
         return {"apiVersion": API_VERSION, "kind": kind, "spec": serialized}
 
     @app.get("/resources/{kind}/{name}", response_model=dict[str, Any])
-    async def get_resource(kind: str, name: str) -> dict[str, Any]:
+    async def get_resource(http_request: Request, kind: str, name: str) -> dict[str, Any]:
         """Get one resource."""
         binding = _binding(kind)
-        if not binding.has(resource_catalogs, name):
+        catalogs = scoped_catalogs(http_request)
+        if not binding.has(catalogs, name):
             raise HTTPException(status_code=404, detail=f"{binding.kind} not found: {name}")
-        return _envelope(kind, binding.get(resource_catalogs, name))
+        return _envelope(kind, binding.get(catalogs, name))
 
     @app.put("/resources/{kind}/{name}", response_model=dict[str, Any])
-    async def replace_resource(kind: str, name: str, request: ResourceEnvelope) -> dict[str, Any]:
+    async def replace_resource(
+        http_request: Request, kind: str, name: str, request: ResourceEnvelope
+    ) -> dict[str, Any]:
         """Replace a resource (must already exist; spec.name must match the path)."""
         binding = _binding(kind)
-        if not binding.has(resource_catalogs, name):
+        catalogs = scoped_catalogs(http_request)
+        tenant_id = request_tenant(http_request)
+        if not binding.has(catalogs, name):
             raise HTTPException(status_code=404, detail=f"{binding.kind} not found: {name}")
         spec_name = _spec_name(binding.kind, request.spec)
         if spec_name != name:
@@ -322,18 +348,20 @@ def configure_resource_routes(
                 detail=f"spec.name '{spec_name}' does not match resource name '{name}'",
             )
         definition = _validate_spec(binding, request.spec, name)
-        binding.register(resource_catalogs, definition)
+        binding.register(catalogs, definition)
         serialized = _serialize(definition)
-        await resource_repository.upsert(kind, name, serialized)
+        await resource_repository.upsert(kind, name, serialized, tenant_id=tenant_id)
         return {"apiVersion": API_VERSION, "kind": kind, "spec": serialized}
 
     @app.delete("/resources/{kind}/{name}", status_code=204)
-    async def delete_resource(kind: str, name: str) -> None:
+    async def delete_resource(http_request: Request, kind: str, name: str) -> None:
         """Delete a resource; referenced resources cannot be deleted."""
         binding = _binding(kind)
-        if not binding.has(resource_catalogs, name):
+        catalogs = scoped_catalogs(http_request)
+        tenant_id = request_tenant(http_request)
+        if not binding.has(catalogs, name):
             raise HTTPException(status_code=404, detail=f"{binding.kind} not found: {name}")
-        referencing = await _referencing_agents(agent_repository, binding, name)
+        referencing = await _referencing_agents(agent_repository, binding, name, tenant_id)
         if referencing:
             raise HTTPException(
                 status_code=409,
@@ -343,9 +371,9 @@ def configure_resource_routes(
                     + "; update or delete those agents first"
                 ),
             )
-        if not binding.delete(resource_catalogs, name):
+        if not binding.delete(catalogs, name):
             raise HTTPException(status_code=404, detail=f"{binding.kind} not found: {name}")
-        await resource_repository.delete(kind, name)
+        await resource_repository.delete(kind, name, tenant_id=tenant_id)
 
     @app.get("/templates", response_model=list[TemplateResponse])
     async def list_templates() -> list[TemplateResponse]:

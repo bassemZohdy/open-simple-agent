@@ -14,8 +14,8 @@ The first runtime targets [Google ADK](https://google.github.io/adk-docs/).
 > `osa-runtime` service CLI, a production-oriented container image, and
 > deterministic tests are implemented. JWT bearer authentication, opt-in
 > role/permission route enforcement, and runtime tenant binding are available;
-> control-plane tenant/resource policy, observability, streaming, and the UI
-> remain open.
+> control-plane resource policy, observability, streaming, and the UI remain
+> open.
 
 ## What works today
 
@@ -29,10 +29,10 @@ The first runtime targets [Google ADK](https://google.github.io/adk-docs/).
 | Sessions | `SessionProvider` contract, ownership (agent/user/tenant), TTL, bounded history fed back to the model | In-memory only; not replica-safe |
 | Memory | Policy catalog resolution (authoritative scope/limits/retention), scope-id isolation (user/agent/tenant/application), enforcement after every write, explicit writes, PostgreSQL persistence (ADR-003) | Extraction pipeline (auto-extract) reserved; vector search deferred |
 | ADK runtime | Invocation through the ADK `Runner`; timeouts, iteration limits, stable error types; A2A Agent Card + JSON-RPC server for A2A-enabled agents (ADR-005) | Streaming pending |
-| Control Plane | Agent CRUD, lifecycle transitions, immutable versions, optimistic concurrency, validated contracts; tenant-owned agent CRUD/lifecycle routes; resource CRUD/list/search APIs with reference checks and bundle import/export; tenant-owned deployment APIs (deploy/status/stop/restart/logs/rollback); external A2A agent registry with card validation and health; in-memory default or PostgreSQL repositories via `OSA_CONTROL_PLANE_DATABASE_URL` (ADR-004), Alembic schema (`osa-cp-migrate`); shared JWT bearer authentication and opt-in route permissions | Resource tenant ownership, policy authorization, and audit events pending (P2.2) |
-| Deployment | Local provider with bounded logs, health probing, and startup-failure capture; deploy/status/stop/restart/logs/rollback APIs through the Control Plane with persisted records | Kubernetes provider pending |
+| Control Plane | Agent CRUD, lifecycle transitions, immutable versions, optimistic concurrency, validated contracts; tenant-owned agent CRUD/lifecycle routes; tenant-scoped resource CRUD/list/search APIs with reference checks and bundle import/export; tenant-owned deployment APIs (deploy/status/stop/restart/logs/rollback); external A2A agent registry with card validation and health; in-memory default or PostgreSQL repositories via `OSA_CONTROL_PLANE_DATABASE_URL` (ADR-004), Alembic schema (`osa-cp-migrate`); shared JWT bearer authentication and opt-in route permissions | Policy authorization and audit events pending (P2.2) |
+| Deployment | Local provider with bounded logs, health probing, and startup-failure capture; deploy/status/stop/restart/logs/rollback APIs through the Control Plane with persisted tenant-owned records | Kubernetes provider pending |
 | Runtime API | Invoke, capabilities, liveness, readiness, optional A2A Agent Card/JSON-RPC, shared JWT bearer authentication, opt-in route permissions, and tenant-claim binding; `osa-runtime` CLI with bundle bootstrap | Streaming and A2A security-scheme enforcement pending |
-| CI | Format, lint, strict mypy, 426 collected tests (406 local plus 20 PostgreSQL tests in CI), container build + smoke test | No coverage gate, security scan, or release automation |
+| CI | Format, lint, strict mypy, 428 collected tests (408 local plus 20 PostgreSQL tests in CI), container build + smoke test | No coverage gate, security scan, or release automation |
 
 ## Architecture
 

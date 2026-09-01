@@ -51,11 +51,11 @@ def _app_version() -> str:
 
 
 async def _materialize_resources(resource_catalogs: ResourceCatalogs, repository: ResourceDefinitionRepository) -> None:
-    """Load persisted resource definitions into the in-memory catalogs."""
+    """Load persisted resource definitions into tenant-scoped catalogs."""
     for kind, (model_cls, register) in _RESOURCE_KINDS.items():
-        specs = await repository.list(kind)
-        for spec in specs.values():
-            register(resource_catalogs, model_cls.model_validate(spec))
+        records = await repository.list_all(kind)
+        for tenant_id, spec in records:
+            register(resource_catalogs.for_tenant(tenant_id), model_cls.model_validate(spec))
 
 
 def create_control_plane_app(

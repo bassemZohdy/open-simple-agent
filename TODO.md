@@ -2,14 +2,15 @@
 
 This backlog is based on a source, test, CI, packaging, and documentation review
 of `main` on 2026-08-30, updated on 2026-09-01 after the A2A, deployment,
-repository-boundary, authentication, and authorization slices landed.
+repository-boundary, authentication, authorization, and resource-ownership
+slices landed.
 
 A task is complete only after implementation, automated tests, relevant
 documentation, and appropriate failure/security behavior are complete.
 
 ## Current baseline
 
-- 426 tests are collected; 406 pass locally and 20 PostgreSQL integration tests
+- 428 tests are collected; 408 pass locally and 20 PostgreSQL integration tests
   skip when `OSA_TEST_DATABASE_URL` is unset. Strict mypy, Ruff format, and
   Ruff lint pass with no project-controlled warnings.
 - Latest GitHub Actions run on `main` is green, plus a container job that
@@ -23,8 +24,8 @@ policy-enforced scope/limits/retention (ADR-003), and PostgreSQL Control
 Plane persistence with Alembic migrations (ADR-004), A2A interoperability
 (ADR-005), and a shared JWT bearer-authentication foundation with opt-in
 role/permission route enforcement and runtime tenant binding exist.
-- The Kubernetes/OpenShift deployment provider, resource tenant
-ownership, resource policy, audit events, observability, streaming/replica
+- The Kubernetes/OpenShift deployment provider, resource policy, audit events,
+  observability, streaming/replica
 behavior, and UI do not exist.
 
 ## Release gate status
@@ -327,10 +328,10 @@ Bearer validation using issuer, audience, JWKS, algorithm, expiry, and scope
 checks. `OSA_AUTH_MODE=required` protects non-public routes. With
 `OSA_AUTH_ENFORCE_PERMISSIONS=true`, common role/permission claims and scopes
 enforce stable route permissions; runtime invocations bind omitted `user_id`
-and `tenant_id` to token claims and reject spoofing. This remains a bounded
-authorization slice: full OIDC discovery, control-plane tenant/resource
-ownership, policy evaluation, A2A security schemes, credential adapters, and
-audit events are still open.
+and `tenant_id` to token claims and reject spoofing. Control Plane agents,
+deployments, and resources now use the same tenant boundary. This remains a
+bounded authorization slice: full OIDC discovery, policy evaluation, A2A
+security schemes, credential adapters, and audit events are still open.
 
 - [ ] Complete OIDC/OAuth authentication for Control Plane and runtime APIs;
   add provider discovery/introspection and live identity-provider coverage.
@@ -345,8 +346,10 @@ audit events are still open.
 - [x] Extend tenant ownership to Control Plane deployment records and
   operations; deployments inherit agent ownership and persist it in migration
   0004.
-- [ ] Extend HTTP ownership/tenant boundaries to Control Plane resources;
-  retain the existing domain-level session/memory isolation checks.
+- [x] Extend HTTP ownership/tenant boundaries to Control Plane resources;
+  persist resource owners in migration 0005, isolate equal names in separate
+  catalog namespaces, and retain the existing domain-level session/memory
+  isolation checks.
 - [ ] Add tool/MCP/skill/model/A2A allow/deny policy independent of prompts.
 - [ ] Add API key/OAuth/mTLS credential adapters for MCP/A2A as required.
 - [ ] Add audit events for every management mutation and privileged invocation.
@@ -472,9 +475,9 @@ policy are stable.*
 |---|---|---|
 | RV-016 | Control Plane deployment routes missing (refs are validated at activation) | P1.5 |
 | RV-017 | Resource and deployment implementations are not exposed by the API | P1.2, P1.5 |
-| RV-019 | JWT bearer authentication and opt-in role/permission route enforcement are available but disabled by default; resource tenant authorization, A2A credential enforcement, and audit events remain open | P2.2 |
+| RV-019 | JWT bearer authentication and opt-in role/permission route enforcement are available but disabled by default; A2A credential enforcement, policy authorization, and audit events remain open | P2.2 |
 | RV-023 | Current tests have no live-provider, Kubernetes, live-identity-provider, multi-replica, or coverage-threshold gate | P2.2, P2.4, P3.3 |
-| RV-024 | Runtime binds `tenant_id`/`tid` claims to invocation metadata; Control Plane agents and deployments are tenant-owned, while resources and model/tool policy still do not use tenant metadata | P2.2 |
+| RV-024 | Runtime binds `tenant_id`/`tid` claims to invocation metadata; Control Plane agents, deployments, and resources are tenant-owned, while model/tool policy still does not use tenant metadata | P2.2 |
 
 Resolved on 2026-08-31 (documented here, then removed from the active table on
 the next backlog review): RV-018 (memory policy/limits/retention/persistence,

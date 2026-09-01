@@ -141,22 +141,23 @@ permissions. Roles are read from `roles`/`role` or Keycloak
 `agent`/`caller`/`user` (`agent:invoke`), and `service`
 (`agent:invoke` plus `resource:read`). Runtime invocations also bind
 `tenant_id`/`tid` to request metadata, injecting an omitted value and rejecting
-spoofed or mismatched values. This remains opt-in route authorization rather
-than full control-plane tenant/resource policy. Control Plane managed agents
-are assigned the authenticated `tenant_id`/`tid` on creation; list and
-lifecycle/read routes return only the same tenant's records. A2A security
-schemes, outbound API-key/OAuth/mTLS adapters, and audit events remain open in
-P2.2.
+spoofed or mismatched values. Control Plane managed agents are assigned the
+authenticated `tenant_id`/`tid` on creation; list and lifecycle/read routes
+return only the same tenant's records. Resource definitions use the same
+tenant scope, allow equal names in different tenants, and are resolved from
+tenant-scoped catalogs; PostgreSQL migration 0005 stores the owner. A2A
+security schemes, outbound API-key/OAuth/mTLS adapters, and audit events remain
+open in P2.2.
 
 ### Resource and template APIs (P1.2)
 
-Catalog resources are managed under `/resources/{kind}` with `kind` one of
+Tenant-scoped catalog resources are managed under `/resources/{kind}` with `kind` one of
 `Model`, `Tool`, `Skill`, `Mcp`, or `MemoryPolicy` (unknown kinds return
 404):
 
 | Method | Path | Behavior |
 |---|---|---|
-| `POST` | `/resources/{kind}` | Create from an envelope (`{apiVersion, kind, spec}`); duplicate names return 409 |
+| `POST` | `/resources/{kind}` | Create from an envelope (`{apiVersion, kind, spec}`); duplicate names return 409 within the caller's tenant |
 | `GET` | `/resources/{kind}?q=` | List envelopes (optionally filtered by name substring) |
 | `GET` | `/resources/{kind}/{name}` | Get one envelope |
 | `PUT` | `/resources/{kind}/{name}` | Replace (must exist; `spec.name` must match the path) |
@@ -165,9 +166,11 @@ Catalog resources are managed under `/resources/{kind}` with `kind` one of
 | `GET` | `/resources/export` | Export all resources as envelopes |
 | `GET` | `/templates` | List built-in agent templates (read-only) |
 
-All writes are validated against the domain schema (422 on violation) and
-persisted write-through to the `ResourceDefinitionRepository`, so resources
-survive restarts and are shared across replicas. Secret values never appear:
+All reads and writes are restricted to the caller's tenant (or the shared scope
+when authentication is disabled). Equal names in different tenants are
+independent resources. Writes are validated against the domain schema (422 on
+violation) and persisted write-through to the `ResourceDefinitionRepository`,
+so resources survive restarts and are shared across replicas. Secret values never appear:
 `credential_ref` exposes only non-secret coordinates (`source`, `key`,
 `env_var`) and is redacted defensively in every response.
 

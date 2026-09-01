@@ -330,3 +330,68 @@ async def test_control_plane_middleware_requires_auth(
         )
         assert denied_write.status_code == 403
         assert denied_write.json()["error"]["code"] == "authorization_denied"
+
+
+@pytest.mark.asyncio
+async def test_control_plane_resources_are_isolated_by_tenant(
+    signing_material: tuple[rsa.RSAPrivateKey, dict[str, str]],
+) -> None:
+    private_key, jwk = signing_material
+    settings = _settings(enforce_permissions=True)
+    app = configure_control_plane_app(
+        FastAPI(),
+        agent_repository=InMemoryAgentRepository(),
+        resource_catalogs=ResourceCatalogs(),
+        template_catalog=create_default_template_catalog(),
+        auth_settings=settings,
+        authenticator=_authenticator(settings, jwk),
+    )
+    tenant_one = {"Authorization": f"Bearer {_token(private_key, roles=['operator'], tid='tenant-1')}"}
+    tenant_two = {"Authorization": f"Bearer {_token(private_key, roles=['operator'], tid='tenant-2')}"}
+    model: dict[str, Any] = {
+        "apiVersion": "osa/v1alpha1",
+        "kind": "Model",
+        "spec": {"name": "shared-name", "provider": "fake", "model_id": "fake-1"},
+    }
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        first = await client.post("/resources/Model", headers=tenant_one, json=model)
+        assert first.status_code == 201
+
+        second_model = {**model, "spec": {**model["spec"], "model_id": "fake-2"}}
+        second = await client.post("/resources/Model", headers=tenant_two, json=second_model)
+        assert second.status_code == 201
+
+        first_view = await client.get("/resources/Model/shared-name", headers=tenant_one)
+        second_view = await client.get("/resources/Model/shared-name", headers=tenant_two)
+        assert first_view.status_code == 200
+        assert first_view.json()["spec"]["model_id"] == "fake-1"
+        assert second_view.status_code == 200
+        assert second_view.json()["spec"]["model_id"] == "fake-2"
+
+        missing = await client.get(
+            "/resources/Model/shared-name",
+            headers={
+                "Authorization": f"Bearer {_token(private_key, roles=['viewer'], tid='tenant-3')}",
+            },
+        )
+        assert missing.status_code == 404
+
+        tenant_three = {"Authorization": f"Bearer {_token(private_key, roles=['operator'], tid='tenant-3')}"}
+        agent = await client.post(
+            "/agents",
+            headers=tenant_three,
+            json={
+                "name": "tenant-three-agent",
+                "definition": {
+                    "apiVersion": "osa/v1alpha1",
+                    "kind": "Agent",
+                    "metadata": {"name": "tenant-three-agent"},
+                    "spec": {"model": {"ref": "shared-name"}},
+                },
+            },
+        )
+        assert agent.status_code == 201
+        activation = await client.post(f"/agents/{agent.json()['agent_id']}/activate", headers=tenant_three)
+        assert activation.status_code == 422
+        assert "not found" in activation.json()["error"]["message"]

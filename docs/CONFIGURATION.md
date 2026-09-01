@@ -210,8 +210,11 @@ injected, while a mismatch or an unscoped tenant claim is rejected. Control
 Plane managed agents are assigned the authenticated tenant on creation and are
 filtered and protected by that tenant on subsequent agent routes. Deployment
 records inherit agent tenant ownership and are protected by the same boundary.
-Resource tenant ownership, resource policy, audit events, API-key and mTLS
-adapters, and A2A security-scheme enforcement remain open.
+Resource definitions use the same tenant boundary, with equal names allowed in
+different tenants and tenant-scoped catalog resolution during activation and
+deployment bundle export. PostgreSQL migration 0005 stores resource ownership.
+Resource policy, audit events, API-key and mTLS adapters, and A2A
+security-scheme enforcement remain open.
 Token material is never logged or retained after validation.
 
 ## Secret references
