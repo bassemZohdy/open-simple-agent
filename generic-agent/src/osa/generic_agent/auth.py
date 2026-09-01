@@ -80,22 +80,23 @@ _ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
 class AuthSettings(StrictModel):
     """Externalized OIDC/OAuth bearer-token validation settings.
 
-    OSA validates signed JWT access tokens locally using the issuer's JWKS.
-    ``disabled`` is the development default; ``required`` is the production
-    mode and requires all issuer, audience, and JWKS settings.
+    OSA validates signed JWT access tokens locally using an explicit JWKS URL
+    or the issuer's standard OIDC discovery document. ``disabled`` is the
+    development default; enabled modes require an issuer and audience.
     """
 
     mode: AuthMode = AuthMode.DISABLED
     issuer: str | None = None
     audience: str | None = None
     jwks_url: str | None = None
+    discovery_url: str | None = None
     required_scopes: tuple[str, ...] = ()
     enforce_permissions: bool = False
     clock_skew_seconds: int = Field(default=30, ge=0, le=300)
     jwks_timeout_seconds: float = Field(default=2.0, gt=0, le=30)
     jwks_cache_seconds: int = Field(default=300, gt=0, le=86400)
 
-    @field_validator("issuer", "jwks_url")
+    @field_validator("issuer", "jwks_url", "discovery_url")
     @classmethod
     def _validate_http_url(cls, value: str | None) -> str | None:
         if value is None:
@@ -111,7 +112,7 @@ class AuthSettings(StrictModel):
             if self.enforce_permissions:
                 raise ValueError("Permission enforcement requires optional or required authentication mode")
             return self
-        missing = [name for name in ("issuer", "audience", "jwks_url") if getattr(self, name) in (None, "")]
+        missing = [name for name in ("issuer", "audience") if getattr(self, name) in (None, "")]
         if missing:
             raise ValueError(f"Authentication mode '{self.mode}' requires: {', '.join(missing)}")
         return self
@@ -133,6 +134,7 @@ class AuthSettings(StrictModel):
             issuer=values.get("OSA_AUTH_ISSUER"),
             audience=values.get("OSA_AUTH_AUDIENCE"),
             jwks_url=values.get("OSA_AUTH_JWKS_URL"),
+            discovery_url=values.get("OSA_AUTH_DISCOVERY_URL"),
             required_scopes=scopes,
             enforce_permissions=_parse_bool(values, "OSA_AUTH_ENFORCE_PERMISSIONS", False),
             clock_skew_seconds=_parse_int(values, "OSA_AUTH_CLOCK_SKEW_SECONDS", 30),
@@ -210,6 +212,57 @@ class AuthorizationPolicy:
 
 
 JwksLoader = Callable[[], Awaitable[Mapping[str, Any]]]
+OidcDiscoveryLoader = Callable[[], Awaitable[Mapping[str, Any]]]
+
+
+class OidcDiscoveryClient:
+    """Resolve a provider's JWKS endpoint from standard OIDC metadata."""
+
+    def __init__(
+        self,
+        settings: AuthSettings,
+        *,
+        loader: OidcDiscoveryLoader | None = None,
+    ) -> None:
+        self._settings = settings
+        self._loader = loader
+
+    async def jwks_url(self) -> str:
+        """Return the validated JWKS URI advertised by the issuer."""
+        try:
+            metadata = await self._load()
+        except AuthenticationError:
+            raise
+        except Exception as exc:  # pragma: no cover - defensive boundary
+            raise AuthenticationError("The OIDC discovery document could not be retrieved") from exc
+
+        advertised_issuer = metadata.get("issuer")
+        if advertised_issuer != self._settings.issuer:
+            raise AuthenticationError("The OIDC discovery issuer does not match the configured issuer")
+        raw_jwks_url = metadata.get("jwks_uri")
+        if not isinstance(raw_jwks_url, str) or not raw_jwks_url:
+            raise AuthenticationError("The OIDC discovery document has no JWKS URI")
+        try:
+            return str(TypeAdapter(AnyHttpUrl).validate_python(raw_jwks_url))
+        except ValidationError as exc:
+            raise AuthenticationError("The OIDC discovery JWKS URI is invalid") from exc
+
+    async def _load(self) -> Mapping[str, Any]:
+        if self._loader is not None:
+            return await self._loader()
+        issuer = self._settings.issuer
+        assert issuer is not None
+        discovery_url = self._settings.discovery_url or f"{issuer.rstrip('/')}/.well-known/openid-configuration"
+        try:
+            async with httpx.AsyncClient(timeout=self._settings.jwks_timeout_seconds) as client:
+                response = await client.get(discovery_url)
+                response.raise_for_status()
+                payload = response.json()
+        except (httpx.HTTPError, ValueError) as exc:
+            raise AuthenticationError("The OIDC discovery document could not be retrieved") from exc
+        if not isinstance(payload, dict):
+            raise AuthenticationError("The OIDC discovery document is invalid")
+        return payload
 
 
 class JwksClient:
@@ -220,11 +273,11 @@ class JwksClient:
         settings: AuthSettings,
         *,
         loader: JwksLoader | None = None,
+        discovery_client: OidcDiscoveryClient | None = None,
     ) -> None:
-        if settings.jwks_url is None and loader is None:
-            raise ValueError("jwks_url is required when no JWKS loader is provided")
         self._settings = settings
         self._loader = loader
+        self._discovery = discovery_client or OidcDiscoveryClient(settings)
         self._keys: dict[str, dict[str, Any]] = {}
         self._expires_at = 0.0
         self._lock = asyncio.Lock()
@@ -270,10 +323,12 @@ class JwksClient:
     async def _load(self) -> Mapping[str, Any]:
         if self._loader is not None:
             return await self._loader()
-        assert self._settings.jwks_url is not None
+        jwks_url = self._settings.jwks_url
+        if jwks_url is None:
+            jwks_url = await self._discovery.jwks_url()
         try:
             async with httpx.AsyncClient(timeout=self._settings.jwks_timeout_seconds) as client:
-                response = await client.get(str(self._settings.jwks_url))
+                response = await client.get(jwks_url)
                 response.raise_for_status()
                 payload = response.json()
         except (httpx.HTTPError, ValueError) as exc:

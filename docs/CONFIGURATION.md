@@ -171,10 +171,14 @@ Control Plane and runtime HTTP applications share
 development. Set `OSA_AUTH_MODE=required` in a deployed service to require a
 signed JWT Bearer token on every endpoint except liveness, readiness, and
 OpenAPI discovery. `optional` validates a token when one is supplied but
-permits anonymous requests. Required mode fails configuration if issuer,
-audience, or JWKS URL is missing.
+permits anonymous requests. Enabled modes require an issuer and audience.
+`OSA_AUTH_JWKS_URL` is optional: when it is unset, OSA fetches the issuer's
+standard `.well-known/openid-configuration` document and uses its validated
+`jwks_uri`. Set `OSA_AUTH_DISCOVERY_URL` when the provider uses a non-default
+discovery endpoint. An explicitly configured JWKS URL takes precedence and
+avoids discovery.
 
-OSA validates the JWT locally against the configured JWKS document. The
+OSA validates the JWT locally against the configured or OIDC-discovered JWKS document. The
 supported signing algorithms are RS256/384/512 and ES256/384/512. The token
 must contain `exp`, `iss`, and `sub`, and its issuer/audience must match the
 configured values. `OSA_AUTH_REQUIRED_SCOPES` is a space-separated list; a
@@ -186,7 +190,8 @@ is encountered.
 | `OSA_AUTH_MODE` | `disabled`, `optional`, or `required` | `disabled` |
 | `OSA_AUTH_ISSUER` | Expected JWT `iss` and OIDC issuer URL | unset |
 | `OSA_AUTH_AUDIENCE` | Expected JWT `aud` value | unset |
-| `OSA_AUTH_JWKS_URL` | HTTP JSON Web Key Set URL | unset |
+| `OSA_AUTH_JWKS_URL` | Optional explicit HTTP JSON Web Key Set URL; takes precedence over discovery | unset |
+| `OSA_AUTH_DISCOVERY_URL` | Optional OIDC discovery document URL; defaults to `{issuer}/.well-known/openid-configuration` | unset |
 | `OSA_AUTH_REQUIRED_SCOPES` | Required scopes separated by spaces | empty |
 | `OSA_AUTH_ENFORCE_PERMISSIONS` | Enforce mapped HTTP permissions from roles, permissions, and scopes | `false` |
 | `OSA_AUTH_CLOCK_SKEW_SECONDS` | JWT clock leeway, 0..300 seconds | `30` |

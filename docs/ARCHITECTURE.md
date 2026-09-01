@@ -190,9 +190,11 @@ Both APIs install the shared authentication boundary from
 development; `optional` accepts anonymous requests but validates a supplied
 Bearer token, and `required` protects every non-public endpoint. Health and
 OpenAPI discovery paths remain public. The current implementation validates
-RS256/384/512 and ES256/384/512 JWTs against a configured JWKS URL, issuer, and
-audience, enforces configured scopes, and returns the stable 401/403 error
-envelope. With `OSA_AUTH_ENFORCE_PERMISSIONS=true`, common `roles`/`role`
+RS256/384/512 and ES256/384/512 JWTs against an explicit JWKS URL or the
+configured issuer's standard OIDC discovery `jwks_uri`, issuer, and audience,
+enforces configured scopes, and returns the stable 401/403 error envelope.
+Explicit JWKS configuration takes precedence; discovery metadata must match the
+configured issuer. With `OSA_AUTH_ENFORCE_PERMISSIONS=true`, common `roles`/`role`
 claims, Keycloak `realm_access.roles`, explicit `permissions`/`permission`
 claims, and scopes are evaluated against stable route permissions. The
 built-in roles are `administrator`/`admin` (wildcard), `operator` (all
@@ -246,7 +248,7 @@ remote-agent credentials remains P2.2 work.
 
 ## Tests and CI
 
-The current baseline is 428 collected tests: 408 pass locally and 20
+The current baseline is 434 collected tests: 414 pass locally and 20
 PostgreSQL tests are skipped when `OSA_TEST_DATABASE_URL` is unset. CI runs:
 
 - `ruff format --check .`;

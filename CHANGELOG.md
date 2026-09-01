@@ -22,6 +22,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - **Shared JWT/OIDC authentication boundary**
   - `AuthSettings` reads `OSA_AUTH_*` configuration for disabled, optional, or required Bearer authentication in both FastAPI applications
   - JWKS-backed validation checks issuer, audience, expiry, subject, allowed signing algorithms, and configured scopes without retaining or logging token material
+  - OIDC discovery is supported when `OSA_AUTH_JWKS_URL` is omitted; the standard or explicitly configured discovery document must match the configured issuer and advertise an absolute HTTP `jwks_uri`, while an explicit JWKS URL remains authoritative
   - Non-public HTTP routes return stable 401/403 envelopes; runtime invocations derive omitted `user_id` from the validated subject and reject identity spoofing
   - Optional `OSA_AUTH_ENFORCE_PERMISSIONS` maps stable route permissions from roles, explicit permission claims, and scopes; built-in administrator/operator/viewer/agent/caller/user/service mappings are covered by tests
   - Runtime `tenant_id`/`tid` claims bind to invocation metadata, with injection for omitted metadata and rejection of mismatches or tenant spoofing

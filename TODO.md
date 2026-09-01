@@ -10,7 +10,7 @@ documentation, and appropriate failure/security behavior are complete.
 
 ## Current baseline
 
-- 428 tests are collected; 408 pass locally and 20 PostgreSQL integration tests
+- 434 tests are collected; 414 pass locally and 20 PostgreSQL integration tests
   skip when `OSA_TEST_DATABASE_URL` is unset. Strict mypy, Ruff format, and
   Ruff lint pass with no project-controlled warnings.
 - Latest GitHub Actions run on `main` is green, plus a container job that
@@ -330,11 +330,16 @@ checks. `OSA_AUTH_MODE=required` protects non-public routes. With
 enforce stable route permissions; runtime invocations bind omitted `user_id`
 and `tenant_id` to token claims and reject spoofing. Control Plane agents,
 deployments, and resources now use the same tenant boundary. This remains a
-bounded authorization slice: full OIDC discovery, policy evaluation, A2A
-security schemes, credential adapters, and audit events are still open.
+bounded authorization slice: OIDC token introspection/live-provider coverage,
+policy evaluation, A2A security schemes, credential adapters, and audit events
+are still open.
 
+- [x] Resolve standard OIDC discovery metadata to a validated `jwks_uri` when
+  no explicit JWKS URL is configured; support an explicit discovery URL and
+  keep explicit JWKS configuration authoritative. This is deterministic
+  offline coverage, not live provider validation.
 - [ ] Complete OIDC/OAuth authentication for Control Plane and runtime APIs;
-  add provider discovery/introspection and live identity-provider coverage.
+  add token introspection where required and live identity-provider coverage.
 - [x] Define baseline administrator, operator, viewer, agent, caller, user, and
   service roles plus stable route permissions; accept common role, permission,
   and scope claims.

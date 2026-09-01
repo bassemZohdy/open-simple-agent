@@ -32,7 +32,7 @@ The first runtime targets [Google ADK](https://google.github.io/adk-docs/).
 | Control Plane | Agent CRUD, lifecycle transitions, immutable versions, optimistic concurrency, validated contracts; tenant-owned agent CRUD/lifecycle routes; tenant-scoped resource CRUD/list/search APIs with reference checks and bundle import/export; tenant-owned deployment APIs (deploy/status/stop/restart/logs/rollback); external A2A agent registry with card validation and health; in-memory default or PostgreSQL repositories via `OSA_CONTROL_PLANE_DATABASE_URL` (ADR-004), Alembic schema (`osa-cp-migrate`); shared JWT bearer authentication and opt-in route permissions | Policy authorization and audit events pending (P2.2) |
 | Deployment | Local provider with bounded logs, health probing, and startup-failure capture; deploy/status/stop/restart/logs/rollback APIs through the Control Plane with persisted tenant-owned records | Kubernetes provider pending |
 | Runtime API | Invoke, capabilities, liveness, readiness, optional A2A Agent Card/JSON-RPC, shared JWT bearer authentication, opt-in route permissions, and tenant-claim binding; `osa-runtime` CLI with bundle bootstrap | Streaming and A2A security-scheme enforcement pending |
-| CI | Format, lint, strict mypy, 428 collected tests (408 local plus 20 PostgreSQL tests in CI), container build + smoke test | No coverage gate, security scan, or release automation |
+| CI | Format, lint, strict mypy, 434 collected tests (414 local plus 20 PostgreSQL tests in CI), container build + smoke test | No coverage gate, security scan, or release automation |
 
 ## Architecture
 
@@ -219,8 +219,10 @@ uv run uvicorn osa.control_plane.backend.api:app --reload
 Both APIs use the stable error envelope `{"error": {"code", "message"}}` and
 enforce session ownership, lifecycle transitions, and optimistic concurrency
 where applicable. Authentication is disabled by default for development; set
-`OSA_AUTH_MODE=required` with an issuer, audience, and JWKS URL to require
-signed JWT bearer tokens on non-health endpoints. Set
+`OSA_AUTH_MODE=required` with an issuer and audience to require signed JWT
+bearer tokens on non-health endpoints. `OSA_AUTH_JWKS_URL` may pin an explicit
+key endpoint; when omitted, OSA resolves the issuer's standard OIDC discovery
+document and validates its `jwks_uri`. Set
 `OSA_AUTH_ENFORCE_PERMISSIONS=true` to apply the documented role/permission
 checks to known management, resource, deployment, external-agent, A2A, and
 invocation routes. See the
