@@ -40,6 +40,7 @@ agents_table = Table(
     Column("current_version", Text, nullable=False),
     Column("runtime", Text, nullable=False, server_default="adk"),
     Column("endpoint", Text, nullable=True),
+    Column("tenant_id", Text, nullable=True),
     Column("definition", JSON, nullable=True),
     Column("skills", JSON, nullable=False),
     Column("labels", JSON, nullable=False),
