@@ -81,4 +81,7 @@ filterwarnings = [
     # experimental; OSA only reaches that path for tools without a declared
     # parameters_schema (signature-derived declarations are the fallback).
     "ignore:\\[EXPERIMENTAL\\] feature FeatureName.JSON_SCHEMA_FOR_FUNC_DECL:UserWarning",
+    # a2a-sdk 1.x calls a deprecated protobuf accessor from its own
+    # conversion helpers; nothing in OSA can avoid it.
+    "ignore:label\\(\\) is deprecated:DeprecationWarning",
 ]

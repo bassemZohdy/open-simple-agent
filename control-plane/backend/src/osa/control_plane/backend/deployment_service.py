@@ -108,6 +108,10 @@ class DeploymentService:
             raise DeploymentError(
                 f"Agent '{record.name}' must be active before deployment (status: {record.status.value})"
             )
+        if getattr(record, "agent_type", "managed") == "external":
+            raise DeploymentError(
+                f"Agent '{record.name}' is an external A2A agent; external agents are never deployed by OSA"
+            )
 
         bundle_path = self._export_bundle(record)
         port = _free_port()

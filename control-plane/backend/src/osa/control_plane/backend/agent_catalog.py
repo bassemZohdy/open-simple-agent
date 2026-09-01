@@ -105,6 +105,9 @@ class AgentRecord:
     skills: list[str] = field(default_factory=list)
     runtime: str = "adk"
     endpoint: str | None = None
+    #: "managed" agents are deployed by OSA; "external" agents are A2A
+    #: records that OSA never deploys (P2.1).
+    agent_type: str = "managed"
     labels: dict[str, str] = field(default_factory=dict)
     created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     updated_at: datetime = field(default_factory=lambda: datetime.now(UTC))

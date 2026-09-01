@@ -205,6 +205,10 @@ def configure_control_plane_app(
     from osa.control_plane.backend.deployment import LocalDeploymentProvider
     from osa.control_plane.backend.deployment_service import DeploymentService
     from osa.control_plane.backend.deployments_api import configure_deployment_routes
+    from osa.control_plane.backend.external_agents import (
+        ExternalAgentCatalog,
+        configure_external_agent_routes,
+    )
     from osa.control_plane.backend.repositories import InMemoryDeploymentRecordRepository
     from osa.control_plane.backend.resources_api import configure_resource_routes
 
@@ -214,6 +218,7 @@ def configure_control_plane_app(
     app.state.resource_catalogs = resource_catalogs
     app.state.template_catalog = template_catalog
     app.state.resource_repository = resource_repository
+    app.state.external_agent_catalog = ExternalAgentCatalog()
     app.state.deployment_service = DeploymentService(
         provider=deployment_provider if deployment_provider is not None else LocalDeploymentProvider(),
         record_repository=InMemoryDeploymentRecordRepository(),
@@ -436,6 +441,7 @@ def configure_control_plane_app(
         resource_repository=resource_repository,
     )
     configure_deployment_routes(app)
+    configure_external_agent_routes(app)
 
     @app.get("/health/live")
     async def health_live() -> dict[str, str]:

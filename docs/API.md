@@ -161,6 +161,36 @@ Every transition persists intent and observed state through the
 Control Plane is configured with a database). The Kubernetes provider and
 multi-host scheduling remain open (see `TODO.md`).
 
+### A2A and external agents (P2.1)
+
+When an agent definition sets `spec.a2a.enabled: true` (and the runtime runs
+with the `osa-adk-runtime[a2a]` extra), the runtime API serves:
+
+- `GET /.well-known/agent-card.json` — the A2A Agent Card generated from the
+  validated definition and resolved skills (name, version, description,
+  skills, `text/plain` modes; `protocol_binding: JSONRPC`).
+- `POST /a2a` — A2A JSON-RPC `message/send`: one A2A task per invocation,
+  submitted → working → completed (agent output as a task artifact) or
+  failed (deterministic error text). The A2A context id maps to an OSA
+  session created on first contact, so multi-turn conversations keep one
+  session per conversation.
+
+External agents are A2A servers outside OSA, tracked as records distinct
+from managed agents (they are never deployed):
+
+| Method | Path | Behavior |
+|---|---|---|
+| `POST` | `/external-agents` | Register by URL: the Agent Card is fetched and validated (422 if unreachable/invalid); duplicate names 409 |
+| `GET` | `/external-agents?status=` | List records with health status |
+| `GET` | `/external-agents/{id}` | Get one record |
+| `POST` | `/external-agents/{id}/refresh` | Re-fetch the card and update health |
+| `POST` | `/external-agents/{id}/invoke?message=` | Invoke the external agent over A2A (502 on remote failure) |
+| `DELETE` | `/external-agents/{id}` | Delete the record |
+
+Attempts to deploy an external record are rejected with 422 — external
+agents are never deployed by OSA. A2A security-scheme enforcement lands with
+authentication (P2.2).
+
 ## Runtime API
 
 Application: `osa.runtimes.adk.api:runtime_app`

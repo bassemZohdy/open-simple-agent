@@ -100,8 +100,25 @@ async def initialize_runtime(
         model_catalog=model_catalog,
     )
     agent = await runtime.create(definition)
+    maybe_attach_a2a(agent)
     set_runtime(runtime, agent)
     return agent
+
+
+def maybe_attach_a2a(agent: GenericAdkAgent) -> None:
+    """Attach A2A routes when the agent definition enables A2A (ADR-005).
+
+    The public URL comes from ``OSA_A2A_URL`` (default localhost). Requires
+    the ``a2a`` extra; failures raise before readiness.
+    """
+    import os
+
+    if not agent.definition.spec.a2a.enabled:
+        return
+    from osa.runtimes.adk.a2a import attach_a2a_routes
+
+    url = os.environ.get("OSA_A2A_URL", "http://localhost:8080/")
+    attach_a2a_routes(runtime_app, agent, url)
 
 
 def reset_runtime() -> None:

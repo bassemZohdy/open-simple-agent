@@ -205,6 +205,19 @@ Plane uses a database); rollback relaunches an earlier immutable version
 snapshot. Deployed runtimes are external processes: no ADK internals are
 imported. The Kubernetes/OpenShift provider remains open in `TODO.md`.
 
+## A2A interoperability
+
+The runtime exposes A2A-enabled agents (ADR-005, `a2a-sdk` 1.x): the Agent
+Card is generated from the validated definition plus resolved skills and
+served at the well-known path; `message/send` maps one A2A task per
+invocation through `GenericAdkAgent.invoke`, with the A2A context id mapped
+to an OSA session. The Control Plane tracks **external** A2A agents as
+records distinct from managed agents: registration fetches and validates the
+remote Agent Card, refresh re-checks health, and invocation goes through the
+A2A client with bounded timeouts and `a2a_remote_failed` error mapping.
+External records are structurally barred from deployment. A2A security
+schemes are configuration now; enforcement is P2.2.
+
 ## Tests and CI
 
 The current baseline is ~320 tests. CI runs:

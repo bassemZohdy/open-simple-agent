@@ -155,6 +155,7 @@ def create_runtime_app(
         except (BundleError, SecretError) as exc:
             runtime_api.set_start_error(str(exc))
             raise
+        runtime_api.maybe_attach_a2a(agent)
         runtime_api.set_runtime(runtime, agent)
         yield
         await runtime.shutdown()

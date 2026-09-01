@@ -12,6 +12,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added — P2.1: A2A and external agents
+- **A2A and external agents (ADR-005)**
+  - `a2a-sdk[http-server]>=1.0,<2` (matching google-adk's a2a range) as the optional `osa-adk-runtime[a2a]` extra; client utilities available through `osa-generic-agent[a2a]`
+  - Agent Cards generated from validated definitions plus resolved skills; served at the well-known path when `spec.a2a.enabled`
+  - A2A JSON-RPC server: `message/send` maps one task per invocation (submitted → working → completed artifact / failed with deterministic error text); A2A context ids map to OSA sessions created on first contact
+  - External-agent records distinct from managed agents: register by URL with card fetch + validation (422 on unreachable), refresh with health tracking, invoke through the A2A client with bounded timeouts (`a2a_remote_failed`), delete; duplicates 409
+  - External records are structurally barred from deployment (422 naming the record type)
+  - Acceptance covered offline: served agent B invoked by agent A through the A2A protocol via a native tool bridge, plus a deterministic external A2A server
+
 ### Added — P1.5: Deployment APIs and provider hardening
 - **Deployment APIs and providers (P1.5)**
   - `LocalDeploymentProvider` hardened: bounded per-deployment log capture (`logs(tail)`), health-probe window during startup (early exit or missed probe fails the deployment with captured logs), dead-process detection on status, idempotent re-deploy of the same running command, process cleanup on stop/shutdown; restart preserves deployment identity

@@ -19,6 +19,9 @@ litellm = ["litellm>=1.84"]
 # PostgreSQL-backed memory persistence (ADR-003). Externalized via
 # OSA_MEMORY_DATABASE_URL; the runtime image installs this extra.
 postgres = ["sqlalchemy[asyncio]>=2.0,<3", "asyncpg>=0.29"]
+# A2A protocol support (ADR-005): Agent Cards, A2A server/client. Pinned to
+# the 1.x line (protobuf-based types) — within google-adk's own a2a range.
+a2a = ["a2a-sdk[http-server]>=1.0,<2"]
 
 [project.scripts]
 osa-runtime = "osa.runtimes.adk.service:main"

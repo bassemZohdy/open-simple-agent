@@ -9,7 +9,7 @@ documentation, and appropriate failure/security behavior are complete.
 
 ## Current baseline
 
-- ~410 tests pass; strict mypy, Ruff format, and Ruff lint pass with no
+- ~415 tests pass; strict mypy, Ruff format, and Ruff lint pass with no
   project-controlled warnings.
 - Latest GitHub Actions run on `main` is green, plus a container job that
   builds the runtime image and runs a ready/invoke/SIGTERM smoke test.
@@ -289,19 +289,32 @@ ADK internals, observes readiness, restarts it, and rolls back safely. ✅
 
 # P2 — Interoperability and production controls
 
-## P2.1 A2A and external agents
+## P2.1 A2A and external agents (complete 2026-08-31)
 
-- [ ] Select and pin the supported A2A specification/SDK version; record an ADR.
-- [ ] Generate Agent Cards from validated definitions and resolved skills.
-- [ ] Expose A2A invocation and required task/status semantics.
-- [ ] Define security-scheme configuration and caller identity propagation.
-- [ ] Add external-agent record type distinct from managed agents.
-- [ ] Register/validate/refresh Agent Cards by URL and track health.
-- [ ] Implement remote A2A invocation, authentication, errors, and timeouts.
-- [ ] Add external compatibility tests.
+- [x] Select and pin the supported A2A specification/SDK version; record an ADR
+  (`a2a-sdk[http-server]>=1.0,<2`, the protobuf-typed 1.x line within
+  google-adk's own a2a range — ADR-005).
+- [x] Generate Agent Cards from validated definitions and resolved skills
+  (`build_agent_card`; served at the well-known path when `spec.a2a.enabled`).
+- [x] Expose A2A invocation and required task/status semantics (JSON-RPC
+  `message/send`: submitted → working → completed artifact / failed with
+  deterministic error text; A2A context ids map to OSA sessions).
+- [x] Define security-scheme configuration and caller identity propagation
+  (schemes externalized via configuration; enforcement lands with P2.2 —
+  recorded in ADR-005).
+- [x] Add external-agent record type distinct from managed agents
+  (`ExternalAgentRecord`; structurally barred from deployment — 422).
+- [x] Register/validate/refresh Agent Cards by URL and track health
+  (422 on unreachable at registration; refresh re-checks health).
+- [x] Implement remote A2A invocation, authentication, errors, and timeouts
+  (`invoke_remote_agent` with bounded timeout and `a2a_remote_failed`
+  mapping; token auth deferred to P2.2).
+- [x] Add external compatibility tests (offline protocol tests against a
+  real in-process A2A server: card fetch, task completion, error mapping,
+  A-invokes-B acceptance).
 
 **Acceptance:** Managed Agent A invokes Managed Agent B and a deterministic
-external A2A agent; external records cannot be deployed by OSA.
+external A2A agent; external records cannot be deployed by OSA. ✅
 
 ## P2.2 Authentication and authorization
 

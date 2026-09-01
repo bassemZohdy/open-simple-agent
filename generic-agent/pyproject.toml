@@ -9,6 +9,11 @@ dependencies = [
     "pyyaml>=6.0",
 ]
 
+[project.optional-dependencies]
+# A2A client utilities (ADR-005). Server-side support lives in the ADK
+# runtime, which pins the same line with the http-server subextra.
+a2a = ["a2a-sdk>=1.0,<2"]
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
