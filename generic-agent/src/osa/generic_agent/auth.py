@@ -32,6 +32,51 @@ class AuthMode(StrEnum):
     REQUIRED = "required"
 
 
+class AuthPermission(StrEnum):
+    """Stable permissions used by the OSA HTTP surfaces."""
+
+    AGENT_INVOKE = "agent:invoke"
+    AGENT_READ = "agent:read"
+    AGENT_WRITE = "agent:write"
+    RESOURCE_READ = "resource:read"
+    RESOURCE_WRITE = "resource:write"
+    DEPLOYMENT_READ = "deployment:read"
+    DEPLOYMENT_WRITE = "deployment:write"
+    EXTERNAL_AGENT_READ = "external-agent:read"
+    EXTERNAL_AGENT_WRITE = "external-agent:write"
+
+
+_ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
+    "administrator": frozenset({"*"}),
+    "admin": frozenset({"*"}),
+    "operator": frozenset(
+        {
+            AuthPermission.AGENT_INVOKE,
+            AuthPermission.AGENT_READ,
+            AuthPermission.AGENT_WRITE,
+            AuthPermission.RESOURCE_READ,
+            AuthPermission.RESOURCE_WRITE,
+            AuthPermission.DEPLOYMENT_READ,
+            AuthPermission.DEPLOYMENT_WRITE,
+            AuthPermission.EXTERNAL_AGENT_READ,
+            AuthPermission.EXTERNAL_AGENT_WRITE,
+        }
+    ),
+    "viewer": frozenset(
+        {
+            AuthPermission.AGENT_READ,
+            AuthPermission.RESOURCE_READ,
+            AuthPermission.DEPLOYMENT_READ,
+            AuthPermission.EXTERNAL_AGENT_READ,
+        }
+    ),
+    "agent": frozenset({AuthPermission.AGENT_INVOKE}),
+    "caller": frozenset({AuthPermission.AGENT_INVOKE}),
+    "user": frozenset({AuthPermission.AGENT_INVOKE}),
+    "service": frozenset({AuthPermission.AGENT_INVOKE, AuthPermission.RESOURCE_READ}),
+}
+
+
 class AuthSettings(StrictModel):
     """Externalized OIDC/OAuth bearer-token validation settings.
 
@@ -45,6 +90,7 @@ class AuthSettings(StrictModel):
     audience: str | None = None
     jwks_url: str | None = None
     required_scopes: tuple[str, ...] = ()
+    enforce_permissions: bool = False
     clock_skew_seconds: int = Field(default=30, ge=0, le=300)
     jwks_timeout_seconds: float = Field(default=2.0, gt=0, le=30)
     jwks_cache_seconds: int = Field(default=300, gt=0, le=86400)
@@ -62,6 +108,8 @@ class AuthSettings(StrictModel):
     @model_validator(mode="after")
     def _validate_enabled_settings(self) -> AuthSettings:
         if self.mode is AuthMode.DISABLED:
+            if self.enforce_permissions:
+                raise ValueError("Permission enforcement requires optional or required authentication mode")
             return self
         missing = [name for name in ("issuer", "audience", "jwks_url") if getattr(self, name) in (None, "")]
         if missing:
@@ -86,6 +134,7 @@ class AuthSettings(StrictModel):
             audience=values.get("OSA_AUTH_AUDIENCE"),
             jwks_url=values.get("OSA_AUTH_JWKS_URL"),
             required_scopes=scopes,
+            enforce_permissions=_parse_bool(values, "OSA_AUTH_ENFORCE_PERMISSIONS", False),
             clock_skew_seconds=_parse_int(values, "OSA_AUTH_CLOCK_SKEW_SECONDS", 30),
             jwks_timeout_seconds=_parse_float(values, "OSA_AUTH_JWKS_TIMEOUT_SECONDS", 2.0),
             jwks_cache_seconds=_parse_int(values, "OSA_AUTH_JWKS_CACHE_SECONDS", 300),
@@ -112,6 +161,52 @@ class AuthenticatedPrincipal:
     issuer: str
     audience: tuple[str, ...]
     scopes: frozenset[str]
+    roles: frozenset[str] = frozenset()
+    permissions: frozenset[str] = frozenset()
+    tenant_id: str | None = None
+
+
+class AuthorizationPolicy:
+    """Resolve stable HTTP permissions from token roles and claims."""
+
+    def __init__(self, *, enabled: bool) -> None:
+        self.enabled = enabled
+
+    @staticmethod
+    def permission_for_request(path: str, method: str) -> str | None:
+        """Return the permission required by a known OSA route."""
+        normalized_method = method.upper()
+        if path == "/v1/invoke" and normalized_method == "POST":
+            return AuthPermission.AGENT_INVOKE
+        if path == "/v1/capabilities" and normalized_method == "GET":
+            return AuthPermission.AGENT_READ
+        if path.startswith("/a2a") and normalized_method == "POST":
+            return AuthPermission.AGENT_INVOKE
+        if path == "/templates" and normalized_method == "GET":
+            return AuthPermission.RESOURCE_READ
+        if path.startswith("/resources/"):
+            return AuthPermission.RESOURCE_READ if normalized_method == "GET" else AuthPermission.RESOURCE_WRITE
+        if path.startswith("/deployments/") or path.endswith("/deploy"):
+            return AuthPermission.DEPLOYMENT_READ if normalized_method == "GET" else AuthPermission.DEPLOYMENT_WRITE
+        if path.startswith("/external-agents"):
+            if path.endswith("/invoke") and normalized_method == "POST":
+                return AuthPermission.AGENT_INVOKE
+            return (
+                AuthPermission.EXTERNAL_AGENT_READ
+                if normalized_method == "GET"
+                else AuthPermission.EXTERNAL_AGENT_WRITE
+            )
+        if path == "/agents" or path.startswith("/agents/"):
+            return AuthPermission.AGENT_READ if normalized_method == "GET" else AuthPermission.AGENT_WRITE
+        return None
+
+    def require(self, principal: AuthenticatedPrincipal, permission: str) -> None:
+        """Raise when a principal lacks a required permission."""
+        granted = set(principal.permissions) | set(principal.scopes)
+        for role in principal.roles:
+            granted.update(_ROLE_PERMISSIONS.get(role.lower(), ()))
+        if "*" not in granted and permission not in granted:
+            raise AuthorizationError(f"Permission '{permission}' is required")
 
 
 JwksLoader = Callable[[], Awaitable[Mapping[str, Any]]]
@@ -240,7 +335,18 @@ class JwtAuthenticator:
         missing_scopes = set(self._settings.required_scopes) - scopes
         if missing_scopes:
             raise AuthorizationError("The bearer token does not grant the required scope")
-        return AuthenticatedPrincipal(subject=subject, issuer=issuer, audience=audience, scopes=frozenset(scopes))
+        roles = _role_values(claims)
+        permissions = _permission_values(claims)
+        tenant_id = _tenant_value(claims)
+        return AuthenticatedPrincipal(
+            subject=subject,
+            issuer=issuer,
+            audience=audience,
+            scopes=frozenset(scopes),
+            roles=frozenset(roles),
+            permissions=frozenset(permissions),
+            tenant_id=tenant_id,
+        )
 
 
 def _bearer_token(authorization: str | None) -> str:
@@ -269,6 +375,41 @@ def _scope_values(claims: Mapping[str, Any]) -> set[str]:
     raise AuthenticationError("The bearer token scope claim is invalid")
 
 
+def _role_values(claims: Mapping[str, Any]) -> set[str]:
+    """Read common OIDC role claim shapes, including Keycloak realms."""
+    values = _claim_values(claims.get("roles", claims.get("role", "")), "roles")
+    realm_access = claims.get("realm_access")
+    if realm_access is not None:
+        if not isinstance(realm_access, dict):
+            raise AuthenticationError("The bearer token role claim is invalid")
+        values.update(_claim_values(realm_access.get("roles", []), "roles"))
+    return values
+
+
+def _permission_values(claims: Mapping[str, Any]) -> set[str]:
+    """Read explicit permission claims; scopes are evaluated separately."""
+    return _claim_values(claims.get("permissions", claims.get("permission", [])), "permissions")
+
+
+def _claim_values(value: Any, claim_name: str) -> set[str]:
+    if isinstance(value, str):
+        return {item for item in value.split() if item}
+    if isinstance(value, list) and all(isinstance(item, str) for item in value):
+        return {item for item in value if item}
+    if value in (None, ""):
+        return set()
+    raise AuthenticationError(f"The bearer token {claim_name} claim is invalid")
+
+
+def _tenant_value(claims: Mapping[str, Any]) -> str | None:
+    value = claims.get("tenant_id", claims.get("tid"))
+    if value is None:
+        return None
+    if not isinstance(value, str) or not value:
+        raise AuthenticationError("The bearer token tenant claim is invalid")
+    return value
+
+
 def _parse_int(values: Mapping[str, str], name: str, default: int) -> int:
     raw_value = values.get(name)
     if raw_value is None:
@@ -287,3 +428,15 @@ def _parse_float(values: Mapping[str, str], name: str, default: float) -> float:
         return float(raw_value)
     except ValueError as exc:
         raise ConfigurationError(f"Invalid numeric value for {name}") from exc
+
+
+def _parse_bool(values: Mapping[str, str], name: str, default: bool) -> bool:
+    raw_value = values.get(name)
+    if raw_value is None:
+        return default
+    normalized = raw_value.strip().lower()
+    if normalized in {"1", "true", "yes", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "off"}:
+        return False
+    raise ConfigurationError(f"Invalid boolean value for {name}")
