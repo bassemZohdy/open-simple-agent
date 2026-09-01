@@ -188,15 +188,28 @@ is encountered.
 | `OSA_AUTH_AUDIENCE` | Expected JWT `aud` value | unset |
 | `OSA_AUTH_JWKS_URL` | HTTP JSON Web Key Set URL | unset |
 | `OSA_AUTH_REQUIRED_SCOPES` | Required scopes separated by spaces | empty |
+| `OSA_AUTH_ENFORCE_PERMISSIONS` | Enforce mapped HTTP permissions from roles, permissions, and scopes | `false` |
 | `OSA_AUTH_CLOCK_SKEW_SECONDS` | JWT clock leeway, 0..300 seconds | `30` |
 | `OSA_AUTH_JWKS_TIMEOUT_SECONDS` | JWKS request timeout, >0 and <=30 seconds | `2.0` |
 | `OSA_AUTH_JWKS_CACHE_SECONDS` | JWKS cache lifetime, >0 and <=86400 seconds | `300` |
 
-The current authorization behavior is intentionally narrow: the validated
-token subject is the runtime caller identity when `user_id` is omitted, and a
-different supplied `user_id` is rejected. Role/tenant/resource policies, audit
-events, API-key and mTLS adapters, and A2A security-scheme enforcement remain
-P2.2 work. Token material is never logged or retained after validation.
+When enabled, `OSA_AUTH_ENFORCE_PERMISSIONS` maps known routes to stable
+permissions: `agent:invoke`, `agent:read`, `agent:write`, `resource:read`,
+`resource:write`, `deployment:read`, `deployment:write`,
+`external-agent:read`, and `external-agent:write`. The validator accepts
+roles from `roles`/`role` and Keycloak `realm_access.roles`, explicit
+permissions from `permissions`/`permission`, and configured scopes. Built-in
+role mappings are: `administrator`/`admin` wildcard; `operator` all
+permissions; `viewer` read permissions; `agent`/`caller`/`user`
+`agent:invoke`; and `service` `agent:invoke` plus `resource:read`.
+
+The validated token subject is the runtime caller identity when `user_id` is
+omitted, and a different supplied `user_id` is rejected. A `tenant_id` or
+`tid` claim is bound to runtime invocation metadata; omitted metadata is
+injected, while a mismatch or an unscoped tenant claim is rejected. This does
+not yet provide control-plane tenant/resource ownership, resource policy,
+audit events, API-key and mTLS adapters, or A2A security-scheme enforcement.
+Token material is never logged or retained after validation.
 
 ## Secret references
 
