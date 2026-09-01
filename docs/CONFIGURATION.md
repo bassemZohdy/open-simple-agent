@@ -96,6 +96,25 @@ tools:
 
 ### Memory, session, A2A, and runtime
 
+#### Resource policy
+
+`spec.policy` applies exact allow/deny rules before runtime resources are
+constructed. An empty rule allows all names; a non-empty `allow` list becomes
+an allow-list, and `deny` always wins. A2A uses `inbound` to control exposure.
+
+```yaml
+spec:
+  policy:
+    models: {allow: [default]}
+    tools: {allow: [calculator], deny: [shell]}
+    mcps: {deny: [untrusted-server]}
+    skills: {allow: [support]}
+    a2a: {deny: [inbound]}
+```
+
+Allow/deny overlap is invalid. The policy is independent of the prompt;
+outbound A2A credentials and enterprise policy evaluation remain open.
+
 | Path | Type | Default | Current behavior |
 |---|---|---:|---|
 | `spec.memory.enabled` | boolean | false | Enables search-based context only when a provider is configured |

@@ -38,6 +38,7 @@ from osa.generic_agent.config import (
     SUPPORTED_API_VERSION,
     SUPPORTED_KIND,
     A2AConfig,
+    AccessRule,
     AgentDefinition,
     AgentMetadataConfig,
     AgentSpec,
@@ -46,6 +47,7 @@ from osa.generic_agent.config import (
     MemoryConfig,
     MemoryScope,
     ModelRef,
+    ResourcePolicy,
     RuntimeConfig,
     SecretReference,
     SessionConfig,
@@ -61,6 +63,7 @@ from osa.generic_agent.errors import (
     ModelConfigurationError,
     ModelInvocationError,
     OsaError,
+    PolicyViolationError,
     error_payload,
 )
 from osa.generic_agent.example_tools import CalculatorTool
@@ -115,6 +118,7 @@ from osa.generic_agent.tool import (
 
 __all__ = [
     "A2AConfig",
+    "AccessRule",
     "API_VERSION",
     "AbstractAgent",
     "Agent",
@@ -180,7 +184,9 @@ __all__ = [
     "ModelResponse",
     "ModelRuntimeSettings",
     "OsaError",
+    "PolicyViolationError",
     "RuntimeConfig",
+    "ResourcePolicy",
     "SUPPORTED_API_VERSION",
     "SUPPORTED_KIND",
     "SecretError",

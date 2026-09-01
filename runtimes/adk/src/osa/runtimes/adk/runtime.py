@@ -34,6 +34,7 @@ from osa.generic_agent import (
     ModelCatalog,
     ModelDefinition,
     ModelProvider,
+    PolicyViolationError,
     SecretResolver,
     Session,
     SessionError,
@@ -142,6 +143,7 @@ class GenericAdkAgent(AbstractAgent):
         deployments. Returns None when no model is configured at all."""
         spec_model = self.definition.spec.model
         if spec_model is not None:
+            self._require_policy("model", spec_model.ref, self.definition.spec.policy.models)
             try:
                 return self._model_catalog.resolve(spec_model.ref)
             except KeyError:
@@ -163,6 +165,7 @@ class GenericAdkAgent(AbstractAgent):
         """
         agent_name = self.metadata.name
         for tool_ref in self.definition.spec.tools:
+            self._require_policy("tool", tool_ref.ref, self.definition.spec.policy.tools)
             try:
                 self._tool_definitions[tool_ref.ref] = self._tool_catalog.get_definition(tool_ref.ref)
                 self._tools[tool_ref.ref] = self._tool_catalog.get_tool(tool_ref.ref)
@@ -171,6 +174,7 @@ class GenericAdkAgent(AbstractAgent):
                     f"Tool '{tool_ref.ref}' referenced by agent '{agent_name}' was not found in the tool catalog"
                 ) from exc
         for skill_ref in self.definition.spec.skills:
+            self._require_policy("skill", skill_ref.ref, self.definition.spec.policy.skills)
             try:
                 self._skills.append(self._skill_catalog.resolve(skill_ref.ref))
             except KeyError as exc:
@@ -178,6 +182,7 @@ class GenericAdkAgent(AbstractAgent):
                     f"Skill '{skill_ref.ref}' referenced by agent '{agent_name}' was not found in the skill catalog"
                 ) from exc
         for mcp_ref in self.definition.spec.mcps:
+            self._require_policy("mcp", mcp_ref.ref, self.definition.spec.policy.mcps)
             try:
                 mcp_definition = self._mcp_catalog.resolve(mcp_ref.ref)
             except KeyError as exc:
@@ -191,6 +196,11 @@ class GenericAdkAgent(AbstractAgent):
                     tool_filter=mcp_ref.tools_filter or None,
                 )
             )
+
+    @staticmethod
+    def _require_policy(resource_type: str, resource_name: str, rule: Any) -> None:
+        if not rule.permits(resource_name):
+            raise PolicyViolationError(resource_type, resource_name)
 
     @property
     def tools(self) -> list[str]:

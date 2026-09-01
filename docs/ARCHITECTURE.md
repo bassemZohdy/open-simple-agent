@@ -212,8 +212,10 @@ tenant namespaces, allow equal names across tenants, and migration 0005 stores
 the owner; activation and deployment bundle export resolve the matching
 namespace. Successful management mutations and privileged external-agent
 invocations append tenant-filtered, redaction-safe audit events; PostgreSQL
-persists them with migration 0006. Resource policy and A2A security-scheme
-enforcement remain open in P2.2.
+persists them with migration 0006. Definition-owned resource policy now gates
+model, tool, MCP, and skill references before runtime construction and can
+disable inbound A2A exposure. A2A security-scheme enforcement remains open in
+P2.2.
 
 ## Deployment
 

@@ -11,6 +11,7 @@ import pytest
 from google.adk.models.llm_response import LlmResponse
 
 from osa.generic_agent import (
+    AccessRule,
     AgentDefinition,
     AgentMetadataConfig,
     AgentRequest,
@@ -25,6 +26,8 @@ from osa.generic_agent import (
     ModelDefinition,
     ModelRef,
     ModelResponse,
+    PolicyViolationError,
+    ResourcePolicy,
     SkillCatalog,
     SkillDefinition,
     SkillRef,
@@ -304,6 +307,23 @@ class TestNativeToolResolution:
                 definition=broken,
                 model_provider=FakeModelProvider(),
                 model_catalog=_make_catalog_with_default(),
+            )
+
+    async def test_resource_policy_denies_tool_before_runtime_construction(self) -> None:
+        definition = AgentDefinition(
+            metadata=AgentMetadataConfig(name="policy-agent"),
+            spec=AgentSpec(
+                model=ModelRef(ref="default"),
+                tools=[ToolRef(ref="calculator")],
+                policy=ResourcePolicy(tools=AccessRule(deny=["calculator"])),
+            ),
+        )
+        with pytest.raises(PolicyViolationError, match="denies tool resource 'calculator'"):
+            GenericAdkAgent(
+                definition=definition,
+                model_provider=FakeModelProvider(response="ok"),
+                model_catalog=_make_catalog_with_default(),
+                tool_catalog=_make_tool_catalog(CalculatorTool()),
             )
 
     async def test_unknown_skill_reference_fails_at_construction(self) -> None:
