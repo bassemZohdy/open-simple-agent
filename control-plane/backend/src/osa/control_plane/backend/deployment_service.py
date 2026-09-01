@@ -128,6 +128,7 @@ class DeploymentService:
         record_row = DeploymentRecord(
             deployment_id=deployment.deployment_id,
             agent_id=agent_id,
+            tenant_id=record.tenant_id,
             agent_name=record.name,
             version=record.current_version,
             status=deployment.status.value,
@@ -145,6 +146,10 @@ class DeploymentService:
         stored.detail = observed.error or ""
         await self._records.upsert(stored)
         return stored
+
+    async def get_record(self, deployment_id: str) -> DeploymentRecord | None:
+        """Read persisted deployment intent before performing an operation."""
+        return await self._records.get(deployment_id)
 
     async def stop(self, deployment_id: str) -> DeploymentRecord:
         await self._provider.stop(deployment_id)
