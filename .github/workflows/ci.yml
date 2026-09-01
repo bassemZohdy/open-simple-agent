@@ -72,8 +72,29 @@ jobs:
       - run: uv sync --all-packages --extra postgres --extra a2a
       - name: Audit locked dependencies for known vulnerabilities (pip-audit)
         run: |
-          uv export --format requirements-txt --no-hashes --no-dev --all-packages             --no-emit-package osa-generic-agent             --no-emit-package osa-adk-runtime             --no-emit-package osa-control-plane > requirements-audit.txt
+          uv export --format requirements-txt --no-hashes --no-dev --all-packages \
+            --no-emit-package osa-generic-agent \
+            --no-emit-package osa-adk-runtime \
+            --no-emit-package osa-control-plane > requirements-audit.txt
           uvx pip-audit -r requirements-audit.txt --no-deps --progress-spinner off
+      - name: Enforce permissive license allow-list (pip-licenses)
+        # Exact-string allow-list: a new dependency (or a license-string
+        # change on an upgrade) fails this step until a maintainer reviews
+        # and adds the license here.
+        run: |
+          uv venv /tmp/lic-venv
+          VIRTUAL_ENV=/tmp/lic-venv uv pip install -r requirements-audit.txt
+          uvx --from pip-licenses pip-licenses --python /tmp/lic-venv/bin/python \
+            --from mixed --order=license \
+            --allow-only "MIT;MIT License;MIT-0;Apache Software License;Apache-2.0;Apache License 2.0;BSD License;BSD-3-Clause;BSD-2-Clause;Python Software Foundation License;PSF-2.0;Mozilla Public License 2.0 (MPL 2.0);Apache-2.0 AND MIT;Apache-2.0 OR BSD-3-Clause;Apache-2.0 OR BSD-2-Clause;Apache Software License; MIT License;MPL-2.0 AND MIT;Apache-2.0 AND CNRI-Python"
+      - name: Generate CycloneDX SBOM for Python dependencies
+        run: |
+          uvx --from cyclonedx-bom cyclonedx-py requirements requirements-audit.txt \
+            --of JSON -o osa-sbom-python.cdx.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sbom-python-cyclonedx
+          path: osa-sbom-python.cdx.json
 
   container:
     runs-on: ubuntu-latest
@@ -87,6 +108,12 @@ jobs:
       - run: uv lock --check
       - name: Build runtime image
         run: docker build -t osa-runtime:ci .
+      - name: Generate runtime image SBOM (CycloneDX)
+        uses: anchore/sbom-action@v0
+        with:
+          image: osa-runtime:ci
+          format: cyclonedx-json
+          artifact-name: sbom-osa-runtime.cdx.json
       - name: Container smoke test (ready, invoke, SIGTERM)
         run: |
           docker run -d --name osa-smoke -p 8080:8080 \
@@ -111,8 +138,20 @@ jobs:
             echo "::error::container exited with $exit_code on SIGTERM"; docker logs osa-smoke; exit 1
           fi
           echo "Container smoke test passed."
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sbom-images-cyclonedx
+          path: |
+            sbom-osa-runtime.cdx.json
+            sbom-osa-control-plane.cdx.json
       - name: Build Control Plane image
         run: docker build -f Dockerfile.control-plane -t osa-control-plane:ci .
+      - name: Generate Control Plane image SBOM (CycloneDX)
+        uses: anchore/sbom-action@v0
+        with:
+          image: osa-control-plane:ci
+          format: cyclonedx-json
+          artifact-name: sbom-osa-control-plane.cdx.json
       - name: Control Plane smoke test (health)
         run: |
           docker run -d --name osa-cp-smoke -p 8000:8000 osa-control-plane:ci

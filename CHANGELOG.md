@@ -1,5 +1,13 @@
 # Changelog
 
+### Added — P3.3: License scanning and SBOMs
+- **License scanning + SBOMs (P3.3)**
+  - CI `security` job: pip-licenses exact-string allow-list over the
+    exported runtime lock (new/unreviewed licenses fail the build)
+  - CycloneDX SBOM for the Python dependency lock (`security` job) and Syft
+    CycloneDX SBOMs for both container images (`container` job), uploaded as
+    workflow artifacts
+
 ### Added — P3.3/P3.4: Packaging, CI hardening, and runnable examples
 - **Runnable examples (P3.4)**: `examples/minimal`, `examples/native-tool`,
   `examples/memory`, and `examples/mcp` (bundles a real stdio MCP server) —

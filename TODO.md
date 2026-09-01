@@ -461,7 +461,12 @@ policy are stable.*
   suites active in that job).
 - [x] Add dependency/security scanning (CI `security` job: pip-audit over
   the exported full lock on every push/PR).
-- [ ] Add license scanning, SBOM generation, and image signing.
+- [x] Add license scanning (CI `security` job: pip-licenses exact-string
+  allow-list over the exported runtime lock — new licenses fail the build
+  until reviewed) and SBOM generation (CycloneDX: Python-dependency SBOM in
+  the `security` job; Syft image SBOMs for both container images in the
+  `container` job, uploaded as build artifacts).
+- [ ] Add image signing.
 - [ ] Publish versioned images and packages with provenance.
 - [ ] Automate tags, changelog validation, GitHub releases, and rollback.
 
