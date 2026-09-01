@@ -130,8 +130,10 @@ or missing credentials return 401 with `WWW-Authenticate: Bearer`; a valid
 token lacking configured scopes or violating an identity check returns 403.
 
 The current validator accepts signed RS256/384/512 and ES256/384/512 JWTs,
-checks `exp`, `iss`, `sub`, issuer, audience, and configured scopes against the
-external JWKS URL. On `/v1/invoke`, an omitted `user_id` uses the token `sub`;
+checks `exp`, `iss`, `sub`, issuer, audience, and configured scopes against an
+explicit JWKS URL or the issuer's standard OIDC discovery `jwks_uri`. An
+explicit JWKS URL takes precedence; discovery metadata must advertise the
+configured issuer and an absolute HTTP JWKS URI. On `/v1/invoke`, an omitted `user_id` uses the token `sub`;
 an explicitly different `user_id` is denied. This is an authentication
 foundation. Set `OSA_AUTH_ENFORCE_PERMISSIONS=true` to enforce stable route
 permissions. Roles are read from `roles`/`role` or Keycloak

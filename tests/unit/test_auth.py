@@ -6,6 +6,7 @@ import base64
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
+import httpx
 import jwt
 import pytest
 from cryptography.hazmat.primitives.asymmetric import rsa
@@ -29,6 +30,7 @@ from osa.generic_agent import (
     AuthSettings,
     JwksClient,
     JwtAuthenticator,
+    OidcDiscoveryClient,
 )
 
 if TYPE_CHECKING:
@@ -97,6 +99,7 @@ def test_auth_settings_load_from_environment() -> None:
             "OSA_AUTH_ISSUER": "https://issuer.example.test/",
             "OSA_AUTH_AUDIENCE": "osa-api",
             "OSA_AUTH_JWKS_URL": "https://issuer.example.test/keys",
+            "OSA_AUTH_DISCOVERY_URL": "https://issuer.example.test/.well-known/openid-configuration",
             "OSA_AUTH_REQUIRED_SCOPES": "invoke admin",
             "OSA_AUTH_ENFORCE_PERMISSIONS": "true",
             "OSA_AUTH_CLOCK_SKEW_SECONDS": "15",
@@ -111,11 +114,122 @@ def test_auth_settings_load_from_environment() -> None:
     assert settings.jwks_timeout_seconds == 3.5
     assert settings.jwks_cache_seconds == 60
     assert settings.enforce_permissions is True
+    assert settings.discovery_url == "https://issuer.example.test/.well-known/openid-configuration"
 
 
 def test_auth_settings_require_provider_metadata_when_enabled() -> None:
-    with pytest.raises(ValueError, match="requires: issuer, audience, jwks_url"):
+    with pytest.raises(ValueError, match="requires: issuer, audience"):
         AuthSettings(mode=AuthMode.REQUIRED)
+
+
+def test_auth_settings_allow_standard_discovery_without_explicit_jwks_url() -> None:
+    settings = AuthSettings(
+        mode=AuthMode.REQUIRED,
+        issuer="https://issuer.example.test/",
+        audience="osa-api",
+    )
+
+    assert settings.jwks_url is None
+    assert settings.discovery_url is None
+
+
+@pytest.mark.asyncio
+async def test_oidc_discovery_resolves_and_validates_jwks_uri() -> None:
+    settings = AuthSettings(
+        mode=AuthMode.REQUIRED,
+        issuer="https://issuer.example.test/",
+        audience="osa-api",
+    )
+
+    async def loader() -> Mapping[str, Any]:
+        return {
+            "issuer": "https://issuer.example.test/",
+            "jwks_uri": "https://issuer.example.test/keys",
+        }
+
+    assert await OidcDiscoveryClient(settings, loader=loader).jwks_url() == "https://issuer.example.test/keys"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "metadata, message",
+    [
+        (
+            {"issuer": "https://other.example.test/", "jwks_uri": "https://issuer.example.test/keys"},
+            "issuer does not match",
+        ),
+        ({"issuer": "https://issuer.example.test/"}, "no JWKS URI"),
+        (
+            {"issuer": "https://issuer.example.test/", "jwks_uri": "/relative-keys"},
+            "JWKS URI is invalid",
+        ),
+    ],
+)
+async def test_oidc_discovery_rejects_invalid_metadata(
+    metadata: Mapping[str, Any],
+    message: str,
+) -> None:
+    settings = AuthSettings(
+        mode=AuthMode.REQUIRED,
+        issuer="https://issuer.example.test/",
+        audience="osa-api",
+    )
+
+    async def loader() -> Mapping[str, Any]:
+        return metadata
+
+    with pytest.raises(AuthenticationError, match=message):
+        await OidcDiscoveryClient(settings, loader=loader).jwks_url()
+
+
+@pytest.mark.asyncio
+async def test_jwks_client_uses_oidc_discovery_when_jwks_url_is_unset(
+    signing_material: tuple[rsa.RSAPrivateKey, dict[str, str]],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _, jwk = signing_material
+    settings = AuthSettings(
+        mode=AuthMode.REQUIRED,
+        issuer="https://issuer.example.test/",
+        audience="osa-api",
+    )
+    calls: list[str] = []
+    responses: dict[str, Mapping[str, Any]] = {
+        "https://issuer.example.test/.well-known/openid-configuration": {
+            "issuer": "https://issuer.example.test/",
+            "jwks_uri": "https://issuer.example.test/keys",
+        },
+        "https://issuer.example.test/keys": {"keys": [jwk]},
+    }
+
+    class FakeResponse:
+        def __init__(self, payload: Mapping[str, Any]) -> None:
+            self._payload = payload
+
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> Mapping[str, Any]:
+            return self._payload
+
+    class FakeClient:
+        async def __aenter__(self) -> FakeClient:
+            return self
+
+        async def __aexit__(self, *_args: object) -> None:
+            return None
+
+        async def get(self, url: str) -> FakeResponse:
+            calls.append(url)
+            return FakeResponse(responses[url])
+
+    monkeypatch.setattr(httpx, "AsyncClient", lambda **_kwargs: FakeClient())
+
+    assert (await JwksClient(settings).get_key("test-key")) == jwk
+    assert calls == [
+        "https://issuer.example.test/.well-known/openid-configuration",
+        "https://issuer.example.test/keys",
+    ]
 
 
 @pytest.mark.asyncio

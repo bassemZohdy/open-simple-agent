@@ -17,6 +17,7 @@ from osa.generic_agent.auth import (
     AuthSettings,
     JwksClient,
     JwtAuthenticator,
+    OidcDiscoveryClient,
 )
 from osa.generic_agent.bundle import (
     API_VERSION,
@@ -151,6 +152,7 @@ __all__ = [
     "IterationLimitExceededError",
     "JwksClient",
     "JwtAuthenticator",
+    "OidcDiscoveryClient",
     "McpCatalog",
     "McpConnectionOptions",
     "McpDefinition",
