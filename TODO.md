@@ -1,16 +1,17 @@
 # Open Simple Agent — Prioritized Backlog
 
 This backlog is based on a source, test, CI, packaging, and documentation review
-of `main` on 2026-08-30, updated on 2026-08-31 after the P0 release gate
-landed.
+of `main` on 2026-08-30, updated on 2026-09-01 after the A2A, deployment,
+repository-boundary, and authentication slices landed.
 
 A task is complete only after implementation, automated tests, relevant
 documentation, and appropriate failure/security behavior are complete.
 
 ## Current baseline
 
-- ~415 tests pass; strict mypy, Ruff format, and Ruff lint pass with no
-  project-controlled warnings.
+- 424 tests are collected; 404 pass locally and 20 PostgreSQL integration tests
+  skip when `OSA_TEST_DATABASE_URL` is unset. Strict mypy, Ruff format, and
+  Ruff lint pass with no project-controlled warnings.
 - Latest GitHub Actions run on `main` is green, plus a container job that
   builds the runtime image and runs a ready/invoke/SIGTERM smoke test.
 - Deployment bundles with fail-fast validation, secret resolution, a LiteLLM
@@ -19,9 +20,11 @@ documentation, and appropriate failure/security behavior are complete.
   non-root container image, Control Plane contract hardening, lockstep
   versioning, the MCP runtime client (ADR-002), memory persistence with
 policy-enforced scope/limits/retention (ADR-003), and PostgreSQL Control
-Plane persistence with Alembic migrations (ADR-004) exist.
-- The Kubernetes/OpenShift deployment provider, A2A,
-  authentication, policy, observability, and UI do not exist.
+  Plane persistence with Alembic migrations (ADR-004), A2A interoperability
+  (ADR-005), and a shared JWT bearer-authentication foundation exist.
+- The Kubernetes/OpenShift deployment provider, role/tenant authorization,
+  resource policy, audit events, observability, streaming/replica behavior,
+  and UI do not exist.
 
 ## Release gate status
 
@@ -318,10 +321,19 @@ external A2A agent; external records cannot be deployed by OSA. ✅
 
 ## P2.2 Authentication and authorization
 
-- [ ] Add OIDC/OAuth authentication to Control Plane and runtime APIs.
+Current progress (2026-09-01): both APIs now share externally configured JWT
+Bearer validation using issuer, audience, JWKS, algorithm, expiry, and scope
+checks. `OSA_AUTH_MODE=required` protects non-public routes, and runtime
+invocations bind omitted `user_id` to the token subject. This is the first
+authentication slice; it is covered by offline generated-key tests and does
+not yet provide full OIDC discovery or authorization policy.
+
+- [ ] Complete OIDC/OAuth authentication for Control Plane and runtime APIs;
+  add provider discovery/introspection and live identity-provider coverage.
 - [ ] Define administrator, operator, viewer, agent, caller, user, and service
   identities and permissions.
-- [ ] Enforce ownership/tenant boundaries for agents, sessions, and memory.
+- [ ] Enforce HTTP ownership/tenant boundaries for agents, sessions, and
+  memory; retain the existing domain-level session/memory isolation checks.
 - [ ] Add tool/MCP/skill/model/A2A allow/deny policy independent of prompts.
 - [ ] Add API key/OAuth/mTLS credential adapters for MCP/A2A as required.
 - [ ] Add audit events for every management mutation and privileged invocation.
@@ -447,8 +459,8 @@ policy are stable.*
 |---|---|---|
 | RV-016 | Control Plane deployment routes missing (refs are validated at activation) | P1.5 |
 | RV-017 | Resource and deployment implementations are not exposed by the API | P1.2, P1.5 |
-| RV-019 | Both APIs are unauthenticated; local deploy accepts trusted arbitrary commands | P1.5, P2.2 |
-| RV-023 | Current tests have no live provider/MCP/database/A2A coverage or coverage threshold | P3.3 |
+| RV-019 | JWT bearer authentication is available but disabled by default; role/tenant/resource authorization, A2A credential enforcement, and audit events remain open | P2.2 |
+| RV-023 | Current tests have no live-provider, Kubernetes, live-identity-provider, multi-replica, or coverage-threshold gate | P2.2, P2.4, P3.3 |
 | RV-024 | Request metadata (beyond `tenant_id`) is accepted but not used by model/tool policy | P2.2 |
 
 Resolved on 2026-08-31 (documented here, then removed from the active table on
