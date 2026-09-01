@@ -1,5 +1,17 @@
 # Memory
 
+## Repository identity (mandatory)
+
+This guidance applies only to the Open Simple Agent repository:
+https://github.com/bassemZohdy/open-simple-agent
+
+Before reading or editing project files, verify that the repository remote is
+`https://github.com/bassemZohdy/open-simple-agent.git` and that the requested
+backlog is this repository's `TODO.md). The separate
+`bassemZohdy/micro-agents` project is out of scope for OSA work: do not inspect,
+modify, merge, or report its backlog as OSA work.
+
+
 ## Project Overview
 See @README.md for current capabilities and @PROJECT_DEFINITION.md for target
 scope. This is a Python project — see @CONTRIBUTING.md for setup and check
