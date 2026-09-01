@@ -28,6 +28,7 @@ from osa.generic_agent import (
     AuthenticationError,
     AuthMode,
     AuthorizationError,
+    AuthorizationPolicy,
     AuthSettings,
     FakeModelProvider,
     JwtAuthenticator,
@@ -168,7 +169,9 @@ def _install_authentication(
     if settings.mode is AuthMode.DISABLED:
         return
     token_authenticator = authenticator or JwtAuthenticator(settings)
+    authorization_policy = AuthorizationPolicy(enabled=settings.enforce_permissions)
     app.state.authenticator = token_authenticator
+    app.state.authorization_policy = authorization_policy
     public_paths = {"/health/live", "/health/ready", "/docs", "/redoc", "/openapi.json"}
 
     @app.middleware("http")
@@ -176,12 +179,23 @@ def _install_authentication(
         request: Request,
         call_next: Callable[[Request], Awaitable[Response]],
     ) -> Response:
-        if settings.mode is AuthMode.OPTIONAL and "authorization" not in request.headers:
-            return await call_next(request)
         if request.url.path in public_paths:
+            return await call_next(request)
+        required_permission = (
+            authorization_policy.permission_for_request(request.url.path, request.method)
+            if settings.enforce_permissions
+            else None
+        )
+        if (
+            settings.mode is AuthMode.OPTIONAL
+            and "authorization" not in request.headers
+            and required_permission is None
+        ):
             return await call_next(request)
         try:
             principal = await token_authenticator.authenticate(request.headers.get("authorization"))
+            if required_permission is not None:
+                authorization_policy.require(principal, required_permission)
         except AuthenticationError as exc:
             return JSONResponse(
                 status_code=401,
@@ -245,6 +259,14 @@ def configure_runtime_app(
             elif user_id != principal.subject:
                 raise AuthorizationError("Request user_id must match the authenticated subject")
             request_metadata.setdefault("caller_subject", principal.subject)
+            requested_tenant = request_metadata.get("tenant_id")
+            if principal.tenant_id is None and requested_tenant is not None:
+                raise AuthorizationError("Request tenant_id requires an authenticated tenant claim")
+            if principal.tenant_id is not None:
+                if requested_tenant is None:
+                    request_metadata["tenant_id"] = principal.tenant_id
+                elif requested_tenant != principal.tenant_id:
+                    raise AuthorizationError("Request tenant_id must match the authenticated tenant")
 
         agent_request = AgentRequest(
             input=request.input,

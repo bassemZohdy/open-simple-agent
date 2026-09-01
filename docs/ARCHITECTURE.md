@@ -191,10 +191,18 @@ Bearer token, and `required` protects every non-public endpoint. Health and
 OpenAPI discovery paths remain public. The current implementation validates
 RS256/384/512 and ES256/384/512 JWTs against a configured JWKS URL, issuer, and
 audience, enforces configured scopes, and returns the stable 401/403 error
-envelope. On runtime invocation, an omitted `user_id` is derived from the
-validated token subject and a supplied different value is rejected. Full
-roles, tenant claims, resource policy, audit events, and A2A security-scheme
-enforcement remain open in P2.2.
+envelope. With `OSA_AUTH_ENFORCE_PERMISSIONS=true`, common `roles`/`role`
+claims, Keycloak `realm_access.roles`, explicit `permissions`/`permission`
+claims, and scopes are evaluated against stable route permissions. The
+built-in roles are `administrator`/`admin` (wildcard), `operator` (all
+permissions), `viewer` (read permissions), `agent`/`caller`/`user`
+(`agent:invoke`), and `service` (`agent:invoke` plus `resource:read`).
+On runtime invocation, an omitted `user_id` is derived from the validated token
+subject and a supplied different value is rejected. A `tenant_id` or `tid`
+claim is bound to invocation metadata: omitted metadata is filled from the
+claim, a mismatch is rejected, and an unscoped token cannot spoof a tenant.
+Control-plane tenant/resource ownership, resource policy, audit events, and A2A
+security-scheme enforcement remain open in P2.2.
 
 ## Deployment
 
@@ -231,7 +239,7 @@ remote-agent credentials remains P2.2 work.
 
 ## Tests and CI
 
-The current baseline is 424 collected tests: 404 pass locally and 20
+The current baseline is 426 collected tests: 406 pass locally and 20
 PostgreSQL tests are skipped when `OSA_TEST_DATABASE_URL` is unset. CI runs:
 
 - `ruff format --check .`;
