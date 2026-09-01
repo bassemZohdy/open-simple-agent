@@ -2,15 +2,15 @@
 
 This backlog is based on a source, test, CI, packaging, and documentation review
 of `main` on 2026-08-30, updated on 2026-09-01 after the A2A, deployment,
-repository-boundary, authentication, authorization, resource-ownership, and
-outbound-credential slices landed.
+repository-boundary, authentication, authorization, resource-ownership,
+outbound-credential, inbound-security, and observability slices landed.
 
 A task is complete only after implementation, automated tests, relevant
 documentation, and appropriate failure/security behavior are complete.
 
 ## Current baseline
 
-- 454 tests are collected; 433 pass locally and 21 PostgreSQL integration tests
+- 466 tests are collected; 445 pass locally and 21 PostgreSQL integration tests
   skip when `OSA_TEST_DATABASE_URL` is unset. Strict mypy, Ruff format, and
   Ruff lint pass with no project-controlled warnings.
 - Latest GitHub Actions run on `main` is green, plus a container job that
@@ -24,9 +24,9 @@ policy-enforced scope/limits/retention (ADR-003), and PostgreSQL Control
 Plane persistence with Alembic migrations (ADR-004), A2A interoperability
 (ADR-005), and a shared JWT bearer-authentication foundation with opt-in
 role/permission route enforcement and runtime tenant binding exist.
-- The Kubernetes/OpenShift deployment provider,
-  observability, streaming/replica
-behavior, and UI do not exist.
+- The Kubernetes deployment provider, streaming/replica behavior, and UI do not
+  exist. OpenShift-specific provider work is intentionally deferred; Kubernetes
+  validation may use Kind.
 
 ## Release gate status
 
@@ -282,9 +282,10 @@ and is never visible to an unauthorized user or agent. ✅
   `OSA_DEPLOY_COMMAND_TEMPLATE`; unknown request fields are rejected).
 - [x] Container provider: not implemented — the runtime image + CLI already
   provides the container path, so a separate provider is unnecessary.
-- [ ] Implement Kubernetes/OpenShift provider: Deployment, Service, probes,
+- [ ] Implement the Kubernetes provider: Deployment, Service, probes,
   ConfigMap/Secret references, scale, rolling update, rollback, and status
-  watch (remains open).
+  watch. Validate the first implementation with Kind; OpenShift-specific
+  behavior remains deferred.
 
 **Acceptance:** the Control Plane deploys a versioned agent without importing
 ADK internals, observes readiness, restarts it, and rolls back safely. ✅
@@ -305,15 +306,15 @@ ADK internals, observes readiness, restarts it, and rolls back safely. ✅
   `message/send`: submitted → working → completed artifact / failed with
   deterministic error text; A2A context ids map to OSA sessions).
 - [x] Define security-scheme configuration and caller identity propagation
-  (schemes externalized via configuration; enforcement lands with P2.2 —
-  recorded in ADR-005).
+  (schemes externalized via configuration; inbound enforcement uses the shared
+  OIDC/OAuth boundary — recorded in ADR-005).
 - [x] Add external-agent record type distinct from managed agents
   (`ExternalAgentRecord`; structurally barred from deployment — 422).
 - [x] Register/validate/refresh Agent Cards by URL and track health
   (422 on unreachable at registration; refresh re-checks health).
 - [x] Implement remote A2A invocation, authentication, errors, and timeouts
   (`invoke_remote_agent` with bounded timeout and `a2a_remote_failed`
-  mapping; token auth deferred to P2.2).
+  mapping; outbound API-key/OAuth2/mTLS auth uses the shared adapters).
 - [x] Add external compatibility tests (offline protocol tests against a
   real in-process A2A server: card fetch, task completion, error mapping,
   A-invokes-B acceptance).
@@ -325,22 +326,25 @@ external A2A agent; external records cannot be deployed by OSA. ✅
 
 Current progress (2026-09-01): both APIs share externally configured JWT
 Bearer validation using issuer, audience, JWKS, algorithm, expiry, and scope
-checks. `OSA_AUTH_MODE=required` protects non-public routes. With
+checks, plus RFC 7662 OAuth token introspection for opaque access tokens.
+`OSA_AUTH_MODE=required` protects non-public routes. With
 `OSA_AUTH_ENFORCE_PERMISSIONS=true`, common role/permission claims and scopes
 enforce stable route permissions; runtime invocations bind omitted `user_id`
 and `tenant_id` to token claims and reject spoofing. Control Plane agents,
 deployments, and resources now use the same tenant boundary. Append-only,
 tenant-filtered audit events now cover every successful management mutation
 and privileged external-agent invocation. This remains a bounded
-authorization slice: OIDC token introspection/live-provider coverage, policy
-evaluation, and inbound A2A security schemes are still open.
+authorization slice: live identity-provider coverage and enterprise policy
+evaluation remain open.
 
 - [x] Resolve standard OIDC discovery metadata to a validated `jwks_uri` when
   no explicit JWKS URL is configured; support an explicit discovery URL and
   keep explicit JWKS configuration authoritative. This is deterministic
   offline coverage, not live provider validation.
-- [ ] Complete OIDC/OAuth authentication for Control Plane and runtime APIs;
-  add token introspection where required and live identity-provider coverage.
+- [x] Complete OIDC/OAuth authentication for Control Plane and runtime APIs;
+  signed JWTs use local JWKS/discovery validation and opaque tokens use RFC
+  7662 introspection. Live identity-provider coverage remains an opt-in release
+  job because it requires provider credentials.
 - [x] Define baseline administrator, operator, viewer, agent, caller, user, and
   service roles plus stable route permissions; accept common role, permission,
   and scope claims.
@@ -370,21 +374,26 @@ evaluation, and inbound A2A security schemes are still open.
   denied requests without capturing prompts, credentials, or payloads. Internal
   capability-level events and distributed persistence remain future work.
 
+- [x] Enforce inbound A2A bearer authentication through the shared OIDC/OAuth
+  boundary, propagate the validated subject/tenant to OSA sessions, and
+  advertise the required security scheme in the Agent Card.
+
 **Acceptance:** no production management or invocation endpoint is anonymous;
 authorization and secret-redaction tests cover deny paths.
 
 ## P2.3 Observability
 
-- [ ] Add structured logs with invocation, session, agent, user/caller, and
+- [x] Add structured logs with invocation, session, agent, user/caller, and
   deployment correlation IDs.
-- [ ] Add secret and sensitive-payload redaction with bounded capture.
-- [ ] Add metrics for invocation/model/tool/MCP/memory/session/A2A latency,
+- [x] Add secret and sensitive-payload redaction with bounded capture.
+- [x] Add metrics for invocation/model/tool/MCP/memory/session/A2A latency,
   token usage, and errors.
-- [ ] Add OpenTelemetry spans across the full invocation path.
-- [ ] Expose deployment/runtime health without leaking sensitive data.
+- [x] Add OpenTelemetry spans across the full invocation path.
+- [x] Expose deployment/runtime health and bounded redacted deployment logs
+  without leaking sensitive data.
 
 **Acceptance:** one invocation can be traced end-to-end and a failed tool/MCP
-call can be diagnosed without exposing secrets.
+call can be diagnosed without exposing secrets. ✅
 
 ## P2.4 Streaming and replica behavior
 
@@ -491,7 +500,7 @@ policy are stable.*
 |---|---|---|
 | RV-016 | Control Plane deployment routes missing (refs are validated at activation) | P1.5 |
 | RV-017 | Resource and deployment implementations are not exposed by the API | P1.2, P1.5 |
-| RV-019 | JWT bearer authentication and opt-in role/permission route enforcement are available but disabled by default; inbound A2A security-scheme enforcement and enterprise policy remain open | P2.2 |
+| RV-019 | JWT/OAuth bearer authentication and opt-in role/permission route enforcement are available but disabled by default; enterprise policy remains open | P2.2 |
 | RV-023 | Current tests have no live-provider, Kubernetes, live-identity-provider, multi-replica, or coverage-threshold gate | P2.2, P2.4, P3.3 |
 | RV-024 | Runtime binds `tenant_id`/`tid` claims to invocation metadata; Control Plane agents, deployments, and resources are tenant-owned, while model/tool policy still does not use tenant metadata | P2.2 |
 

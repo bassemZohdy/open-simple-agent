@@ -23,7 +23,7 @@ from typing import TYPE_CHECKING, Any, cast
 from uuid import uuid4
 
 if TYPE_CHECKING:
-    from osa.generic_agent import AgentDefinition, SkillDefinition
+    from osa.generic_agent import AgentDefinition, AuthSettings, SkillDefinition
 
 __all__ = [
     "A2aError",
@@ -62,8 +62,9 @@ def build_agent_card(
     definition: AgentDefinition,
     skills: list[SkillDefinition],
     url: str,
+    auth_settings: AuthSettings | None = None,
 ) -> Any:
-    """Build an A2A Agent Card from a validated definition + resolved skills."""
+    """Build an A2A Agent Card from a definition, skills, and auth contract."""
     _require_a2a_sdk()
     from a2a.types import AgentCapabilities, AgentCard, AgentInterface, AgentSkill
 
@@ -77,7 +78,7 @@ def build_agent_card(
         )
         for skill in skills
     ]
-    return AgentCard(
+    card = AgentCard(
         name=definition.metadata.name,
         description=definition.spec.description or definition.metadata.description or definition.metadata.name,
         version=definition.metadata.version,
@@ -87,6 +88,47 @@ def build_agent_card(
         default_output_modes=DEFAULT_OUTPUT_MODES,
         skills=agent_skills,
     )
+    _add_authentication_contract(card, auth_settings)
+    return card
+
+
+def _add_authentication_contract(card: Any, auth_settings: AuthSettings | None) -> None:
+    """Advertise and require the same bearer boundary enforced by FastAPI."""
+    if auth_settings is None:
+        return
+    from osa.generic_agent import AuthMode
+
+    protected = auth_settings.mode is AuthMode.REQUIRED or auth_settings.enforce_permissions
+    if not protected:
+        return
+
+    from a2a.types import (
+        HTTPAuthSecurityScheme,
+        OpenIdConnectSecurityScheme,
+        SecurityScheme,
+    )
+
+    scheme_name = "osa_oidc"
+    if auth_settings.discovery_url is not None or (
+        auth_settings.jwks_url is None and auth_settings.introspection_url is None
+    ):
+        issuer = auth_settings.issuer
+        assert issuer is not None
+        discovery_url = auth_settings.discovery_url or f"{issuer.rstrip('/')}/.well-known/openid-configuration"
+        scheme = SecurityScheme(
+            open_id_connect_security_scheme=OpenIdConnectSecurityScheme(open_id_connect_url=discovery_url)
+        )
+    else:
+        bearer_format = "access_token" if auth_settings.introspection_url is not None else "JWT"
+        scheme = SecurityScheme(
+            http_auth_security_scheme=HTTPAuthSecurityScheme(
+                scheme="bearer",
+                bearer_format=bearer_format,
+            )
+        )
+    card.security_schemes[scheme_name].CopyFrom(scheme)
+    requirement = card.security_requirements.add()
+    requirement.schemes[scheme_name].list.extend(auth_settings.required_scopes)
 
 
 class OsaA2aAgentExecutor:
@@ -140,9 +182,20 @@ class OsaA2aAgentExecutor:
 
     @staticmethod
     def _build_request(user_text: str, session_id: str | None) -> Any:
-        from osa.generic_agent import AgentRequest
+        from osa.generic_agent import AgentRequest, current_principal
 
-        return AgentRequest(input=user_text, session_id=session_id)
+        principal = current_principal()
+        if principal is None:
+            return AgentRequest(input=user_text, session_id=session_id)
+        metadata = {"caller_subject": principal.subject}
+        if principal.tenant_id is not None:
+            metadata["tenant_id"] = principal.tenant_id
+        return AgentRequest(
+            input=user_text,
+            session_id=session_id,
+            user_id=principal.subject,
+            metadata=metadata,
+        )
 
     async def cancel(self, context: Any, event_queue: Any) -> None:
         from a2a.server.tasks import TaskUpdater
@@ -169,7 +222,13 @@ def _failure_message(text: str) -> Any:
     )
 
 
-def attach_a2a_routes(app: Any, agent: Any, url: str) -> Any:
+def attach_a2a_routes(
+    app: Any,
+    agent: Any,
+    url: str,
+    *,
+    auth_settings: AuthSettings | None = None,
+) -> Any:
     """Attach A2A JSON-RPC + Agent Card routes for ``agent`` to ``app``.
 
     The card URL is the A2A well-known path; JSON-RPC lives at ``/a2a``.
@@ -186,7 +245,7 @@ def attach_a2a_routes(app: Any, agent: Any, url: str) -> Any:
 
     # The interface URL is the client-facing JSON-RPC endpoint.
     interface_url = url.rstrip("/") + "/a2a"
-    card = build_agent_card(agent.definition, agent.skills, interface_url)
+    card = build_agent_card(agent.definition, agent.skills, interface_url, auth_settings=auth_settings)
     handler = DefaultRequestHandler(
         agent_executor=cast("AgentExecutor", OsaA2aAgentExecutor(agent)),
         task_store=InMemoryTaskStore(),

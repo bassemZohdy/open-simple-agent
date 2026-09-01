@@ -18,12 +18,14 @@ for PostgreSQL-backed persistence; the module-level app below is in-memory.
 
 from __future__ import annotations
 
+import logging
 from importlib import metadata
 from typing import TYPE_CHECKING, Any
+from uuid import uuid4
 
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, PlainTextResponse
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from osa.control_plane.backend.agent_catalog import AgentCatalogError, AgentRecord, AgentRecordStatus
@@ -52,8 +54,17 @@ from osa.generic_agent import (
     AuthSettings,
     EnvironmentSecretResolver,
     JwtAuthenticator,
+    Observability,
+    SecretResolver,
+    configure_structured_logging,
     error_payload,
+    log_context,
+    log_event,
+    reset_current_principal,
+    set_current_principal,
 )
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
@@ -238,11 +249,15 @@ def _install_authentication(
     app: FastAPI,
     settings: AuthSettings,
     authenticator: JwtAuthenticator | None,
+    secret_resolver: SecretResolver | None,
 ) -> None:
     app.state.auth_settings = settings
     if settings.mode is AuthMode.DISABLED:
         return
-    token_authenticator = authenticator or JwtAuthenticator(settings)
+    token_authenticator = authenticator or JwtAuthenticator(
+        settings,
+        secret_resolver=secret_resolver or EnvironmentSecretResolver(),
+    )
     authorization_policy = AuthorizationPolicy(enabled=settings.enforce_permissions)
     app.state.authenticator = token_authenticator
     app.state.authorization_policy = authorization_policy
@@ -279,7 +294,11 @@ def _install_authentication(
         except AuthorizationError as exc:
             return JSONResponse(status_code=403, content=error_payload(exc.code, str(exc)))
         request.state.osa_principal = principal
-        return await call_next(request)
+        principal_token = set_current_principal(principal)
+        try:
+            return await call_next(request)
+        finally:
+            reset_current_principal(principal_token)
 
 
 # --- App configuration ---
@@ -296,7 +315,8 @@ def configure_control_plane_app(
     deployment_provider: Any = None,
     auth_settings: AuthSettings | None = None,
     authenticator: JwtAuthenticator | None = None,
-    secret_resolver: Any = None,
+    secret_resolver: SecretResolver | None = None,
+    observability: Observability | None = None,
 ) -> FastAPI:
     """Attach routes and error mapping to a Control Plane app.
 
@@ -321,7 +341,55 @@ def configure_control_plane_app(
     app.state.resource_repository = resource_repository
     app.state.audit_repository = audit_repository if audit_repository is not None else InMemoryAuditEventRepository()
     app.state.external_agent_catalog = ExternalAgentCatalog()
-    _install_authentication(app, auth_settings or AuthSettings.from_env(), authenticator)
+    _install_authentication(
+        app,
+        auth_settings or AuthSettings.from_env(),
+        authenticator,
+        secret_resolver,
+    )
+    app.state.observability = observability or Observability()
+    configure_structured_logging()
+
+    @app.middleware("http")
+    async def _observe_request(request: Request, call_next: Callable[[Request], Awaitable[Response]]) -> Response:
+        raw_request_id = request.headers.get("x-request-id", "")
+        request_id = raw_request_id if _valid_request_id(raw_request_id) else str(uuid4())
+        request.state.request_id = request_id
+        observation: Observability = app.state.observability
+        with log_context({"request_id": request_id, "surface": "control_plane"}):
+            try:
+                async with observation.span(
+                    "http",
+                    labels={"surface": "control_plane", "route": request.url.path},
+                    attributes={"http.method": request.method, "http.route": request.url.path},
+                ):
+                    response = await call_next(request)
+            except Exception as exc:
+                observation.metrics.increment(
+                    "osa_http_requests_total",
+                    {"surface": "control_plane", "route": request.url.path, "status": 500},
+                )
+                log_event(
+                    logger,
+                    logging.ERROR,
+                    "control-plane request failed",
+                    {"error_code": getattr(exc, "code", "internal_error")},
+                )
+                raise
+            observation.metrics.increment(
+                "osa_http_requests_total",
+                {"surface": "control_plane", "route": request.url.path, "status": response.status_code},
+            )
+            response.headers["X-Request-ID"] = request_id
+            principal = getattr(request.state, "osa_principal", None)
+            log_event(
+                logger,
+                logging.INFO,
+                "control-plane request completed",
+                {"status_code": response.status_code, "subject": getattr(principal, "subject", None)},
+            )
+            return response
+
     app.state.deployment_service = DeploymentService(
         provider=deployment_provider if deployment_provider is not None else LocalDeploymentProvider(),
         record_repository=InMemoryDeploymentRecordRepository(),
@@ -633,6 +701,11 @@ def configure_control_plane_app(
     async def health_ready() -> dict[str, str]:
         return {"status": "ready"}
 
+    @app.get("/metrics", response_class=PlainTextResponse)
+    async def metrics() -> PlainTextResponse:
+        """Expose bounded Prometheus metrics without request payloads."""
+        return PlainTextResponse(app.state.observability.metrics.render_prometheus())
+
     return app
 
 
@@ -652,3 +725,10 @@ app = configure_control_plane_app(
 
 #: Backward-compatible alias for tests (the in-memory catalog behind ``app``).
 agent_catalog = agent_repository.catalog
+
+
+def _valid_request_id(value: str) -> bool:
+    """Accept only bounded correlation identifiers supplied by a caller."""
+    import re
+
+    return bool(value) and bool(re.fullmatch(r"[A-Za-z0-9._:/-]{1,128}", value))

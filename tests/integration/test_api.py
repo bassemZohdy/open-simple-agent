@@ -29,6 +29,17 @@ async def test_health_ready() -> None:
         assert response.json()["status"] == "ready"
 
 
+async def test_request_id_is_returned_and_metrics_are_exposed() -> None:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.get("/health/live", headers={"X-Request-ID": "control-test-1"})
+        assert response.status_code == 200
+        assert response.headers["x-request-id"] == "control-test-1"
+
+        metrics = await client.get("/metrics")
+        assert metrics.status_code == 200
+        assert "osa_http_requests_total" in metrics.text
+
+
 _DEFINITION = {
     "apiVersion": "osa/v1alpha1",
     "kind": "Agent",

@@ -18,7 +18,11 @@ from osa.generic_agent.auth import (
     AuthSettings,
     JwksClient,
     JwtAuthenticator,
+    OAuthIntrospectionClient,
     OidcDiscoveryClient,
+    current_principal,
+    reset_current_principal,
+    set_current_principal,
 )
 from osa.generic_agent.bundle import (
     API_VERSION,
@@ -98,6 +102,17 @@ from osa.generic_agent.memory import (
 )
 from osa.generic_agent.model import ModelCapabilities, ModelCatalog, ModelDefinition, ModelRuntimeSettings
 from osa.generic_agent.model_provider import FakeModelProvider, ModelProvider, ModelResponse, TokenUsage
+from osa.generic_agent.observability import (
+    JsonFormatter,
+    MetricsRegistry,
+    Observability,
+    bounded_text,
+    configure_structured_logging,
+    log_context,
+    log_event,
+    redact_fields,
+    redact_text,
+)
 from osa.generic_agent.runtime import AgentFactory, AgentRuntime
 from osa.generic_agent.secret import (
     EnvironmentSecretResolver,
@@ -172,6 +187,10 @@ __all__ = [
     "JwksClient",
     "JwtAuthenticator",
     "OidcDiscoveryClient",
+    "OAuthIntrospectionClient",
+    "current_principal",
+    "set_current_principal",
+    "reset_current_principal",
     "McpCatalog",
     "McpConnectionOptions",
     "McpDefinition",
@@ -201,6 +220,15 @@ __all__ = [
     "OutboundCredential",
     "ModelResponse",
     "ModelRuntimeSettings",
+    "JsonFormatter",
+    "MetricsRegistry",
+    "Observability",
+    "bounded_text",
+    "configure_structured_logging",
+    "log_context",
+    "log_event",
+    "redact_fields",
+    "redact_text",
     "OsaError",
     "PolicyViolationError",
     "RuntimeConfig",

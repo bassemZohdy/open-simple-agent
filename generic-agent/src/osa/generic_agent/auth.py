@@ -12,6 +12,7 @@ import asyncio
 import os
 import time
 from collections.abc import Awaitable, Callable, Mapping
+from contextvars import ContextVar
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any
@@ -20,8 +21,9 @@ import httpx
 import jwt
 from pydantic import AnyHttpUrl, Field, TypeAdapter, ValidationError, field_validator, model_validator
 
-from osa.generic_agent.config import ConfigurationError, StrictModel
+from osa.generic_agent.config import ConfigurationError, SecretReference, StrictModel
 from osa.generic_agent.errors import OsaError
+from osa.generic_agent.secret import SecretError, SecretResolver
 
 
 class AuthMode(StrEnum):
@@ -92,13 +94,17 @@ class AuthSettings(StrictModel):
     audience: str | None = None
     jwks_url: str | None = None
     discovery_url: str | None = None
+    introspection_url: str | None = None
+    introspection_client_id: str | None = None
+    introspection_client_secret_ref: SecretReference | None = None
     required_scopes: tuple[str, ...] = ()
     enforce_permissions: bool = False
     clock_skew_seconds: int = Field(default=30, ge=0, le=300)
     jwks_timeout_seconds: float = Field(default=2.0, gt=0, le=30)
     jwks_cache_seconds: int = Field(default=300, gt=0, le=86400)
+    introspection_timeout_seconds: float = Field(default=5.0, gt=0, le=30)
 
-    @field_validator("issuer", "jwks_url", "discovery_url")
+    @field_validator("issuer", "jwks_url", "discovery_url", "introspection_url")
     @classmethod
     def _validate_http_url(cls, value: str | None) -> str | None:
         if value is None:
@@ -117,6 +123,18 @@ class AuthSettings(StrictModel):
         missing = [name for name in ("issuer", "audience") if getattr(self, name) in (None, "")]
         if missing:
             raise ValueError(f"Authentication mode '{self.mode}' requires: {', '.join(missing)}")
+        introspection_values = (
+            self.introspection_url,
+            self.introspection_client_id,
+            self.introspection_client_secret_ref,
+        )
+        if any(value is not None for value in introspection_values) and not all(
+            value is not None for value in introspection_values
+        ):
+            raise ValueError(
+                "introspection_url, introspection_client_id, and "
+                "introspection_client_secret_ref must be configured together"
+            )
         return self
 
     @classmethod
@@ -131,17 +149,31 @@ class AuthSettings(StrictModel):
             raise ConfigurationError(f"Invalid OSA_AUTH_MODE '{raw_mode}'; expected one of: {accepted}") from exc
 
         scopes = tuple(scope for scope in values.get("OSA_AUTH_REQUIRED_SCOPES", "").split() if scope)
+        introspection_secret_key = values.get("OSA_AUTH_INTROSPECTION_CLIENT_SECRET_KEY")
+        introspection_secret_ref = (
+            SecretReference(
+                source=values.get("OSA_AUTH_INTROSPECTION_CLIENT_SECRET_SOURCE", "env"),
+                key=introspection_secret_key,
+                env_var=values.get("OSA_AUTH_INTROSPECTION_CLIENT_SECRET_ENV_VAR"),
+            )
+            if introspection_secret_key
+            else None
+        )
         return cls(
             mode=mode,
             issuer=values.get("OSA_AUTH_ISSUER"),
             audience=values.get("OSA_AUTH_AUDIENCE"),
             jwks_url=values.get("OSA_AUTH_JWKS_URL"),
             discovery_url=values.get("OSA_AUTH_DISCOVERY_URL"),
+            introspection_url=values.get("OSA_AUTH_INTROSPECTION_URL"),
+            introspection_client_id=values.get("OSA_AUTH_INTROSPECTION_CLIENT_ID"),
+            introspection_client_secret_ref=introspection_secret_ref,
             required_scopes=scopes,
             enforce_permissions=_parse_bool(values, "OSA_AUTH_ENFORCE_PERMISSIONS", False),
             clock_skew_seconds=_parse_int(values, "OSA_AUTH_CLOCK_SKEW_SECONDS", 30),
             jwks_timeout_seconds=_parse_float(values, "OSA_AUTH_JWKS_TIMEOUT_SECONDS", 2.0),
             jwks_cache_seconds=_parse_int(values, "OSA_AUTH_JWKS_CACHE_SECONDS", 300),
+            introspection_timeout_seconds=_parse_float(values, "OSA_AUTH_INTROSPECTION_TIMEOUT_SECONDS", 5.0),
         )
 
 
@@ -168,6 +200,24 @@ class AuthenticatedPrincipal:
     roles: frozenset[str] = frozenset()
     permissions: frozenset[str] = frozenset()
     tenant_id: str | None = None
+
+
+_current_principal: ContextVar[AuthenticatedPrincipal | None] = ContextVar("osa_current_principal", default=None)
+
+
+def current_principal() -> AuthenticatedPrincipal | None:
+    """Return the principal associated with the current request/task."""
+    return _current_principal.get()
+
+
+def set_current_principal(principal: AuthenticatedPrincipal) -> object:
+    """Set the current principal and return a token for resetting it."""
+    return _current_principal.set(principal)
+
+
+def reset_current_principal(token: object) -> None:
+    """Restore the principal that was active before the request."""
+    _current_principal.reset(token)  # type: ignore[arg-type]
 
 
 class AuthorizationPolicy:
@@ -342,70 +392,106 @@ class JwksClient:
         return payload
 
 
+class OAuthIntrospectionClient:
+    """Validate opaque OAuth access tokens through RFC 7662 introspection."""
+
+    def __init__(self, settings: AuthSettings, secret_resolver: SecretResolver | None) -> None:
+        self._settings = settings
+        self._secret_resolver = secret_resolver
+
+    async def authenticate(self, token: str) -> AuthenticatedPrincipal:
+        """Introspect a bearer token and return only its identity claims."""
+        url = self._settings.introspection_url
+        client_id = self._settings.introspection_client_id
+        secret_ref = self._settings.introspection_client_secret_ref
+        if url is None or client_id is None or secret_ref is None or self._secret_resolver is None:
+            raise AuthenticationError("OAuth token introspection is not configured")
+        try:
+            client_secret = self._secret_resolver.resolve(secret_ref)
+            async with httpx.AsyncClient(timeout=self._settings.introspection_timeout_seconds) as client:
+                response = await client.post(
+                    url,
+                    data={"token": token},
+                    auth=(client_id, client_secret),
+                )
+                if response.status_code in {400, 401, 403}:
+                    raise AuthenticationError("The bearer token is not active")
+                response.raise_for_status()
+                payload = response.json()
+        except AuthenticationError:
+            raise
+        except (SecretError, httpx.HTTPError, ValueError) as exc:
+            raise AuthenticationError("The OAuth token could not be introspected") from exc
+        if not isinstance(payload, dict) or payload.get("active") is not True:
+            raise AuthenticationError("The bearer token is not active")
+        return _principal_from_claims(self._settings, payload)
+
+
 class JwtAuthenticator:
     """Authenticate an HTTP Bearer token against configured OIDC settings."""
 
     _ALLOWED_ALGORITHMS = frozenset({"RS256", "RS384", "RS512", "ES256", "ES384", "ES512"})
 
-    def __init__(self, settings: AuthSettings, *, jwks_client: JwksClient | None = None) -> None:
+    def __init__(
+        self,
+        settings: AuthSettings,
+        *,
+        jwks_client: JwksClient | None = None,
+        secret_resolver: SecretResolver | None = None,
+    ) -> None:
         if settings.mode is AuthMode.DISABLED:
             raise ValueError("JwtAuthenticator requires optional or required authentication mode")
         self._settings = settings
         self._jwks = jwks_client or JwksClient(settings)
+        self._introspection = (
+            OAuthIntrospectionClient(settings, secret_resolver) if settings.introspection_url is not None else None
+        )
 
     async def authenticate(self, authorization: str | None) -> AuthenticatedPrincipal:
         """Validate a bearer token and return its non-sensitive identity."""
         token = _bearer_token(authorization)
+        if self._introspection is not None and token.count(".") != 2:
+            return await self._introspection.authenticate(token)
         try:
             header = jwt.get_unverified_header(token)
         except jwt.PyJWTError as exc:
+            if self._introspection is not None:
+                return await self._introspection.authenticate(token)
             raise AuthenticationError("The bearer token header is invalid") from exc
 
         algorithm = header.get("alg")
         key_id = header.get("kid")
         if algorithm not in self._ALLOWED_ALGORITHMS or not isinstance(key_id, str) or not key_id:
+            if self._introspection is not None:
+                return await self._introspection.authenticate(token)
             raise AuthenticationError("The bearer token signing algorithm or key id is invalid")
 
-        jwk = await self._jwks.get_key(key_id)
         try:
-            signing_key = jwt.PyJWK.from_dict(dict(jwk))
-            if signing_key.algorithm_name != algorithm:
-                raise AuthenticationError("The bearer token signing algorithm is not accepted")
-            claims = jwt.decode(
-                token,
-                signing_key.key,
-                algorithms=[algorithm],
-                audience=self._settings.audience,
-                issuer=str(self._settings.issuer),
-                leeway=self._settings.clock_skew_seconds,
-                options={"require": ["exp", "iss", "sub"]},
-            )
+            return await self._authenticate_jwt(token, algorithm, key_id)
         except AuthenticationError:
+            if self._introspection is not None:
+                return await self._introspection.authenticate(token)
             raise
         except jwt.PyJWTError as exc:
+            if self._introspection is not None:
+                return await self._introspection.authenticate(token)
             raise AuthenticationError("The bearer token is invalid or expired") from exc
 
-        subject = claims.get("sub")
-        issuer = claims.get("iss")
-        if not isinstance(subject, str) or not subject or not isinstance(issuer, str) or not issuer:
-            raise AuthenticationError("The bearer token identity claims are invalid")
-        audience = _audience_values(claims.get("aud"))
-        scopes = _scope_values(claims)
-        missing_scopes = set(self._settings.required_scopes) - scopes
-        if missing_scopes:
-            raise AuthorizationError("The bearer token does not grant the required scope")
-        roles = _role_values(claims)
-        permissions = _permission_values(claims)
-        tenant_id = _tenant_value(claims)
-        return AuthenticatedPrincipal(
-            subject=subject,
-            issuer=issuer,
-            audience=audience,
-            scopes=frozenset(scopes),
-            roles=frozenset(roles),
-            permissions=frozenset(permissions),
-            tenant_id=tenant_id,
+    async def _authenticate_jwt(self, token: str, algorithm: str, key_id: str) -> AuthenticatedPrincipal:
+        jwk = await self._jwks.get_key(key_id)
+        signing_key = jwt.PyJWK.from_dict(dict(jwk))
+        if signing_key.algorithm_name != algorithm:
+            raise AuthenticationError("The bearer token signing algorithm is not accepted")
+        claims = jwt.decode(
+            token,
+            signing_key.key,
+            algorithms=[algorithm],
+            audience=self._settings.audience,
+            issuer=str(self._settings.issuer),
+            leeway=self._settings.clock_skew_seconds,
+            options={"require": ["exp", "iss", "sub"]},
         )
+        return _principal_from_claims(self._settings, claims)
 
 
 def _bearer_token(authorization: str | None) -> str:
@@ -415,6 +501,32 @@ def _bearer_token(authorization: str | None) -> str:
     if scheme.lower() != "bearer" or not separator or not token.strip():
         raise AuthenticationError("A bearer token is required")
     return token.strip()
+
+
+def _principal_from_claims(settings: AuthSettings, claims: Mapping[str, Any]) -> AuthenticatedPrincipal:
+    """Build a principal from either JWT or RFC 7662 claims."""
+    subject = claims.get("sub")
+    issuer = claims.get("iss")
+    if not isinstance(subject, str) or not subject or not isinstance(issuer, str) or not issuer:
+        raise AuthenticationError("The bearer token identity claims are invalid")
+    if issuer != settings.issuer:
+        raise AuthenticationError("The bearer token issuer is invalid")
+    audience = _audience_values(claims.get("aud"))
+    if settings.audience not in audience:
+        raise AuthenticationError("The bearer token audience is invalid")
+    scopes = _scope_values(claims)
+    missing_scopes = set(settings.required_scopes) - scopes
+    if missing_scopes:
+        raise AuthorizationError("The bearer token does not grant the required scope")
+    return AuthenticatedPrincipal(
+        subject=subject,
+        issuer=issuer,
+        audience=audience,
+        scopes=frozenset(scopes),
+        roles=frozenset(_role_values(claims)),
+        permissions=frozenset(_permission_values(claims)),
+        tenant_id=_tenant_value(claims),
+    )
 
 
 def _audience_values(value: Any) -> tuple[str, ...]:

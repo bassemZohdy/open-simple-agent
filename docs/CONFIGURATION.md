@@ -113,8 +113,9 @@ spec:
 ```
 
 Allow/deny overlap is invalid. The policy is independent of the prompt;
-inbound A2A security-scheme enforcement and enterprise policy evaluation remain
-open.
+enterprise policy evaluation remains open. Inbound A2A security is enforced by
+the shared OIDC/OAuth boundary. Kubernetes provider work may be validated with
+Kind; OpenShift-specific behavior is deferred.
 
 | Path | Type | Default | Current behavior |
 |---|---|---:|---|
@@ -196,7 +197,9 @@ permits anonymous requests. Enabled modes require an issuer and audience.
 standard `.well-known/openid-configuration` document and uses its validated
 `jwks_uri`. Set `OSA_AUTH_DISCOVERY_URL` when the provider uses a non-default
 discovery endpoint. An explicitly configured JWKS URL takes precedence and
-avoids discovery.
+avoids discovery. When opaque OAuth access tokens are used, configure RFC 7662
+introspection below; the introspection client secret is resolved only at
+request time.
 
 OSA validates the JWT locally against the configured or OIDC-discovered JWKS document. The
 supported signing algorithms are RS256/384/512 and ES256/384/512. The token
@@ -212,6 +215,12 @@ is encountered.
 | `OSA_AUTH_AUDIENCE` | Expected JWT `aud` value | unset |
 | `OSA_AUTH_JWKS_URL` | Optional explicit HTTP JSON Web Key Set URL; takes precedence over discovery | unset |
 | `OSA_AUTH_DISCOVERY_URL` | Optional OIDC discovery document URL; defaults to `{issuer}/.well-known/openid-configuration` | unset |
+| `OSA_AUTH_INTROSPECTION_URL` | Optional RFC 7662 token introspection endpoint | unset |
+| `OSA_AUTH_INTROSPECTION_CLIENT_ID` | Confidential client ID for introspection | unset |
+| `OSA_AUTH_INTROSPECTION_CLIENT_SECRET_KEY` | Secret-reference key for the introspection client secret | unset |
+| `OSA_AUTH_INTROSPECTION_CLIENT_SECRET_SOURCE` | Secret source for the introspection client secret | `env` |
+| `OSA_AUTH_INTROSPECTION_CLIENT_SECRET_ENV_VAR` | Optional environment variable override for that secret | unset |
+| `OSA_AUTH_INTROSPECTION_TIMEOUT_SECONDS` | Introspection request timeout, >0 and <=30 seconds | `5.0` |
 | `OSA_AUTH_REQUIRED_SCOPES` | Required scopes separated by spaces | empty |
 | `OSA_AUTH_ENFORCE_PERMISSIONS` | Enforce mapped HTTP permissions from roles, permissions, and scopes | `false` |
 | `OSA_AUTH_CLOCK_SKEW_SECONDS` | JWT clock leeway, 0..300 seconds | `30` |
@@ -238,9 +247,12 @@ records inherit agent tenant ownership and are protected by the same boundary.
 Resource definitions use the same tenant boundary, with equal names allowed in
 different tenants and tenant-scoped catalog resolution during activation and
 deployment bundle export. PostgreSQL migration 0005 stores resource ownership.
-Inbound A2A security-scheme enforcement and enterprise policy evaluation remain
-open. Outbound API-key, OAuth2, and mTLS adapters are available for MCP and
-external A2A calls.
+Inbound A2A JSON-RPC and runtime invocation routes use the same bearer
+boundary. With `OSA_AUTH_MODE=required` (or permission enforcement enabled),
+the generated Agent Card advertises a required `osa_oidc` scheme; a validated
+subject and tenant are propagated into the OSA session and invocation
+metadata. Enterprise policy evaluation remains open. Outbound API-key,
+OAuth2, and mTLS adapters are available for MCP and external A2A calls.
 Token material is never logged or retained after validation.
 
 ## Secret references

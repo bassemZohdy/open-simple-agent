@@ -28,7 +28,7 @@ from google.adk.tools.function_tool import FunctionTool
 from google.genai import types
 from pydantic import ConfigDict
 
-from osa.generic_agent import ModelProvider  # noqa: TC001 - pydantic field type
+from osa.generic_agent import ModelProvider, Observability  # noqa: TC001 - pydantic field type
 from osa.generic_agent.errors import ModelConfigurationError
 
 if TYPE_CHECKING:
@@ -61,12 +61,20 @@ class ProviderBackedLlm(BaseLlm):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
     provider: ModelProvider
+    observability: Observability | None = None
 
     async def generate_content_async(
         self, llm_request: LlmRequest, stream: bool = False
     ) -> AsyncGenerator[LlmResponse, None]:
         prompt = _flatten_request(llm_request)
         response = await self.provider.generate(prompt=prompt, model_id=self.model)
+        if self.observability is not None:
+            self.observability.record_token_usage(
+                self.model,
+                prompt_tokens=response.usage.prompt_tokens,
+                completion_tokens=response.usage.completion_tokens,
+                total_tokens=response.usage.total_tokens,
+            )
         yield LlmResponse(content=types.Content(role="model", parts=[types.Part(text=response.text)]))
 
 
@@ -117,25 +125,32 @@ def _validate_tool_arguments(tool_name: str, schema: dict[str, Any], arguments: 
     return None
 
 
-def _execute_bounded(tool: Tool, timeout_seconds: float | None, **kwargs: Any) -> dict[str, Any]:
+def _execute_bounded(
+    tool: Tool,
+    timeout_seconds: float | None,
+    observability: Observability | None = None,
+    **kwargs: Any,
+) -> dict[str, Any]:
     """Execute a tool synchronously, enforcing its configured timeout.
 
     Runs inside the ADK tool loop (a worker thread), so a timeout returns an
     error payload for the model instead of raising into the event loop.
     """
-    executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
-    try:
-        future = executor.submit(tool.execute, **kwargs)
+    observation = observability or Observability()
+    with observation.span_sync("tool.execute", labels={"tool": tool.name}, attributes={"osa.tool": tool.name}):
+        executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
         try:
-            result = future.result(timeout=timeout_seconds)
-        except concurrent.futures.TimeoutError:
-            return {
-                "success": False,
-                "output": "",
-                "error": f"Tool '{tool.name}' timed out after {timeout_seconds}s",
-            }
-    finally:
-        executor.shutdown(wait=False)
+            future = executor.submit(tool.execute, **kwargs)
+            try:
+                result = future.result(timeout=timeout_seconds)
+            except concurrent.futures.TimeoutError:
+                return {
+                    "success": False,
+                    "output": "",
+                    "error": f"Tool '{tool.name}' timed out after {timeout_seconds}s",
+                }
+        finally:
+            executor.shutdown(wait=False)
     return {"success": result.success, "output": result.output, "error": result.error}
 
 
@@ -148,7 +163,12 @@ class OsaFunctionTool(FunctionTool):
     against that schema before execution; the tool's timeout is enforced.
     """
 
-    def __init__(self, tool: Tool, tool_definition: ToolDefinition | None) -> None:
+    def __init__(
+        self,
+        tool: Tool,
+        tool_definition: ToolDefinition | None,
+        observability: Observability | None = None,
+    ) -> None:
         self._osa_tool = tool
         self._osa_timeout = tool_definition.timeout_seconds if tool_definition else None
         self._osa_schema = (
@@ -156,6 +176,7 @@ class OsaFunctionTool(FunctionTool):
             if tool_definition and tool_definition.capabilities
             else {}
         )
+        self._osa_observability = observability
         super().__init__(func=self._make_function())
 
     def _make_function(self) -> Callable[..., dict[str, Any]]:
@@ -168,7 +189,7 @@ class OsaFunctionTool(FunctionTool):
                 violation = _validate_tool_arguments(tool.name, schema, kwargs)
                 if violation is not None:
                     return {"success": False, "output": "", "error": violation}
-            return _execute_bounded(tool, timeout, **kwargs)
+            return _execute_bounded(tool, timeout, self._osa_observability, **kwargs)
 
         tool_fn.__name__ = tool.name
         tool_fn.__doc__ = tool.description or f"Execute the {tool.name} tool."
@@ -206,7 +227,9 @@ def build_tool_declaration(name: str, schema: dict[str, Any], description: str) 
 
 
 def build_function_tools(
-    tools: dict[str, Tool], tool_definitions: dict[str, ToolDefinition] | None = None
+    tools: dict[str, Tool],
+    tool_definitions: dict[str, ToolDefinition] | None = None,
+    observability: Observability | None = None,
 ) -> list[AdkTool]:
     """Wrap resolved runtime tools as ADK function tools.
 
@@ -214,7 +237,9 @@ def build_function_tools(
     available, otherwise ADK derives them from the wrapped callable.
     """
     definitions = tool_definitions or {}
-    wrapped: list[AdkTool] = [OsaFunctionTool(tool, definitions.get(tool.name)) for tool in tools.values()]
+    wrapped: list[AdkTool] = [
+        OsaFunctionTool(tool, definitions.get(tool.name), observability) for tool in tools.values()
+    ]
     return wrapped
 
 
@@ -224,6 +249,7 @@ def build_llm_agent(
     tools: dict[str, Tool],
     tool_definitions: dict[str, ToolDefinition] | None = None,
     toolsets: list[Any] | None = None,
+    observability: Observability | None = None,
 ) -> LlmAgent:
     """Build an ADK ``LlmAgent`` from an AgentDefinition.
 
@@ -233,7 +259,7 @@ def build_llm_agent(
     The agent name is sanitized to satisfy ADK's identifier requirement
     (``customer-support`` becomes ``customer_support``).
     """
-    all_tools: list[Any] = list(build_function_tools(tools, tool_definitions))
+    all_tools: list[Any] = list(build_function_tools(tools, tool_definitions, observability))
     all_tools.extend(toolsets or [])
     return LlmAgent(
         name=adk_name(definition.metadata.name),

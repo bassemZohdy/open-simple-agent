@@ -27,6 +27,7 @@ from mcp.client.streamable_http import streamable_http_client
 from osa.generic_agent import (
     CredentialResolutionError,
     McpDefinition,
+    Observability,
     ResolvedOutboundCredential,
     SecretError,
     SecretResolver,
@@ -83,9 +84,15 @@ class McpConnection:
     connect and never retained.
     """
 
-    def __init__(self, definition: McpDefinition, secret_resolver: SecretResolver | None = None) -> None:
+    def __init__(
+        self,
+        definition: McpDefinition,
+        secret_resolver: SecretResolver | None = None,
+        observability: Observability | None = None,
+    ) -> None:
         self._definition = definition
         self._secret_resolver = secret_resolver
+        self._observability = observability or Observability()
         self._session: ClientSession | None = None
         self._keeper: asyncio.Task[None] | None = None
         self._stop = asyncio.Event()
@@ -191,7 +198,8 @@ class McpConnection:
             last_error: Exception | None = None
             for attempt in range(options.max_retries + 1):
                 try:
-                    return await self._connect_once()
+                    async with self._observability.span("mcp.connect", labels={"server": self.name}):
+                        return await self._connect_once()
                 except McpTransportNotSupportedError:
                     raise
                 except SecretError:
@@ -271,8 +279,9 @@ class McpConnection:
 
     async def list_tools(self) -> list[McpToolHandle]:
         """Discover tools, applying the server-level filter."""
-        session = await self.connect()
-        result = await session.list_tools()
+        async with self._observability.span("mcp.discovery", labels={"server": self.name}):
+            session = await self.connect()
+            result = await session.list_tools()
         allowed = set(self._definition.tools_filter) if self._definition.tools_filter else None
         handles: list[McpToolHandle] = []
         for tool in result.tools:
@@ -303,7 +312,12 @@ class McpConnection:
         result: mcp_types.CallToolResult | None = None
         for attempt in range(options.max_retries + 1):
             try:
-                result = await session.call_tool(handle_server_tool_name, arguments or {})
+                async with self._observability.span(
+                    "mcp.call",
+                    labels={"server": self.name, "tool": handle_server_tool_name},
+                    attributes={"osa.mcp.server": self.name, "osa.mcp.tool": handle_server_tool_name},
+                ):
+                    result = await session.call_tool(handle_server_tool_name, arguments or {})
                 break
             except McpResponseTooLargeError:
                 raise
@@ -356,14 +370,19 @@ class McpConnectionPool:
     closes the pool on shutdown.
     """
 
-    def __init__(self, secret_resolver: SecretResolver | None = None) -> None:
+    def __init__(
+        self,
+        secret_resolver: SecretResolver | None = None,
+        observability: Observability | None = None,
+    ) -> None:
         self._secret_resolver = secret_resolver
+        self._observability = observability or Observability()
         self._connections: dict[str, McpConnection] = {}
 
     def get(self, definition: McpDefinition) -> McpConnection:
         connection = self._connections.get(definition.name)
         if connection is None:
-            connection = McpConnection(definition, self._secret_resolver)
+            connection = McpConnection(definition, self._secret_resolver, self._observability)
             self._connections[definition.name] = connection
         return connection
 

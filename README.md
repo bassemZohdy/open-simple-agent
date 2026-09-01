@@ -14,8 +14,7 @@ The first runtime targets [Google ADK](https://google.github.io/adk-docs/).
 > `osa-runtime` service CLI, a production-oriented container image, and
 > deterministic tests are implemented. JWT bearer authentication, opt-in
 > role/permission route enforcement, and runtime tenant binding are available;
-> control-plane resource policy, observability, streaming, and the UI remain
-> open.
+> enterprise policy, streaming, Kubernetes deployment, and the UI remain open.
 
 ## What works today
 
@@ -31,8 +30,8 @@ The first runtime targets [Google ADK](https://google.github.io/adk-docs/).
 | ADK runtime | Invocation through the ADK `Runner`; timeouts, iteration limits, stable error types; A2A Agent Card + JSON-RPC server for A2A-enabled agents (ADR-005) | Streaming pending |
 | Control Plane | Agent CRUD, lifecycle transitions, immutable versions, optimistic concurrency, validated contracts; tenant-owned agent CRUD/lifecycle routes; tenant-scoped resource CRUD/list/search APIs with reference checks and bundle import/export; tenant-owned deployment APIs (deploy/status/stop/restart/logs/rollback); external A2A agent registry with card validation, health, and outbound credential adapters; append-only tenant-filtered audit events; in-memory default or PostgreSQL repositories via `OSA_CONTROL_PLANE_DATABASE_URL` (ADR-004), Alembic schema (`osa-cp-migrate`); shared JWT bearer authentication and opt-in route permissions | Definition resource policy is enforced by the runtime; enterprise policy remains open |
 | Deployment | Local provider with bounded logs, health probing, and startup-failure capture; deploy/status/stop/restart/logs/rollback APIs through the Control Plane with persisted tenant-owned records | Kubernetes provider pending |
-| Runtime API | Invoke, capabilities, liveness, readiness, optional A2A Agent Card/JSON-RPC, shared JWT bearer authentication, opt-in route permissions, tenant-claim binding, and redaction-safe runtime/A2A audit events; `osa-runtime` CLI with bundle bootstrap | Streaming and A2A security-scheme enforcement pending |
-| CI | Format, lint, strict mypy, 456 collected tests (435 local plus 21 PostgreSQL tests in CI), container build + smoke test | No coverage gate, security scan, or release automation |
+| Runtime API | Invoke, capabilities, liveness, readiness, optional A2A Agent Card/JSON-RPC, shared JWT/OIDC bearer authentication including RFC 7662 opaque-token introspection, opt-in route permissions, tenant-claim binding, request IDs, Prometheus metrics, redaction-safe structured logs and runtime/A2A audit events; `osa-runtime` CLI with bundle bootstrap | Streaming pending |
+| CI | Format, lint, strict mypy, 466 collected tests (445 local plus 21 PostgreSQL tests in CI), container build + smoke test | No coverage gate, security scan, or release automation |
 
 ## Architecture
 
@@ -274,8 +273,8 @@ The P0 "runnable agent" gate is implemented: external bundle loading, secret
 resolution, live-model invocation through the ADK Runner with native function
 calling, isolated session continuity, and a CLI/container service path — the
 same acceptance test passes locally and from the built container. Remaining
-work is tracked in [TODO.md](TODO.md): Kubernetes/OpenShift deployment,
-authorization policy, observability, streaming/replica behavior, UI, and
+work is tracked in [TODO.md](TODO.md): Kubernetes deployment (Kind validation
+planned; OpenShift deferred), enterprise authorization policy, streaming/replica behavior, UI, and
 release automation.
 
 ## License

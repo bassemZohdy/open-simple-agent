@@ -49,9 +49,11 @@ async def test_invoke_agent() -> None:
     async with AsyncClient(transport=ASGITransport(app=runtime_app), base_url="http://test") as client:
         response = await client.post(
             "/v1/invoke",
+            headers={"X-Request-ID": "runtime-test-1"},
             json={"input": "Hello, agent!"},
         )
         assert response.status_code == 200
+        assert response.headers["x-request-id"] == "runtime-test-1"
         data = response.json()
         assert data["output"] == "I'm a runtime agent. How can I help?"
         assert data["error"] is None
@@ -60,6 +62,11 @@ async def test_invoke_agent() -> None:
         assert len(events) == 1
         assert events[0].action == "runtime.invoke"
         assert events[0].detail == {"decision": "succeeded", "status_code": 200, "method": "POST"}
+
+        metrics = await client.get("/metrics")
+        assert metrics.status_code == 200
+        assert "osa_http_requests_total" in metrics.text
+        assert "osa_operations_total" in metrics.text
 
 
 async def test_runtime_audit_does_not_capture_prompt_or_output() -> None:

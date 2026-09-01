@@ -32,6 +32,7 @@ from osa.generic_agent import (
     FakeModelProvider,
     InMemoryProvider,
     MemoryProvider,
+    Observability,
     SecretError,
     SecretResolver,
     SessionManager,
@@ -87,6 +88,7 @@ async def build_runtime(
     *,
     secret_resolver: SecretResolver | None = None,
     allow_fake_provider: bool = False,
+    observability: Observability | None = None,
 ) -> tuple[AdkRuntime, GenericAdkAgent]:
     """Load a bundle and build a ready runtime.
 
@@ -112,6 +114,7 @@ async def build_runtime(
     adapters = default_registry(
         fake_provider=FakeModelProvider() if allow_fake_provider else None,
         secret_resolver=resolver,
+        observability=observability,
     )
     memory_provider = await create_memory_provider()
 
@@ -125,6 +128,7 @@ async def build_runtime(
         session_provider=SessionManager(),
         model_adapters=adapters,
         secret_resolver=resolver,
+        observability=observability,
     )
     agent = await runtime.create(bundle.agent)
     return runtime, agent
@@ -136,6 +140,7 @@ def create_runtime_app(
     secret_resolver: SecretResolver | None = None,
     allow_fake_provider: bool | None = None,
     audit_sink: AuditEventSink | None = None,
+    observability: Observability | None = None,
 ) -> FastAPI:
     """Build the runtime API app with a bundle-driven lifespan.
 
@@ -145,6 +150,7 @@ def create_runtime_app(
     """
     resolved_path = Path(bundle_path)
     allow_fake = _env_flag(ALLOW_FAKE_PROVIDER_ENV_VAR) if allow_fake_provider is None else allow_fake_provider
+    service_observability = observability or Observability()
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -153,11 +159,12 @@ def create_runtime_app(
                 resolved_path,
                 secret_resolver=secret_resolver,
                 allow_fake_provider=allow_fake,
+                observability=service_observability,
             )
         except (BundleError, SecretError) as exc:
             runtime_api.set_start_error(str(exc))
             raise
-        runtime_api.maybe_attach_a2a(agent)
+        runtime_api.maybe_attach_a2a(agent, app=app)
         runtime_api.set_runtime(runtime, agent)
         yield
         await runtime.shutdown()
@@ -172,7 +179,12 @@ def create_runtime_app(
     except metadata.PackageNotFoundError:
         version = "0"
     app = FastAPI(title="Open Simple Agent Runtime", version=version, lifespan=lifespan)
-    return runtime_api.configure_runtime_app(app, audit_sink=audit_sink)
+    return runtime_api.configure_runtime_app(
+        app,
+        audit_sink=audit_sink,
+        secret_resolver=secret_resolver,
+        observability=service_observability,
+    )
 
 
 def main(argv: list[str] | None = None) -> int:

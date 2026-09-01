@@ -22,6 +22,8 @@ from osa.generic_agent import (
     AgentRequest,
     AgentSpec,
     ApiKeyCredential,
+    AuthMode,
+    AuthSettings,
     FakeModelProvider,
     ModelCatalog,
     ModelDefinition,
@@ -104,6 +106,24 @@ class TestAgentCardGeneration:
         assert card.skills[0].tags == ["tier1"]
         assert card.supported_interfaces[0].url == "http://127.0.0.1:9/"
         assert card.default_input_modes == ["text/plain"]
+
+    def test_card_advertises_required_oidc_bearer_security(self) -> None:
+        definition = AgentDefinition(
+            metadata=AgentMetadataConfig(name="secure-card"),
+            spec=AgentSpec(instruction="Help."),
+        )
+        settings = AuthSettings(
+            mode=AuthMode.REQUIRED,
+            issuer="https://issuer.example.test/",
+            audience="osa-api",
+        )
+        card = build_agent_card(definition, [], "https://agent.example.test/a2a", auth_settings=settings)
+
+        assert "osa_oidc" in card.security_schemes
+        scheme = card.security_schemes["osa_oidc"]
+        assert scheme.WhichOneof("scheme") == "open_id_connect_security_scheme"
+        assert len(card.security_requirements) == 1
+        assert "osa_oidc" in card.security_requirements[0].schemes
 
 
 class TestA2aServer:

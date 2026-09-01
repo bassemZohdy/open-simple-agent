@@ -33,6 +33,7 @@ from osa.generic_agent import (
     McpDefinition,
     MemoryPolicy,
     ModelDefinition,
+    Observability,
     SecretResolver,
     SkillDefinition,
     ToolDefinition,
@@ -73,6 +74,7 @@ def create_control_plane_app(
     agent_repository: AgentRepository | None = None,
     resource_repository: ResourceDefinitionRepository | None = None,
     secret_resolver: SecretResolver | None = None,
+    observability: Observability | None = None,
 ) -> FastAPI:
     """Build the Control Plane API app.
 
@@ -116,6 +118,7 @@ def create_control_plane_app(
         template_catalog=create_default_template_catalog(),
         resource_repository=resources,
         secret_resolver=secret_resolver,
+        observability=observability,
         audit_repository=audit_repository,
     )
     if deployment_records is not None:

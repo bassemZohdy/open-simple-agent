@@ -14,11 +14,13 @@ Error responses use the stable OSA schema ``{"error": {"code", "message"}}``.
 
 from __future__ import annotations
 
+import logging
 from importlib import metadata
 from typing import TYPE_CHECKING, Any
+from uuid import uuid4
 
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, PlainTextResponse
 from pydantic import BaseModel, ConfigDict, Field
 
 from osa.generic_agent import (
@@ -32,20 +34,29 @@ from osa.generic_agent import (
     AuthorizationError,
     AuthorizationPolicy,
     AuthSettings,
+    EnvironmentSecretResolver,
     FakeModelProvider,
     InMemoryAuditEventSink,
     JwtAuthenticator,
     ModelCatalog,
     ModelDefinition,
+    Observability,
     OsaError,
     PolicyViolationError,
     SecretResolver,
     SessionAccessError,
     SessionError,
     SessionNotFoundError,
+    configure_structured_logging,
     error_payload,
+    log_context,
+    log_event,
+    reset_current_principal,
+    set_current_principal,
 )
 from osa.runtimes.adk import AdkRuntime, GenericAdkAgent
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
@@ -143,7 +154,12 @@ async def _record_runtime_audit(
     await sink.append(AuditEvent(actor=actor, action=action, target=target, tenant_id=tenant_id, detail=detail))
 
 
-def maybe_attach_a2a(agent: GenericAdkAgent) -> None:
+def maybe_attach_a2a(
+    agent: GenericAdkAgent,
+    *,
+    app: FastAPI | None = None,
+    auth_settings: AuthSettings | None = None,
+) -> None:
     """Attach A2A routes when the agent definition enables A2A (ADR-005).
 
     The public URL comes from ``OSA_A2A_URL`` (default localhost). Requires
@@ -157,8 +173,14 @@ def maybe_attach_a2a(agent: GenericAdkAgent) -> None:
         raise PolicyViolationError("a2a", "inbound")
     from osa.runtimes.adk.a2a import attach_a2a_routes
 
+    target_app = app or runtime_app
+    settings = auth_settings
+    if settings is None:
+        settings = getattr(target_app.state, "auth_settings", None)
+    if settings is None:
+        settings = AuthSettings.from_env()
     url = os.environ.get("OSA_A2A_URL", "http://localhost:8080/")
-    attach_a2a_routes(runtime_app, agent, url)
+    attach_a2a_routes(target_app, agent, url, auth_settings=settings)
 
 
 def reset_runtime() -> None:
@@ -192,11 +214,15 @@ def _install_authentication(
     app: FastAPI,
     settings: AuthSettings,
     authenticator: JwtAuthenticator | None,
+    secret_resolver: SecretResolver | None,
 ) -> None:
     app.state.auth_settings = settings
     if settings.mode is AuthMode.DISABLED:
         return
-    token_authenticator = authenticator or JwtAuthenticator(settings)
+    token_authenticator = authenticator or JwtAuthenticator(
+        settings,
+        secret_resolver=secret_resolver or EnvironmentSecretResolver(),
+    )
     authorization_policy = AuthorizationPolicy(enabled=settings.enforce_permissions)
     app.state.authenticator = token_authenticator
     app.state.authorization_policy = authorization_policy
@@ -233,7 +259,11 @@ def _install_authentication(
         except AuthorizationError as exc:
             return JSONResponse(status_code=403, content=error_payload(exc.code, str(exc)))
         request.state.osa_principal = principal
-        return await call_next(request)
+        principal_token = set_current_principal(principal)
+        try:
+            return await call_next(request)
+        finally:
+            reset_current_principal(principal_token)
 
 
 def configure_runtime_app(
@@ -242,6 +272,8 @@ def configure_runtime_app(
     auth_settings: AuthSettings | None = None,
     authenticator: JwtAuthenticator | None = None,
     audit_sink: AuditEventSink | None = None,
+    secret_resolver: SecretResolver | None = None,
+    observability: Observability | None = None,
 ) -> FastAPI:
     """Attach the runtime routes and error mapping to a FastAPI app.
 
@@ -251,10 +283,56 @@ def configure_runtime_app(
     """
 
     settings = auth_settings or AuthSettings.from_env()
-    _install_authentication(app, settings, authenticator)
+    _install_authentication(app, settings, authenticator, secret_resolver)
     if audit_sink is None:
         audit_sink = InMemoryAuditEventSink()
     app.state.audit_sink = audit_sink
+    app.state.observability = observability or Observability()
+    configure_structured_logging()
+
+    @app.middleware("http")
+    async def _observe_request(request: Request, call_next: Callable[[Request], Awaitable[Response]]) -> Response:
+        raw_request_id = request.headers.get("x-request-id", "")
+        request_id = raw_request_id if _valid_request_id(raw_request_id) else str(uuid4())
+        request.state.request_id = request_id
+        observation: Observability = app.state.observability
+        operation = "a2a" if request.url.path == "/a2a" else "http"
+        with log_context({"request_id": request_id, "surface": "runtime"}):
+            try:
+                async with observation.span(
+                    operation,
+                    labels={"surface": "runtime", "route": request.url.path},
+                    attributes={"http.method": request.method, "http.route": request.url.path},
+                ):
+                    response = await call_next(request)
+            except Exception as exc:
+                observation.metrics.increment(
+                    "osa_http_requests_total",
+                    {"surface": "runtime", "route": request.url.path, "status": 500},
+                )
+                log_event(
+                    logger,
+                    logging.ERROR,
+                    "runtime request failed",
+                    {"error_code": getattr(exc, "code", "internal_error")},
+                )
+                raise
+            observation.metrics.increment(
+                "osa_http_requests_total",
+                {"surface": "runtime", "route": request.url.path, "status": response.status_code},
+            )
+            response.headers["X-Request-ID"] = request_id
+            principal = getattr(request.state, "osa_principal", None)
+            log_event(
+                logger,
+                logging.INFO,
+                "runtime request completed",
+                {
+                    "status_code": response.status_code,
+                    "subject": getattr(principal, "subject", None),
+                },
+            )
+            return response
 
     @app.middleware("http")
     async def _audit_boundary_request(
@@ -358,7 +436,32 @@ def configure_runtime_app(
             metadata=request_metadata,
         )
 
-        response = await _agent.invoke(agent_request)
+        observation: Observability = http_request.app.state.observability
+        async with observation.span(
+            "invocation",
+            labels={"agent": _agent.metadata.name},
+            attributes={
+                "osa.agent": _agent.metadata.name,
+                "osa.invocation_id": str(agent_request.invocation_id),
+                "osa.session_id": agent_request.session_id or "new",
+            },
+        ):
+            response = await _agent.invoke(agent_request)
+
+        log_event(
+            logger,
+            logging.INFO if response.error is None else logging.ERROR,
+            "agent invocation completed",
+            {
+                "invocation_id": str(agent_request.invocation_id),
+                "session_id": response.session_id or agent_request.session_id,
+                "agent": _agent.metadata.name,
+                "user_id": user_id,
+                "caller_id": request_metadata.get("caller_subject"),
+                "deployment_id": request_metadata.get("deployment_id"),
+                "outcome": "error" if response.error else "success",
+            },
+        )
 
         await _record_runtime_audit(
             http_request,
@@ -389,6 +492,11 @@ def configure_runtime_app(
             return JSONResponse(status_code=503, content=error_payload("not_initialized", message))
         return JSONResponse(status_code=200, content={"status": "ready"})
 
+    @app.get("/metrics", response_class=PlainTextResponse)
+    async def metrics() -> PlainTextResponse:
+        """Expose bounded Prometheus metrics without request payloads."""
+        return PlainTextResponse(app.state.observability.metrics.render_prometheus())
+
     @app.get("/v1/capabilities", response_model=CapabilitiesResponse)
     async def get_capabilities() -> Any:
         """Get agent capabilities."""
@@ -408,3 +516,10 @@ def configure_runtime_app(
 
 
 runtime_app = configure_runtime_app(FastAPI(title="Open Simple Agent Runtime", version=_package_version()))
+
+
+def _valid_request_id(value: str) -> bool:
+    """Accept only bounded correlation identifiers supplied by a caller."""
+    import re
+
+    return bool(value) and bool(re.fullmatch(r"[A-Za-z0-9._:/-]{1,128}", value))

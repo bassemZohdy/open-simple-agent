@@ -214,8 +214,10 @@ namespace. Successful management mutations and privileged external-agent
 invocations append tenant-filtered, redaction-safe audit events; PostgreSQL
 persists them with migration 0006. Definition-owned resource policy now gates
 model, tool, MCP, and skill references before runtime construction and can
-disable inbound A2A exposure. A2A security-scheme enforcement remains open in
-P2.2.
+disable inbound A2A exposure. The shared OIDC/OAuth boundary validates JWTs or
+RFC 7662 opaque tokens on both HTTP and inbound A2A JSON-RPC routes; protected
+Agent Cards advertise the required `osa_oidc` scheme and validated subject and
+tenant claims propagate into invocations.
 
 ## Deployment
 
@@ -234,26 +236,41 @@ never accepted from API input. Intent and observed state persist through the
 `DeploymentRecordRepository` (in-memory, or PostgreSQL when the Control
 Plane uses a database); rollback relaunches an earlier immutable version
 snapshot. Deployed runtimes are external processes: no ADK internals are
-imported. The Kubernetes/OpenShift provider remains open in `TODO.md`.
+imported. The Kubernetes provider remains open in `TODO.md` and may be
+validated with Kind. OpenShift-specific provider work is intentionally
+deferred.
 
 ## A2A interoperability
 
 The runtime exposes A2A-enabled agents (ADR-005, `a2a-sdk` 1.x): the Agent
 Card is generated from the validated definition plus resolved skills and
-served at the well-known path; `message/send` maps one A2A task per
+served at the well-known path; when inbound authentication is protected, the
+card advertises the same bearer/OIDC requirement enforced by the runtime;
+`message/send` maps one A2A task per
 invocation through `GenericAdkAgent.invoke`, with the A2A context id mapped
 to an OSA session. The Control Plane tracks **external** A2A agents as
 records distinct from managed agents: registration fetches and validates the
 remote Agent Card, refresh re-checks health, and invocation goes through the
 A2A client with bounded timeouts and `a2a_remote_failed` error mapping.
-External records are structurally barred from deployment. A2A security
-schemes are configuration now; inbound A2A security-scheme enforcement remains
-P2.2 work. Outbound remote-agent credentials use the shared API-key, OAuth2,
-and mTLS adapters in `osa.generic_agent.credentials`.
+External records are structurally barred from deployment. Inbound A2A uses the
+same authentication and route-permission middleware as `/v1/invoke`, including
+subject/tenant propagation. Outbound remote-agent credentials use the shared
+API-key, OAuth2, and mTLS adapters in `osa.generic_agent.credentials`.
+
+## Observability
+
+Both HTTP applications assign or preserve a validated `X-Request-ID`, emit
+redaction-safe structured boundary events, and expose bounded Prometheus
+counters and duration summaries at `/metrics`. Runtime invocation, A2A,
+model, tool, MCP, memory, session, and deployment operations use the shared
+observability helper. OpenTelemetry-compatible spans are emitted when an SDK
+provider/exporter is configured; prompts, outputs, authorization headers,
+tokens, secrets, and credentials are excluded from logs, metrics, and span
+attributes.
 
 ## Tests and CI
 
-The current baseline is 456 collected tests: 435 pass locally and 21
+The current baseline is 466 collected tests: 445 pass locally and 21
 PostgreSQL tests are skipped when `OSA_TEST_DATABASE_URL` is unset. CI runs:
 
 - `ruff format --check .`;

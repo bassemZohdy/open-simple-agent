@@ -34,7 +34,8 @@ MCP `credential` and external A2A `credential` records store models only.
 Adapters resolve credentials at connection/call time and do not cache the
 resolved material. A legacy `credential_ref` remains supported for existing
 bundles and maps to the previous bearer-header or stdio-environment behavior.
-Inbound A2A security-scheme enforcement is separate and remains P2.2 work.
+Inbound A2A security-scheme enforcement is provided by the shared OIDC/OAuth
+HTTP boundary described in ADR-005; this ADR covers outbound credentials only.
 
 ## Consequences
 
@@ -44,8 +45,8 @@ Inbound A2A security-scheme enforcement is separate and remains P2.2 work.
 - mTLS requires certificate material to be available as file paths to the
   resolver; a secret manager integration can provide those paths without
   changing the domain contract.
-- OAuth token caching, dynamic token exchange, and inbound A2A enforcement are
-  not included in this slice.
+- OAuth token caching and dynamic token exchange are not included in this
+  slice; inbound A2A enforcement is covered by the shared HTTP boundary.
 
 ## Validation
 

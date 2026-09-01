@@ -34,6 +34,7 @@ from osa.control_plane.backend.repositories import (
 from osa.control_plane.backend.resource_catalogs import (  # noqa: TC001 - ctor param
     ResourceCatalogs,
 )
+from osa.generic_agent import bounded_text
 
 if TYPE_CHECKING:
     from osa.generic_agent import AgentDefinition
@@ -204,7 +205,7 @@ class DeploymentService:
         if provider_logs is None:
             return []
         captured: list[str] = await provider_logs(deployment_id, tail)
-        return captured
+        return [bounded_text(line) for line in captured]
 
     async def list_for_agent(self, agent_id: str) -> list[DeploymentRecord]:
         return await self._records.list_for_agent(agent_id)

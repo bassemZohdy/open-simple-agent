@@ -17,6 +17,7 @@ Every transition persists through the ``DeploymentRecordRepository``.
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from fastapi import FastAPI, HTTPException, Query, Request
@@ -24,7 +25,9 @@ from pydantic import BaseModel, ConfigDict
 
 from osa.control_plane.backend.audit import record_audit_event
 from osa.control_plane.backend.deployment_service import DeploymentError, DeploymentService
-from osa.generic_agent import AuthenticatedPrincipal
+from osa.generic_agent import AuthenticatedPrincipal, log_event
+
+logger = logging.getLogger(__name__)
 
 
 class DeployRequest(BaseModel):
@@ -103,6 +106,17 @@ def configure_deployment_routes(app: FastAPI) -> FastAPI:
             target=record.deployment_id,
             detail={"agent_id": record.agent_id, "version": record.version},
         )
+        log_event(
+            logger,
+            logging.INFO,
+            "deployment started",
+            {
+                "deployment_id": record.deployment_id,
+                "agent_id": record.agent_id,
+                "version": record.version,
+                "status": record.status,
+            },
+        )
         return _response(record)
 
     @app.get("/agents/{agent_id}/deployments", response_model=list[DeploymentResponse])
@@ -123,6 +137,9 @@ def configure_deployment_routes(app: FastAPI) -> FastAPI:
         except KeyError as exc:
             raise HTTPException(status_code=404, detail=str(exc.args[0])) from exc
         await record_audit_event(http_request, action="deployment.stop", target=deployment_id)
+        log_event(
+            logger, logging.INFO, "deployment status checked", {"deployment_id": deployment_id, "status": record.status}
+        )
         return _response(record)
 
     @app.post("/deployments/{deployment_id}/stop", response_model=DeploymentResponse)
@@ -135,6 +152,7 @@ def configure_deployment_routes(app: FastAPI) -> FastAPI:
         except KeyError as exc:
             raise HTTPException(status_code=404, detail=str(exc.args[0])) from exc
         await record_audit_event(http_request, action="deployment.restart", target=deployment_id)
+        log_event(logger, logging.INFO, "deployment stopped", {"deployment_id": deployment_id, "status": record.status})
         return _response(record)
 
     @app.post("/deployments/{deployment_id}/restart", response_model=DeploymentResponse)
@@ -146,6 +164,9 @@ def configure_deployment_routes(app: FastAPI) -> FastAPI:
             record = await service.restart(deployment_id)
         except KeyError as exc:
             raise HTTPException(status_code=404, detail=str(exc.args[0])) from exc
+        log_event(
+            logger, logging.INFO, "deployment restarted", {"deployment_id": deployment_id, "status": record.status}
+        )
         return _response(record)
 
     @app.get("/deployments/{deployment_id}/logs", response_model=DeploymentLogsResponse)
@@ -161,6 +182,12 @@ def configure_deployment_routes(app: FastAPI) -> FastAPI:
             lines = await service.logs(deployment_id, tail)
         except KeyError as exc:
             raise HTTPException(status_code=404, detail=str(exc.args[0])) from exc
+        log_event(
+            logger,
+            logging.INFO,
+            "deployment logs requested",
+            {"deployment_id": deployment_id, "line_count": len(lines)},
+        )
         return DeploymentLogsResponse(deployment_id=deployment_id, lines=lines)
 
     @app.post("/deployments/{deployment_id}/rollback", response_model=DeploymentResponse)
@@ -183,6 +210,12 @@ def configure_deployment_routes(app: FastAPI) -> FastAPI:
             action="deployment.rollback",
             target=deployment_id,
             detail={"version": record.version},
+        )
+        log_event(
+            logger,
+            logging.INFO,
+            "deployment rolled back",
+            {"deployment_id": deployment_id, "version": record.version, "status": record.status},
         )
         return _response(record)
 

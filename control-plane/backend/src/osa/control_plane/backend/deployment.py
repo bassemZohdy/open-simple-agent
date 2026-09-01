@@ -28,6 +28,8 @@ from enum import StrEnum
 from typing import Any
 from uuid import uuid4
 
+from osa.generic_agent import bounded_text
+
 DEFAULT_LOG_LINES = 200
 DEFAULT_HEALTH_TIMEOUT_SECONDS = 20.0
 DEFAULT_HEALTH_INTERVAL_SECONDS = 0.25
@@ -75,7 +77,7 @@ def _drain_stream(stream: Any, sink: deque[str], lock: Any) -> None:
     """Reader thread body: push decoded lines into a bounded deque."""
     try:
         for raw_line in iter(stream.readline, b""):
-            line = raw_line.decode("utf-8", errors="replace").rstrip()
+            line = bounded_text(raw_line.decode("utf-8", errors="replace").rstrip())
             with lock:
                 sink.append(line)
     except Exception:

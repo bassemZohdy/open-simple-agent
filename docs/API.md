@@ -134,7 +134,9 @@ checks `exp`, `iss`, `sub`, issuer, audience, and configured scopes against an
 explicit JWKS URL or the issuer's standard OIDC discovery `jwks_uri`. An
 explicit JWKS URL takes precedence; discovery metadata must advertise the
 configured issuer and an absolute HTTP JWKS URI. On `/v1/invoke`, an omitted `user_id` uses the token `sub`;
-an explicitly different `user_id` is denied. This is an authentication
+an explicitly different `user_id` is denied. RFC 7662 introspection can
+validate opaque bearer tokens, applying the same issuer, audience, scope, role,
+permission, and tenant checks. This is an authentication
 foundation. Set `OSA_AUTH_ENFORCE_PERMISSIONS=true` to enforce stable route
 permissions. Roles are read from `roles`/`role` or Keycloak
 `realm_access.roles`; explicit permissions are read from `permissions` or
@@ -148,8 +150,10 @@ authenticated `tenant_id`/`tid` on creation; list and lifecycle/read routes
 return only the same tenant's records. Resource definitions use the same
 tenant scope, allow equal names in different tenants, and are resolved from
 tenant-scoped catalogs; PostgreSQL migration 0005 stores the owner. Inbound
-A2A security-scheme enforcement remains open in P2.2. Outbound
-API-key/OAuth2/mTLS adapters are available for external-agent calls.
+A2A JSON-RPC uses the same bearer boundary and propagates the validated
+subject/tenant into the OSA request. Protected Agent Cards advertise the
+required `osa_oidc` scheme. Outbound API-key/OAuth2/mTLS adapters are available
+for external-agent calls.
 
 ### Audit events
 
@@ -266,10 +270,10 @@ never included in external-agent responses, audit events, or errors.
 | `DELETE` | `/external-agents/{id}` | Delete the record |
 
 Attempts to deploy an external record are rejected with 422 — external
-agents are never deployed by OSA. A2A security-scheme enforcement remains
-open in P2.2; the generic HTTP JWT middleware does not yet enforce an inbound
-A2A security scheme. Outbound remote-agent calls can attach the configured
-API-key, OAuth2, or mTLS credential.
+agents are never deployed by OSA. A2A JSON-RPC uses the same shared
+bearer/OIDC enforcement as the runtime invoke route, and protected Agent
+Cards advertise the required `osa_oidc` scheme. Outbound remote-agent calls can
+attach the configured API-key, OAuth2, or mTLS credential.
 
 ## Runtime API
 
@@ -354,4 +358,9 @@ the `model_invocation_failed` code when raised to the HTTP layer.
   `OSA_ALLOW_FAKE_PROVIDER=1` in service bootstraps.
 - A2A Agent Card and JSON-RPC routes are available when `spec.a2a.enabled` and
   the optional A2A extra are installed.
-- Streaming is not implemented; A2A security-scheme enforcement is pending.
+- With required authentication, the Agent Card advertises `osa_oidc` and the
+  JSON-RPC route requires the same validated bearer token as `/v1/invoke`.
+- `/metrics` exposes bounded Prometheus counters/duration summaries. Set
+  `OSA_LOG_FORMAT=json` for redaction-safe structured logs; OpenTelemetry API
+  spans are emitted when an SDK provider/exporter is configured.
+- Streaming is not implemented.

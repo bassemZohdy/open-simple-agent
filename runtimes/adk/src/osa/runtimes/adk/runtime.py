@@ -34,6 +34,7 @@ from osa.generic_agent import (
     ModelCatalog,
     ModelDefinition,
     ModelProvider,
+    Observability,
     PolicyViolationError,
     SecretResolver,
     Session,
@@ -69,6 +70,11 @@ _DEFAULT_MAX_TOOL_ITERATIONS = 3
 _ANONYMOUS_USER = "anonymous"
 
 
+def _nonnegative_int(value: object) -> int:
+    """Convert provider usage metadata to a safe metric value."""
+    return value if isinstance(value, int) and value >= 0 else 0
+
+
 class GenericAdkAgent(AbstractAgent):
     """ADK-based agent implementation.
 
@@ -92,6 +98,7 @@ class GenericAdkAgent(AbstractAgent):
         model_adapters: ModelAdapterRegistry | None = None,
         secret_resolver: SecretResolver | None = None,
         mcp_pool: McpConnectionPool | None = None,
+        observability: Observability | None = None,
     ) -> None:
         super().__init__(definition)
         self._model_provider = model_provider
@@ -103,8 +110,11 @@ class GenericAdkAgent(AbstractAgent):
         self._memory_policies = memory_policies if memory_policies is not None else MemoryPolicyCatalog()
         self._memory_policy = self._resolve_memory_policy()
         self._session_provider = session_provider if session_provider is not None else SessionManager()
+        self._observability = observability or Observability()
         self._owns_mcp_pool = mcp_pool is None
-        self._mcp_pool = mcp_pool if mcp_pool is not None else McpConnectionPool(secret_resolver)
+        self._mcp_pool = (
+            mcp_pool if mcp_pool is not None else McpConnectionPool(secret_resolver, observability=self._observability)
+        )
         self._tools: dict[str, Tool] = {}
         self._tool_definitions: dict[str, ToolDefinition] = {}
         self._skills: list[SkillDefinition] = []
@@ -112,7 +122,10 @@ class GenericAdkAgent(AbstractAgent):
         self._resolve_definition_resources()
         self._model_definition = self._resolve_model_definition()
         self._model_id = self._model_definition.model_id if self._model_definition is not None else "fake"
-        self._adapters = model_adapters or default_registry(fake_provider=model_provider)
+        self._adapters = model_adapters or default_registry(
+            fake_provider=model_provider,
+            observability=self._observability,
+        )
         if self._model_definition is not None:
             self._model = self._adapters.resolve(self._model_definition.provider).build(
                 self._model_definition, self._model_parameters()
@@ -125,7 +138,11 @@ class GenericAdkAgent(AbstractAgent):
                     f"Agent '{self.metadata.name}' has no model configured, no default model "
                     "exists in the catalog, and no model provider was supplied"
                 )
-            self._model = ProviderBackedLlm(model=self._model_id, provider=self._model_provider)
+            self._model = ProviderBackedLlm(
+                model=self._model_id,
+                provider=self._model_provider,
+                observability=self._observability,
+            )
         # ADK objects for the definition: invocation runs through the Runner.
         self.llm_agent = build_llm_agent(
             self.definition,
@@ -133,6 +150,7 @@ class GenericAdkAgent(AbstractAgent):
             self._tools,
             self._tool_definitions,
             toolsets=self._mcp_toolsets,
+            observability=self._observability,
         )
         self._session_service = OsaAdkSessionService(self._session_provider)
         self.runner = build_runner(self.llm_agent, session_service=self._session_service)
@@ -288,8 +306,13 @@ class GenericAdkAgent(AbstractAgent):
         scope, policy = self._effective_memory()
         if self._memory_provider is None:
             return ""
-        await self._enforce_memory_limits(scope, scope_id, policy)
-        entries = await self._memory_provider.search(query, scope, scope_id=scope_id, limit=5)
+        async with self._observability.span(
+            "memory.search",
+            labels={"agent": self.metadata.name, "scope": scope.value},
+            attributes={"osa.agent": self.metadata.name, "osa.memory.scope": scope.value},
+        ):
+            await self._enforce_memory_limits(scope, scope_id, policy)
+            entries = await self._memory_provider.search(query, scope, scope_id=scope_id, limit=5)
         if not entries:
             return ""
         lines = "\n".join(f"- {entry.content}" for entry in entries)
@@ -311,8 +334,13 @@ class GenericAdkAgent(AbstractAgent):
             raise RuntimeError(f"Memory is disabled by policy '{policy.name}' for agent '{self.metadata.name}'")
         scope, policy = self._effective_memory()
         entry = MemoryEntry(key=key, content=content, scope=scope, scope_id=scope_id or APPLICATION_SCOPE_ID)
-        await self._memory_provider.store(entry)
-        await self._enforce_memory_limits(scope, entry.scope_id, policy)
+        async with self._observability.span(
+            "memory.store",
+            labels={"agent": self.metadata.name, "scope": scope.value},
+            attributes={"osa.agent": self.metadata.name, "osa.memory.scope": scope.value},
+        ):
+            await self._memory_provider.store(entry)
+            await self._enforce_memory_limits(scope, entry.scope_id, policy)
 
     def _resolve_session(self, request: AgentRequest, tenant_id: str | None) -> Session:
         """Resolve or create the OSA session with strict ownership."""
@@ -358,6 +386,14 @@ class GenericAdkAgent(AbstractAgent):
             function_call_rounds = 0
             final_text = ""
             async for event in self.runner.run_async(user_id=adk_user_id, session_id=session_id, new_message=message):
+                usage = getattr(event, "usage_metadata", None)
+                if usage is not None:
+                    self._observability.record_token_usage(
+                        self._model_id,
+                        prompt_tokens=_nonnegative_int(getattr(usage, "prompt_token_count", 0)),
+                        completion_tokens=_nonnegative_int(getattr(usage, "candidates_token_count", 0)),
+                        total_tokens=_nonnegative_int(getattr(usage, "total_token_count", 0)),
+                    )
                 if event.get_function_calls():
                     function_call_rounds += 1
                     if function_call_rounds > max_iterations:
@@ -370,12 +406,17 @@ class GenericAdkAgent(AbstractAgent):
                 raise ModelInvocationError(self._model_id, "the model produced no final response")
             return final_text
 
-        if timeout_seconds is None:
-            return await consume()
-        try:
-            return await asyncio.wait_for(consume(), timeout_seconds)
-        except TimeoutError as exc:
-            raise InvocationTimeoutError(float(timeout_seconds)) from exc
+        async with self._observability.span(
+            "model.run",
+            labels={"agent": self.metadata.name, "model": self._model_id},
+            attributes={"osa.agent": self.metadata.name, "osa.model": self._model_id},
+        ):
+            if timeout_seconds is None:
+                return await consume()
+            try:
+                return await asyncio.wait_for(consume(), timeout_seconds)
+            except TimeoutError as exc:
+                raise InvocationTimeoutError(float(timeout_seconds)) from exc
 
     async def invoke(self, request: AgentRequest) -> AgentResponse:
         """Invoke the agent with a request.
@@ -386,8 +427,27 @@ class GenericAdkAgent(AbstractAgent):
         session ID; tools execute through ADK-native function calling.
         Model/tool/timeout failures are captured in ``AgentResponse.error``.
         """
+        async with self._observability.span(
+            "agent.invoke",
+            labels={"agent": self.metadata.name},
+            attributes={
+                "osa.agent": self.metadata.name,
+                "osa.invocation_id": str(request.invocation_id),
+                "osa.session_id": request.session_id or "new",
+                "osa.user_id": request.user_id or "anonymous",
+            },
+        ):
+            return await self._invoke(request)
+
+    async def _invoke(self, request: AgentRequest) -> AgentResponse:
         tenant_id = request.metadata.get("tenant_id")
-        session = self._resolve_session(request, tenant_id)
+        session_observation = self._observability
+        async with session_observation.span(
+            "session.resolve",
+            labels={"agent": self.metadata.name},
+            attributes={"osa.agent": self.metadata.name, "osa.session_id": request.session_id or "new"},
+        ):
+            session = self._resolve_session(request, tenant_id)
         adk_user_id = self._adk_user_id(request.user_id, tenant_id)
         await self._ensure_adk_session(str(session.session_id), adk_user_id)
 
@@ -460,6 +520,7 @@ class AdkRuntime(AgentRuntime):
         session_provider: SessionProvider | None = None,
         model_adapters: ModelAdapterRegistry | None = None,
         secret_resolver: SecretResolver | None = None,
+        observability: Observability | None = None,
     ) -> None:
         self._model_provider = model_provider
         self._model_catalog = model_catalog if model_catalog is not None else ModelCatalog()
@@ -470,7 +531,8 @@ class AdkRuntime(AgentRuntime):
         self._memory_policies = memory_policies
         self._session_provider = session_provider if session_provider is not None else SessionManager()
         self._model_adapters = model_adapters
-        self._mcp_pool = McpConnectionPool(secret_resolver)
+        self._observability = observability or Observability()
+        self._mcp_pool = McpConnectionPool(secret_resolver, observability=self._observability)
         self._agents: list[GenericAdkAgent] = []
 
     async def create(self, definition: AgentDefinition) -> GenericAdkAgent:
@@ -487,6 +549,7 @@ class AdkRuntime(AgentRuntime):
             session_provider=self._session_provider,
             model_adapters=self._model_adapters,
             mcp_pool=self._mcp_pool,
+            observability=self._observability,
         )
         self._agents.append(agent)
         logger.info("Created agent '%s'", definition.metadata.name)
@@ -532,6 +595,7 @@ class AdkAgentFactory(AgentFactory):
         session_provider: SessionProvider | None = None,
         model_adapters: ModelAdapterRegistry | None = None,
         secret_resolver: SecretResolver | None = None,
+        observability: Observability | None = None,
     ) -> None:
         self._model_provider = model_provider
         self._model_catalog = model_catalog if model_catalog is not None else ModelCatalog()
@@ -543,6 +607,7 @@ class AdkAgentFactory(AgentFactory):
         self._session_provider = session_provider if session_provider is not None else SessionManager()
         self._model_adapters = model_adapters
         self._secret_resolver = secret_resolver
+        self._observability = observability or Observability()
 
     def create(self, definition: AgentDefinition) -> GenericAdkAgent:
         """Create a GenericAdkAgent from an AgentDefinition."""
@@ -558,4 +623,5 @@ class AdkAgentFactory(AgentFactory):
             session_provider=self._session_provider,
             model_adapters=self._model_adapters,
             secret_resolver=self._secret_resolver,
+            observability=self._observability,
         )

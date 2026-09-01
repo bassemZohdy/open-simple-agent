@@ -20,7 +20,7 @@ from osa.generic_agent.errors import ModelConfigurationError
 if TYPE_CHECKING:
     from google.adk.models.base_llm import BaseLlm
 
-    from osa.generic_agent import ModelDefinition, ModelProvider, ModelRuntimeSettings
+    from osa.generic_agent import ModelDefinition, ModelProvider, ModelRuntimeSettings, Observability
     from osa.generic_agent.secret import SecretResolver
 
 FAKE_PROVIDER = "fake"
@@ -99,13 +99,18 @@ class FakeProviderAdapter:
     plus conversation text), keeping offline tests deterministic.
     """
 
-    def __init__(self, provider: ModelProvider) -> None:
+    def __init__(self, provider: ModelProvider, observability: Observability | None = None) -> None:
         self._provider = provider
+        self._observability = observability
 
     def build(self, definition: ModelDefinition, parameters: dict[str, Any]) -> BaseLlm:
         from osa.runtimes.adk.llm_agent import ProviderBackedLlm
 
-        return ProviderBackedLlm(model=definition.model_id, provider=self._provider)
+        return ProviderBackedLlm(
+            model=definition.model_id,
+            provider=self._provider,
+            observability=self._observability,
+        )
 
 
 class ModelAdapterRegistry:
@@ -130,6 +135,7 @@ class ModelAdapterRegistry:
 def default_registry(
     fake_provider: ModelProvider | None = None,
     secret_resolver: SecretResolver | None = None,
+    observability: Observability | None = None,
 ) -> ModelAdapterRegistry:
     """Registry with the built-in ``fake`` and ``litellm`` adapters.
 
@@ -138,6 +144,6 @@ def default_registry(
     """
     registry = ModelAdapterRegistry()
     if fake_provider is not None:
-        registry.register(FAKE_PROVIDER, FakeProviderAdapter(fake_provider))
+        registry.register(FAKE_PROVIDER, FakeProviderAdapter(fake_provider, observability))
     registry.register(LITELLM_PROVIDER, LiteLlmAdapter(secret_resolver))
     return registry

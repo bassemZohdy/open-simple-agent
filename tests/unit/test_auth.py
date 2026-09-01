@@ -28,10 +28,13 @@ from osa.generic_agent import (
     AuthorizationPolicy,
     AuthPermission,
     AuthSettings,
+    EnvironmentSecretResolver,
     InMemoryAuditEventSink,
     JwksClient,
     JwtAuthenticator,
     OidcDiscoveryClient,
+    SecretReference,
+    current_principal,
 )
 
 if TYPE_CHECKING:
@@ -132,6 +135,90 @@ def test_auth_settings_allow_standard_discovery_without_explicit_jwks_url() -> N
 
     assert settings.jwks_url is None
     assert settings.discovery_url is None
+
+
+def test_auth_settings_load_introspection_configuration_from_environment() -> None:
+    settings = AuthSettings.from_env(
+        {
+            "OSA_AUTH_MODE": "required",
+            "OSA_AUTH_ISSUER": "https://issuer.example.test/",
+            "OSA_AUTH_AUDIENCE": "osa-api",
+            "OSA_AUTH_INTROSPECTION_URL": "https://issuer.example.test/introspect",
+            "OSA_AUTH_INTROSPECTION_CLIENT_ID": "osa-runtime",
+            "OSA_AUTH_INTROSPECTION_CLIENT_SECRET_KEY": "OSA_INTROSPECTION_SECRET",
+            "OSA_AUTH_INTROSPECTION_TIMEOUT_SECONDS": "4",
+        }
+    )
+
+    assert settings.introspection_url == "https://issuer.example.test/introspect"
+    assert settings.introspection_client_id == "osa-runtime"
+    assert settings.introspection_client_secret_ref == SecretReference(source="env", key="OSA_INTROSPECTION_SECRET")
+    assert settings.introspection_timeout_seconds == 4
+
+
+def test_auth_settings_require_complete_introspection_configuration() -> None:
+    with pytest.raises(ValueError, match="configured together"):
+        AuthSettings(
+            mode=AuthMode.REQUIRED,
+            issuer="https://issuer.example.test/",
+            audience="osa-api",
+            introspection_url="https://issuer.example.test/introspect",
+        )
+
+
+@pytest.mark.asyncio
+async def test_opaque_oauth_token_uses_rfc7662_introspection(monkeypatch: pytest.MonkeyPatch) -> None:
+    settings = AuthSettings(
+        mode=AuthMode.REQUIRED,
+        issuer="https://issuer.example.test/",
+        audience="osa-api",
+        introspection_url="https://issuer.example.test/introspect",
+        introspection_client_id="osa-runtime",
+        introspection_client_secret_ref=SecretReference(source="env", key="INTROSPECTION_SECRET"),
+    )
+    monkeypatch.setenv("INTROSPECTION_SECRET", "not-exposed")
+    request: dict[str, object] = {}
+
+    class FakeResponse:
+        status_code = 200
+
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> Mapping[str, Any]:
+            return {
+                "active": True,
+                "iss": "https://issuer.example.test/",
+                "sub": "opaque-user",
+                "aud": ["osa-api"],
+                "scope": "invoke",
+                "tid": "tenant-7",
+            }
+
+    class FakeClient:
+        async def __aenter__(self) -> FakeClient:
+            return self
+
+        async def __aexit__(self, *_args: object) -> None:
+            return None
+
+        async def post(self, url: str, **kwargs: object) -> FakeResponse:
+            request["url"] = url
+            request.update(kwargs)
+            return FakeResponse()
+
+    monkeypatch.setattr(httpx, "AsyncClient", lambda **_kwargs: FakeClient())
+    authenticator = JwtAuthenticator(settings, secret_resolver=EnvironmentSecretResolver())
+
+    principal = await authenticator.authenticate("Bearer opaque-access-token")
+
+    assert principal.subject == "opaque-user"
+    assert principal.tenant_id == "tenant-7"
+    assert request == {
+        "url": "https://issuer.example.test/introspect",
+        "data": {"token": "opaque-access-token"},
+        "auth": ("osa-runtime", "not-exposed"),
+    }
 
 
 @pytest.mark.asyncio
@@ -401,6 +488,40 @@ async def test_runtime_middleware_requires_auth_and_uses_subject_for_session_use
             assert unscoped_tenant.json()["error"]["code"] == "authorization_denied"
     finally:
         reset_runtime()
+
+
+@pytest.mark.asyncio
+async def test_inbound_a2a_route_uses_shared_bearer_enforcement(
+    signing_material: tuple[rsa.RSAPrivateKey, dict[str, str]],
+) -> None:
+    private_key, jwk = signing_material
+    from osa.runtimes.adk.api import configure_runtime_app
+
+    settings = _settings(enforce_permissions=True)
+    app = configure_runtime_app(
+        FastAPI(),
+        auth_settings=settings,
+        authenticator=_authenticator(settings, jwk),
+    )
+
+    @app.post("/a2a")
+    async def a2a_probe() -> dict[str, str]:
+        principal = current_principal()
+        assert principal is not None
+        return {"subject": principal.subject, "tenant_id": principal.tenant_id or ""}
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        unauthorized = await client.post("/a2a")
+        assert unauthorized.status_code == 401
+
+        token = _token(private_key, roles=["caller"], tid="tenant-1")
+        authorized = await client.post(
+            "/a2a",
+            headers={"Authorization": f"Bearer {token}", "X-Request-ID": "a2a-test-request"},
+        )
+        assert authorized.status_code == 200
+        assert authorized.json() == {"subject": "user-123", "tenant_id": "tenant-1"}
+        assert authorized.headers["x-request-id"] == "a2a-test-request"
 
 
 @pytest.mark.asyncio
