@@ -206,9 +206,11 @@ permissions; `viewer` read permissions; `agent`/`caller`/`user`
 The validated token subject is the runtime caller identity when `user_id` is
 omitted, and a different supplied `user_id` is rejected. A `tenant_id` or
 `tid` claim is bound to runtime invocation metadata; omitted metadata is
-injected, while a mismatch or an unscoped tenant claim is rejected. This does
-not yet provide control-plane tenant/resource ownership, resource policy,
-audit events, API-key and mTLS adapters, or A2A security-scheme enforcement.
+injected, while a mismatch or an unscoped tenant claim is rejected. Control
+Plane managed agents are assigned the authenticated tenant on creation and are
+filtered and protected by that tenant on subsequent agent routes.
+Resource/deployment tenant ownership, resource policy, audit events, API-key
+and mTLS adapters, and A2A security-scheme enforcement remain open.
 Token material is never logged or retained after validation.
 
 ## Secret references
