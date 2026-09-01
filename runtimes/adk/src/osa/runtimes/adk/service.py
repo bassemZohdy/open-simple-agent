@@ -25,6 +25,7 @@ from fastapi import FastAPI
 
 import osa.runtimes.adk.api as runtime_api
 from osa.generic_agent import (
+    AuditEventSink,
     BundleError,
     CalculatorTool,
     EnvironmentSecretResolver,
@@ -134,6 +135,7 @@ def create_runtime_app(
     *,
     secret_resolver: SecretResolver | None = None,
     allow_fake_provider: bool | None = None,
+    audit_sink: AuditEventSink | None = None,
 ) -> FastAPI:
     """Build the runtime API app with a bundle-driven lifespan.
 
@@ -170,7 +172,7 @@ def create_runtime_app(
     except metadata.PackageNotFoundError:
         version = "0"
     app = FastAPI(title="Open Simple Agent Runtime", version=version, lifespan=lifespan)
-    return runtime_api.configure_runtime_app(app)
+    return runtime_api.configure_runtime_app(app, audit_sink=audit_sink)
 
 
 def main(argv: list[str] | None = None) -> int:

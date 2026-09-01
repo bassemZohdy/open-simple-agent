@@ -252,7 +252,7 @@ remote-agent credentials remains P2.2 work.
 
 ## Tests and CI
 
-The current baseline is 437 collected tests: 416 pass locally and 21
+The current baseline is 442 collected tests: 421 pass locally and 21
 PostgreSQL tests are skipped when `OSA_TEST_DATABASE_URL` is unset. CI runs:
 
 - `ruff format --check .`;

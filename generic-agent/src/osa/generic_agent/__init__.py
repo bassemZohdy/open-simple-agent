@@ -7,6 +7,7 @@ from osa.generic_agent.agent_metadata import AgentMetadata
 from osa.generic_agent.agent_request import AgentRequest
 from osa.generic_agent.agent_response import AgentResponse
 from osa.generic_agent.agent_status import AgentStatus
+from osa.generic_agent.audit import AuditEvent, AuditEventSink, InMemoryAuditEventSink
 from osa.generic_agent.auth import (
     AuthenticatedPrincipal,
     AuthenticationError,
@@ -119,6 +120,8 @@ from osa.generic_agent.tool import (
 __all__ = [
     "A2AConfig",
     "AccessRule",
+    "AuditEvent",
+    "AuditEventSink",
     "API_VERSION",
     "AbstractAgent",
     "Agent",
@@ -151,6 +154,7 @@ __all__ = [
     "EnvironmentSecretResolver",
     "FakeModelProvider",
     "InMemoryProvider",
+    "InMemoryAuditEventSink",
     "InvalidBundleError",
     "InvocationTimeoutError",
     "IterationLimitExceededError",

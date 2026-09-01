@@ -28,6 +28,7 @@ from osa.generic_agent import (
     AuthorizationPolicy,
     AuthPermission,
     AuthSettings,
+    InMemoryAuditEventSink,
     JwksClient,
     JwtAuthenticator,
     OidcDiscoveryClient,
@@ -337,10 +338,12 @@ async def test_runtime_middleware_requires_auth_and_uses_subject_for_session_use
 
     definition = AgentDefinition(metadata=AgentMetadataConfig(name="auth-agent"), spec=AgentSpec())
     await initialize_runtime(definition)
+    audit_sink = InMemoryAuditEventSink()
     app = configure_runtime_app(
         FastAPI(),
         auth_settings=_settings(enforce_permissions=True),
         authenticator=_authenticator(_settings(enforce_permissions=True), jwk),
+        audit_sink=audit_sink,
     )
     token = _token(private_key, roles=["caller"], tid="tenant-1")
 
@@ -353,6 +356,8 @@ async def test_runtime_middleware_requires_auth_and_uses_subject_for_session_use
             assert unauthorized.status_code == 401
             assert unauthorized.json()["error"]["code"] == "authentication_failed"
             assert unauthorized.headers["www-authenticate"] == "Bearer"
+            assert audit_sink.events[-1].action == "runtime.request"
+            assert audit_sink.events[-1].detail["decision"] == "denied"
 
             authenticated = await client.post(
                 "/v1/invoke",
@@ -377,6 +382,7 @@ async def test_runtime_middleware_requires_auth_and_uses_subject_for_session_use
             )
             assert spoofed.status_code == 403
             assert spoofed.json()["error"]["code"] == "authorization_denied"
+            assert audit_sink.events[-1].detail["decision"] == "denied"
 
             wrong_tenant = await client.post(
                 "/v1/invoke",
