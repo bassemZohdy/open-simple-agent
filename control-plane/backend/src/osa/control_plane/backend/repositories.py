@@ -589,6 +589,7 @@ class DeploymentRecord:
 
     deployment_id: str
     agent_id: str
+    tenant_id: str | None = None
     agent_name: str = ""
     version: str = ""
     status: str = "starting"
@@ -650,6 +651,7 @@ class PostgresDeploymentRecordRepository(DeploymentRecordRepository):
                 .values(
                     deployment_id=record.deployment_id,
                     agent_id=record.agent_id,
+                    tenant_id=record.tenant_id,
                     agent_name=record.agent_name,
                     version=record.version,
                     status=record.status,
@@ -682,6 +684,7 @@ class PostgresDeploymentRecordRepository(DeploymentRecordRepository):
         return DeploymentRecord(
             deployment_id=row.deployment_id,
             agent_id=row.agent_id,
+            tenant_id=row.tenant_id,
             agent_name=row.agent_name,
             version=row.version,
             status=row.status,
@@ -706,6 +709,7 @@ class PostgresDeploymentRecordRepository(DeploymentRecordRepository):
             DeploymentRecord(
                 deployment_id=row.deployment_id,
                 agent_id=row.agent_id,
+                tenant_id=row.tenant_id,
                 agent_name=row.agent_name,
                 version=row.version,
                 status=row.status,
