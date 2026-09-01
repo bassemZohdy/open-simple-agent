@@ -81,3 +81,15 @@ class TestResourceCatalogs:
         assert rc.get_tool("calculator").name == "calculator"
         assert rc.get_skill("support").name == "support"
         assert rc.get_memory_policy("user-memory").enabled is True
+
+    def test_tenant_scopes_allow_equal_names_without_cross_access(self) -> None:
+        rc = ResourceCatalogs()
+        tenant_a = rc.for_tenant("tenant-a")
+        tenant_b = rc.for_tenant("tenant-b")
+        tenant_a.register_model(ModelDefinition(name="same", provider="fake", model_id="a"))
+        tenant_b.register_model(ModelDefinition(name="same", provider="fake", model_id="b"))
+
+        assert tenant_a.get_model("same").model_id == "a"
+        assert tenant_b.get_model("same").model_id == "b"
+        with pytest.raises(KeyError):
+            rc.get_model("same")
