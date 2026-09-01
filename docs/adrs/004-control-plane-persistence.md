@@ -45,7 +45,9 @@ SQLAlchemy 2.0 async, Alembic.
 - **Schema (migration 0001).** `osa_agents` (unique name, status,
   current_version, JSONB skills/labels), `osa_agent_versions` (unique
   `(agent_id, version)`, JSONB definition snapshot, cascade delete with the
-  agent), `osa_resource_definitions` (unique `(kind, name)`, JSONB spec).
+  agent), `osa_resource_definitions` (tenant owner, unique
+  `(tenant_id, kind, name)`, JSONB spec; migration 0005). Existing rows use
+  the empty-string shared scope, which the application exposes as no tenant.
   Timestamps are UTC. The runtime-owned `osa_memory_entries` table stays
   bootstrap-created by the runtime (`IF NOT EXISTS`, ADR-003) because the
   runtime deploys independently; the two schemas coexist idempotently.
@@ -73,7 +75,8 @@ SQLAlchemy 2.0 async, Alembic.
 ### Positive
 
 - Records and version history survive restarts; replicas share one state.
-- Resource definitions persist ahead of the P1.2 resource APIs.
+- Resource definitions persist ahead of the P1.2 resource APIs and are
+  isolated by tenant namespace when authentication is enabled.
 - The typed error contract (`DuplicateAgentError`,
   `DuplicateVersionError`, `InvalidTransitionError`) is preserved across
   backends, so the API error mapping is backend-agnostic.
@@ -90,13 +93,14 @@ SQLAlchemy 2.0 async, Alembic.
 - PostgreSQL integration tests (skipped without `OSA_TEST_DATABASE_URL`,
   CI service container): restart survival, two repository instances seeing
   consistent state, unique-name/version conflicts, optimistic-concurrency
-  conflicts, cascade version history.
+  conflicts, cascade version history, and equal resource names in separate
+  tenant scopes.
 - The existing API contract suite runs unchanged against the in-memory
   default.
 
 ## Follow-up
 
-- [ ] P1.2: expose resource definitions over the API with write-through
+- [x] P1.2: expose resource definitions over the API with write-through
       persistence.
-- [ ] P1.5: implement `DeploymentRecordRepository` persistence.
+- [x] P1.5: implement `DeploymentRecordRepository` persistence.
 - [ ] P2.2: audit metadata repository.
