@@ -275,6 +275,32 @@ bearer/OIDC enforcement as the runtime invoke route, and protected Agent
 Cards advertise the required `osa_oidc` scheme. Outbound remote-agent calls can
 attach the configured API-key, OAuth2, or mTLS credential.
 
+### Streaming (P2.4)
+
+`POST /v1/invoke/stream` streams one invocation as Server-Sent Events. The
+shared bearer/OIDC auth middleware applies identically to non-streaming
+invoke. Events carry JSON `data` payloads with stable fields (`type`,
+`invocation_id`, `session_id`, `text`, monotonic `seq`):
+
+| SSE `event:` | Meaning |
+|---|---|
+| `osa.started` | Invocation accepted; carries the server-issued session id |
+| `osa.message.delta` | Incremental model text (per runner round; token-level deltas require a streaming model) |
+| `osa.message` | Terminal success; `text` is exactly what `POST /v1/invoke` would return |
+| `osa.error` | Terminal deterministic failure (`invocation_timeout`, `iteration_limit_exceeded`, `model_invocation_failed`, ...) |
+
+`runtime.timeout_seconds` bounds the whole stream lifetime (a slow consumer
+counts against it); `max_iterations` is enforced mid-stream. Disconnecting
+the client cancels the underlying ADK run. Yields go directly to the
+consumer with no server-side buffering, so a slow consumer applies natural
+backpressure.
+
+**Replicas:** sessions and conversation context live in the
+`SessionProvider`. Replicas configured with the same shared provider
+(persistent provider; tracked in the backlog) share session state, keep
+ownership enforced identically, and stream without leaking another caller's
+events — verified by cross-replica tests over a shared provider.
+
 ## Runtime API
 
 Application: `osa.runtimes.adk.api:runtime_app`

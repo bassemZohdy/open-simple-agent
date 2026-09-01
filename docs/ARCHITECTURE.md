@@ -286,9 +286,11 @@ Tests use the fake provider, scripted ADK models, in-memory services, a
 deterministic stdio MCP server subprocess, localhost Streamable HTTP and A2A
 servers, and generated JWT/JWKS material — no external network. PostgreSQL
 memory and Control Plane persistence tests run against a real PostgreSQL 16
-service in CI (`OSA_TEST_DATABASE_URL`) and skip locally when unset. There is
-no live-model, Kubernetes, live-identity-provider, or multi-replica deployment
-test yet. There is no coverage threshold.
+service in CI (`OSA_TEST_DATABASE_URL`) and skip locally when unset.
+Streaming tests cover the SSE contract, disconnect-triggered cancellation,
+timeouts, concurrent load, and cross-replica session consistency over a
+shared provider. There is no live-model, Kubernetes, live-identity-provider,
+or multi-process deployment test yet. There is no coverage threshold.
 
 ## Dependency risks
 

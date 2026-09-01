@@ -14,9 +14,13 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
-from typing import Any
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any
 
 from google.genai import types
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncGenerator
 
 from osa.generic_agent import (
     AbstractAgent,
@@ -68,6 +72,27 @@ logger = logging.getLogger(__name__)
 _DEFAULT_MAX_TOOL_ITERATIONS = 3
 
 _ANONYMOUS_USER = "anonymous"
+
+
+@dataclass(frozen=True)
+class OsaStreamEvent:
+    """One stable OSA streaming event (P2.4)."""
+
+    type: str
+    invocation_id: str
+    session_id: str
+    text: str = ""
+    seq: int = 0
+
+    def to_payload(self) -> dict[str, Any]:
+        """JSON-serializable form used by the SSE endpoint."""
+        return {
+            "type": self.type,
+            "invocation_id": self.invocation_id,
+            "session_id": self.session_id,
+            "text": self.text,
+            "seq": self.seq,
+        }
 
 
 def _nonnegative_int(value: object) -> int:
@@ -499,6 +524,128 @@ class GenericAdkAgent(AbstractAgent):
             invocation_id=request.invocation_id,
             session_id=str(session.session_id),
         )
+
+    async def stream_invoke(self, request: AgentRequest) -> AsyncGenerator[OsaStreamEvent, None]:
+        """Stream an invocation as stable OSA events (P2.4).
+
+        Event contract (JSON-serializable, ``seq`` monotonic per invocation):
+            - ``osa.started``: invocation accepted (invocation/session ids).
+            - ``osa.message.delta``: incremental model text from a runner
+              event (token-level deltas require a streaming model; events are
+              per runner round otherwise).
+            - ``osa.message``: the final complete output — the same text
+              :meth:`invoke` would return.
+            - ``osa.error``: terminal deterministic error text.
+
+        Session resolution/ownership, memory context, MCP pre-flight, and
+        ``runtime.timeout_seconds`` / ``max_iterations`` behave exactly like
+        :meth:`invoke`; the timeout bounds the whole stream lifetime (a slow
+        consumer counts against it). Yields directly to the consumer with no
+        intermediate buffering, so a slow consumer applies natural
+        backpressure. Closing the iterator (client disconnect) cancels the
+        underlying ADK run.
+        """
+        tenant_id = request.metadata.get("tenant_id")
+        session = self._resolve_session(request, tenant_id)
+        adk_user_id = self._adk_user_id(request.user_id, tenant_id)
+        await self._ensure_adk_session(str(session.session_id), adk_user_id)
+
+        instruction = self.definition.spec.instruction or ""
+        memory_scope, _ = self._effective_memory()
+        memory_context = await self._load_memory_context(
+            memory_scope_id(memory_scope, user_id=request.user_id, agent_name=self.metadata.name, tenant_id=tenant_id),
+            request.input,
+        )
+        if memory_context:
+            self.llm_agent.instruction = f"{instruction}\n\n{memory_context}"
+
+        session_id = str(session.session_id)
+        invocation_id = str(request.invocation_id)
+        seq = 0
+
+        async def emit(event_type: str, event_text: str = "") -> OsaStreamEvent:
+            nonlocal seq
+            event = OsaStreamEvent(
+                type=event_type,
+                invocation_id=invocation_id,
+                session_id=session_id,
+                text=event_text,
+                seq=seq,
+            )
+            seq += 1
+            return event
+
+        yield await emit("osa.started")
+
+        final_text = ""
+        try:
+            timeout_seconds = self.definition.spec.runtime.timeout_seconds
+            max_iterations = self.definition.spec.runtime.max_iterations or _DEFAULT_MAX_TOOL_ITERATIONS
+            # Pre-flight MCP connections (same deterministic failure policy
+            # as invoke).
+            for mcp_toolset in self._mcp_toolsets:
+                await mcp_toolset.connection.connect()
+
+            async with self._observability.span(
+                "model.stream",
+                labels={"agent": self.metadata.name, "model": self._model_id},
+                attributes={"osa.agent": self.metadata.name, "osa.model": self._model_id},
+            ):
+                function_call_rounds = 0
+                timed_out = False
+                async with asyncio.timeout(timeout_seconds):
+                    async for event in self.runner.run_async(
+                        user_id=adk_user_id,
+                        session_id=session_id,
+                        new_message=types.Content(role="user", parts=[types.Part(text=request.input)]),
+                    ):
+                        usage = getattr(event, "usage_metadata", None)
+                        if usage is not None:
+                            self._observability.record_token_usage(
+                                self._model_id,
+                                prompt_tokens=_nonnegative_int(getattr(usage, "prompt_token_count", 0)),
+                                completion_tokens=_nonnegative_int(getattr(usage, "candidates_token_count", 0)),
+                                total_tokens=_nonnegative_int(getattr(usage, "total_token_count", 0)),
+                            )
+                        if event.get_function_calls():
+                            function_call_rounds += 1
+                            if function_call_rounds > max_iterations:
+                                raise IterationLimitExceededError(max_iterations)
+                        if event.content and event.content.parts:
+                            text = "".join(part.text or "" for part in event.content.parts)
+                            if not text:
+                                continue
+                            if event.is_final_response():
+                                final_text = text
+                            else:
+                                yield await emit("osa.message.delta", text)
+                if timed_out:  # pragma: no cover - asyncio.timeout raises instead
+                    pass
+
+            if not final_text:
+                raise ModelInvocationError(self._model_id, "the model produced no final response")
+        except TimeoutError:
+            timeout = self.definition.spec.runtime.timeout_seconds
+            timeout_failure = InvocationTimeoutError(float(timeout)) if timeout else InvocationTimeoutError(-1)
+            logger.error("Streaming invocation failed: %s", timeout_failure)
+            yield await emit("osa.error", str(timeout_failure))
+            return
+        except SessionError:
+            raise
+        except OsaError as exc:
+            logger.error("Streaming invocation failed: %s", exc)
+            yield await emit("osa.error", str(exc))
+            return
+        except Exception as exc:
+            failure = ModelInvocationError(self._model_id, str(exc), cause=exc)
+            logger.error("Streaming invocation failed: %s", failure)
+            yield await emit("osa.error", str(failure))
+            return
+
+        session.add_message("user", request.input)
+        session.add_message("assistant", final_text)
+        self._session_provider.save(session)
+        yield await emit("osa.message", final_text)
 
     async def shutdown(self) -> None:
         if self._owns_mcp_pool:

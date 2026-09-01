@@ -14,13 +14,17 @@ Error responses use the stable OSA schema ``{"error": {"code", "message"}}``.
 
 from __future__ import annotations
 
+import json
 import logging
 from importlib import metadata
 from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncIterator
 from uuid import uuid4
 
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse, PlainTextResponse
+from fastapi.responses import JSONResponse, PlainTextResponse, Response, StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
 
 from osa.generic_agent import (
@@ -477,6 +481,86 @@ def configure_runtime_app(
             invocation_id=str(response.invocation_id),
             session_id=response.session_id,
             error=response.error,
+        )
+
+    @app.post("/v1/invoke/stream")
+    async def invoke_agent_stream(http_request: Request, request: InvokeRequest) -> Response:
+        """Stream the invocation as Server-Sent Events (P2.4).
+
+        Event contract (stable, JSON ``data`` payloads; see
+        ``GenericAdkAgent.stream_invoke``):
+
+            event: osa.started / osa.message.delta / osa.message / osa.error
+            data: {"type": "...", "invocation_id": "...", "session_id": "...",
+                   "text": "...", "seq": N}
+
+        The terminal ``osa.message`` carries the same output ``invoke`` would
+        return; ``osa.error`` is terminal and deterministic. Disconnecting
+        cancels the underlying run; ``runtime.timeout_seconds`` bounds the
+        whole stream. Auth middleware applies identically to non-streaming
+        invoke.
+        """
+        if _agent is None:
+            await _record_runtime_audit(
+                http_request,
+                action="runtime.invoke.stream",
+                target="uninitialized-agent",
+                decision="failed",
+                status_code=503,
+                error_code="not_initialized",
+            )
+            return JSONResponse(status_code=503, content=error_payload("not_initialized", "Agent not initialized"))
+
+        principal = getattr(http_request.state, "osa_principal", None)
+        user_id = request.user_id
+        request_metadata = dict(request.metadata)
+        if isinstance(principal, AuthenticatedPrincipal):
+            if user_id is None:
+                user_id = principal.subject
+            elif user_id != principal.subject:
+                raise AuthorizationError("Request user_id must match the authenticated subject")
+            request_metadata.setdefault("caller_subject", principal.subject)
+            requested_tenant = request_metadata.get("tenant_id")
+            if principal.tenant_id is None and requested_tenant is not None:
+                raise AuthorizationError("Request tenant_id requires an authenticated tenant claim")
+            if principal.tenant_id is not None:
+                if requested_tenant is None:
+                    request_metadata["tenant_id"] = principal.tenant_id
+                elif requested_tenant != principal.tenant_id:
+                    raise AuthorizationError("Request tenant_id must match the authenticated tenant")
+
+        agent_request = AgentRequest(
+            input=request.input,
+            session_id=request.session_id,
+            user_id=user_id,
+            metadata=request_metadata,
+        )
+        observation: Observability = http_request.app.state.observability
+
+        async def event_source() -> AsyncIterator[bytes]:
+            async with observation.span(
+                "invocation.stream",
+                labels={"agent": _agent.metadata.name},
+                attributes={
+                    "osa.agent": _agent.metadata.name,
+                    "osa.invocation_id": str(agent_request.invocation_id),
+                },
+            ):
+                async for event in _agent.stream_invoke(agent_request):
+                    payload = json.dumps(event.to_payload())
+                    yield f"event: {event.type}\ndata: {payload}\n\n".encode()
+            await _record_runtime_audit(
+                http_request,
+                action="runtime.invoke.stream",
+                target=_agent.metadata.name,
+                decision="succeeded",
+                status_code=200,
+            )
+
+        return StreamingResponse(
+            event_source(),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
         )
 
     @app.get("/health/live")

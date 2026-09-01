@@ -395,15 +395,25 @@ authorization and secret-redaction tests cover deny paths.
 **Acceptance:** one invocation can be traced end-to-end and a failed tool/MCP
 call can be diagnosed without exposing secrets. ✅
 
-## P2.4 Streaming and replica behavior
+## P2.4 Streaming and replica behavior (complete 2026-09-01)
 
-- [ ] Define SSE or another supported streaming contract for the runtime API.
-- [ ] Map ADK events to stable OSA events and handle client cancellation.
-- [ ] Verify session consistency and idempotency across replicas.
-- [ ] Add load, backpressure, timeout, and disconnect tests.
+- [x] Define SSE or another supported streaming contract for the runtime API
+  (`POST /v1/invoke/stream`; stable `osa.started` / `osa.message.delta` /
+  `osa.message` / `osa.error` events with JSON payloads and monotonic `seq`).
+- [x] Map ADK events to stable OSA events and handle client cancellation
+  (`GenericAdkAgent.stream_invoke`, single pass over the Runner; disconnect
+  cancels the underlying ADK run — pinned by test).
+- [x] Verify session consistency and idempotency across replicas (two agents
+  over a shared `SessionProvider` keep conversation context and enforce
+  ownership identically; production replicas require the same shared
+  persistent provider, as documented in ARCHITECTURE.md).
+- [x] Add load, backpressure, timeout, and disconnect tests (8-way concurrent
+  streams; direct yields give natural consumer backpressure;
+  `runtime.timeout_seconds` bounds the stream lifetime; disconnect
+  cancellation reaches the model call).
 
 **Acceptance:** streaming works through two runtime replicas without losing
-session ownership or leaking another caller's events.
+session ownership or leaking another caller's events. ✅
 
 ---
 

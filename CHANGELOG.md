@@ -1,5 +1,22 @@
 # Changelog
 
+### Added — P2.4: Streaming and replica behavior
+
+- `POST /v1/invoke/stream` (SSE): stable OSA event contract (`osa.started`,
+  `osa.message.delta`, `osa.message`, `osa.error`) with JSON payloads
+  (`type`, `invocation_id`, `session_id`, `text`, monotonic `seq`);
+  `osa.message` text is exactly what `POST /v1/invoke` returns.
+- `GenericAdkAgent.stream_invoke` maps ADK Runner events to OSA events in
+  one pass, enforcing `runtime.timeout_seconds` across the stream lifetime
+  and `max_iterations` mid-stream; no server-side buffering (consumer
+  backpressure is natural); disconnect cancels the underlying ADK run.
+- The shared bearer/OIDC auth middleware covers the stream route identically
+  to non-streaming invoke.
+- Replica tests: two agents over a shared `SessionProvider` keep
+  conversation context across replicas and enforce ownership identically;
+  concurrent streams never leak another invocation's events; 8-way
+  concurrent stream load; disconnect-cancellation and timeout paths.
+
 ### Added — P2.2: Definition resource policy
 
 - Added exact allow/deny policy rules for model, tool, MCP, skill, and inbound
