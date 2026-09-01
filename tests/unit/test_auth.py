@@ -307,6 +307,22 @@ async def test_control_plane_middleware_requires_auth(
         )
         assert authorized.status_code == 200
 
+        created = await client.post(
+            "/agents",
+            headers={"Authorization": f"Bearer {_token(private_key, roles=['operator'], tid='tenant-1')}"},
+            json={"name": "tenant-one-agent"},
+        )
+        assert created.status_code == 201
+        created_agent_id = created.json()["agent_id"]
+        assert created.json()["tenant_id"] == "tenant-1"
+
+        other_tenant = {"Authorization": f"Bearer {_token(private_key, roles=['viewer'], tid='tenant-2')}"}
+        isolated_list = await client.get("/agents", headers=other_tenant)
+        assert isolated_list.status_code == 200
+        assert isolated_list.json()["total"] == 0
+        isolated_get = await client.get(f"/agents/{created_agent_id}", headers=other_tenant)
+        assert isolated_get.status_code == 404
+
         denied_write = await client.post(
             "/agents",
             headers={"Authorization": f"Bearer {_token(private_key, roles=['viewer'])}"},
