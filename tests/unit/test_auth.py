@@ -20,9 +20,12 @@ from osa.generic_agent import (
     AgentDefinition,
     AgentMetadataConfig,
     AgentSpec,
+    AuthenticatedPrincipal,
     AuthenticationError,
     AuthMode,
     AuthorizationError,
+    AuthorizationPolicy,
+    AuthPermission,
     AuthSettings,
     JwksClient,
     JwtAuthenticator,
@@ -52,13 +55,14 @@ def signing_material() -> tuple[rsa.RSAPrivateKey, dict[str, str]]:
     return private_key, jwk
 
 
-def _settings(*, scopes: tuple[str, ...] = ()) -> AuthSettings:
+def _settings(*, scopes: tuple[str, ...] = (), enforce_permissions: bool = False) -> AuthSettings:
     return AuthSettings(
         mode=AuthMode.REQUIRED,
         issuer="https://issuer.example.test/",
         audience="osa-api",
         jwks_url="https://issuer.example.test/.well-known/jwks.json",
         required_scopes=scopes,
+        enforce_permissions=enforce_permissions,
     )
 
 
@@ -94,6 +98,7 @@ def test_auth_settings_load_from_environment() -> None:
             "OSA_AUTH_AUDIENCE": "osa-api",
             "OSA_AUTH_JWKS_URL": "https://issuer.example.test/keys",
             "OSA_AUTH_REQUIRED_SCOPES": "invoke admin",
+            "OSA_AUTH_ENFORCE_PERMISSIONS": "true",
             "OSA_AUTH_CLOCK_SKEW_SECONDS": "15",
             "OSA_AUTH_JWKS_TIMEOUT_SECONDS": "3.5",
             "OSA_AUTH_JWKS_CACHE_SECONDS": "60",
@@ -105,6 +110,7 @@ def test_auth_settings_load_from_environment() -> None:
     assert settings.clock_skew_seconds == 15
     assert settings.jwks_timeout_seconds == 3.5
     assert settings.jwks_cache_seconds == 60
+    assert settings.enforce_permissions is True
 
 
 def test_auth_settings_require_provider_metadata_when_enabled() -> None:
@@ -123,6 +129,46 @@ async def test_valid_jwt_returns_minimal_principal(
     assert principal.issuer == "https://issuer.example.test/"
     assert principal.audience == ("osa-api",)
     assert principal.scopes == frozenset({"invoke", "read"})
+    assert principal.roles == frozenset()
+    assert principal.permissions == frozenset()
+    assert principal.tenant_id is None
+
+
+@pytest.mark.asyncio
+async def test_jwt_extracts_common_roles_permissions_and_tenant_claims(
+    signing_material: tuple[rsa.RSAPrivateKey, dict[str, str]],
+) -> None:
+    private_key, jwk = signing_material
+    principal = await _authenticator(_settings(), jwk).authenticate(
+        f"Bearer {_token(private_key, roles=['viewer'], permissions=['resource:read'], tid='tenant-1')}"
+    )
+
+    assert principal.roles == frozenset({"viewer"})
+    assert principal.permissions == frozenset({"resource:read"})
+    assert principal.tenant_id == "tenant-1"
+
+
+def test_authorization_policy_expands_roles_and_explicit_permissions() -> None:
+    policy = AuthorizationPolicy(enabled=True)
+    viewer = AuthenticatedPrincipal(
+        subject="viewer",
+        issuer="issuer",
+        audience=("osa-api",),
+        scopes=frozenset(),
+        roles=frozenset({"viewer"}),
+    )
+    custom = AuthenticatedPrincipal(
+        subject="custom",
+        issuer="issuer",
+        audience=("osa-api",),
+        scopes=frozenset(),
+        permissions=frozenset({AuthPermission.AGENT_WRITE}),
+    )
+
+    policy.require(viewer, AuthPermission.AGENT_READ)
+    with pytest.raises(AuthorizationError):
+        policy.require(viewer, AuthPermission.AGENT_WRITE)
+    policy.require(custom, AuthPermission.AGENT_WRITE)
 
 
 @pytest.mark.asyncio
@@ -178,10 +224,10 @@ async def test_runtime_middleware_requires_auth_and_uses_subject_for_session_use
     await initialize_runtime(definition)
     app = configure_runtime_app(
         FastAPI(),
-        auth_settings=_settings(),
-        authenticator=_authenticator(_settings(), jwk),
+        auth_settings=_settings(enforce_permissions=True),
+        authenticator=_authenticator(_settings(enforce_permissions=True), jwk),
     )
-    token = _token(private_key)
+    token = _token(private_key, roles=["caller"], tid="tenant-1")
 
     try:
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
@@ -199,6 +245,15 @@ async def test_runtime_middleware_requires_auth_and_uses_subject_for_session_use
                 json={"input": "hello"},
             )
             assert authenticated.status_code == 200
+            session_id = authenticated.json()["session_id"]
+            assert session_id
+
+            continued = await client.post(
+                "/v1/invoke",
+                headers={"Authorization": f"Bearer {token}"},
+                json={"input": "again", "session_id": session_id},
+            )
+            assert continued.status_code == 200
 
             spoofed = await client.post(
                 "/v1/invoke",
@@ -207,6 +262,22 @@ async def test_runtime_middleware_requires_auth_and_uses_subject_for_session_use
             )
             assert spoofed.status_code == 403
             assert spoofed.json()["error"]["code"] == "authorization_denied"
+
+            wrong_tenant = await client.post(
+                "/v1/invoke",
+                headers={"Authorization": f"Bearer {token}"},
+                json={"input": "hello", "metadata": {"tenant_id": "tenant-2"}},
+            )
+            assert wrong_tenant.status_code == 403
+            assert wrong_tenant.json()["error"]["code"] == "authorization_denied"
+
+            unscoped_tenant = await client.post(
+                "/v1/invoke",
+                headers={"Authorization": f"Bearer {_token(private_key, roles=['caller'])}"},
+                json={"input": "hello", "metadata": {"tenant_id": "tenant-1"}},
+            )
+            assert unscoped_tenant.status_code == 403
+            assert unscoped_tenant.json()["error"]["code"] == "authorization_denied"
     finally:
         reset_runtime()
 
@@ -216,7 +287,7 @@ async def test_control_plane_middleware_requires_auth(
     signing_material: tuple[rsa.RSAPrivateKey, dict[str, str]],
 ) -> None:
     private_key, jwk = signing_material
-    settings = _settings()
+    settings = _settings(enforce_permissions=True)
     app = configure_control_plane_app(
         FastAPI(),
         agent_repository=InMemoryAgentRepository(),
@@ -232,6 +303,14 @@ async def test_control_plane_middleware_requires_auth(
 
         authorized = await client.get(
             "/agents",
-            headers={"Authorization": f"Bearer {_token(private_key)}"},
+            headers={"Authorization": f"Bearer {_token(private_key, roles=['viewer'])}"},
         )
         assert authorized.status_code == 200
+
+        denied_write = await client.post(
+            "/agents",
+            headers={"Authorization": f"Bearer {_token(private_key, roles=['viewer'])}"},
+            json={"name": "viewer-cannot-create"},
+        )
+        assert denied_write.status_code == 403
+        assert denied_write.json()["error"]["code"] == "authorization_denied"
