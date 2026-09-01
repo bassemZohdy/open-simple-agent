@@ -7,7 +7,7 @@ https://github.com/bassemZohdy/open-simple-agent
 
 Before reading or editing project files, verify that the repository remote is
 `https://github.com/bassemZohdy/open-simple-agent.git` and that the requested
-backlog is this repository's `TODO.md). The separate
+backlog is this repository's `TODO.md`. The separate
 `bassemZohdy/micro-agents` project is out of scope for OSA work: do not inspect,
 modify, merge, or report its backlog as OSA work.
 
