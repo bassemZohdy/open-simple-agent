@@ -24,6 +24,8 @@ from pydantic import BaseModel, ConfigDict, Field
 from osa.generic_agent import (
     AgentDefinition,
     AgentRequest,
+    AuditEvent,
+    AuditEventSink,
     AuthenticatedPrincipal,
     AuthenticationError,
     AuthMode,
@@ -31,6 +33,7 @@ from osa.generic_agent import (
     AuthorizationPolicy,
     AuthSettings,
     FakeModelProvider,
+    InMemoryAuditEventSink,
     JwtAuthenticator,
     ModelCatalog,
     ModelDefinition,
@@ -116,6 +119,28 @@ async def initialize_runtime(
     maybe_attach_a2a(agent)
     set_runtime(runtime, agent)
     return agent
+
+
+async def _record_runtime_audit(
+    request: Request,
+    *,
+    action: str,
+    target: str,
+    decision: str,
+    status_code: int,
+    error_code: str | None = None,
+) -> None:
+    """Emit a boundary event without request or response payloads."""
+    sink: AuditEventSink | None = getattr(request.app.state, "audit_sink", None)
+    if sink is None:
+        return
+    principal = getattr(request.state, "osa_principal", None)
+    actor = principal.subject if isinstance(principal, AuthenticatedPrincipal) else "anonymous"
+    tenant_id = principal.tenant_id if isinstance(principal, AuthenticatedPrincipal) else None
+    detail: dict[str, Any] = {"decision": decision, "status_code": status_code, "method": request.method}
+    if error_code is not None:
+        detail["error_code"] = error_code
+    await sink.append(AuditEvent(actor=actor, action=action, target=target, tenant_id=tenant_id, detail=detail))
 
 
 def maybe_attach_a2a(agent: GenericAdkAgent) -> None:
@@ -216,6 +241,7 @@ def configure_runtime_app(
     *,
     auth_settings: AuthSettings | None = None,
     authenticator: JwtAuthenticator | None = None,
+    audit_sink: AuditEventSink | None = None,
 ) -> FastAPI:
     """Attach the runtime routes and error mapping to a FastAPI app.
 
@@ -226,6 +252,52 @@ def configure_runtime_app(
 
     settings = auth_settings or AuthSettings.from_env()
     _install_authentication(app, settings, authenticator)
+    if audit_sink is None:
+        audit_sink = InMemoryAuditEventSink()
+    app.state.audit_sink = audit_sink
+
+    @app.middleware("http")
+    async def _audit_boundary_request(
+        request: Request, call_next: Callable[[Request], Awaitable[Response]]
+    ) -> Response:
+        """Audit runtime/A2A boundary outcomes without capturing payloads."""
+        tracked = request.url.path in {"/v1/invoke", "/a2a"}
+        try:
+            response = await call_next(request)
+        except Exception as exc:
+            if tracked:
+                await _record_runtime_audit(
+                    request,
+                    action="a2a.invoke" if request.url.path == "/a2a" else "runtime.invoke",
+                    target=request.url.path,
+                    decision="failed",
+                    status_code=500,
+                    error_code=getattr(exc, "code", "internal_error"),
+                )
+            raise
+        if request.url.path == "/a2a":
+            decision = (
+                "succeeded"
+                if response.status_code < 400
+                else ("denied" if response.status_code in {401, 403} else "failed")
+            )
+            await _record_runtime_audit(
+                request,
+                action="a2a.invoke",
+                target="/a2a",
+                decision=decision,
+                status_code=response.status_code,
+            )
+        elif request.url.path == "/v1/invoke" and response.status_code in {401, 403}:
+            await _record_runtime_audit(
+                request,
+                action="runtime.request",
+                target=request.url.path,
+                decision="denied",
+                status_code=response.status_code,
+                error_code="authentication_failed" if response.status_code == 401 else "authorization_denied",
+            )
+        return response
 
     @app.exception_handler(AuthorizationError)
     async def _authorization_error_handler(request: Request, exc: AuthorizationError) -> JSONResponse:
@@ -251,6 +323,14 @@ def configure_runtime_app(
     async def invoke_agent(http_request: Request, request: InvokeRequest) -> Any:
         """Invoke the agent."""
         if _agent is None:
+            await _record_runtime_audit(
+                http_request,
+                action="runtime.invoke",
+                target="uninitialized-agent",
+                decision="failed",
+                status_code=503,
+                error_code="not_initialized",
+            )
             return JSONResponse(status_code=503, content=error_payload("not_initialized", "Agent not initialized"))
 
         principal = getattr(http_request.state, "osa_principal", None)
@@ -279,6 +359,15 @@ def configure_runtime_app(
         )
 
         response = await _agent.invoke(agent_request)
+
+        await _record_runtime_audit(
+            http_request,
+            action="runtime.invoke",
+            target=_agent.metadata.name,
+            decision="failed" if response.error else "succeeded",
+            status_code=502 if response.error else 200,
+            error_code="agent_invocation_failed" if response.error else None,
+        )
 
         return InvokeResponse(
             output=response.output,

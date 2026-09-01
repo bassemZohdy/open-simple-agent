@@ -10,7 +10,7 @@ documentation, and appropriate failure/security behavior are complete.
 
 ## Current baseline
 
-- 437 tests are collected; 416 pass locally and 21 PostgreSQL integration tests
+- 442 tests are collected; 421 pass locally and 21 PostgreSQL integration tests
   skip when `OSA_TEST_DATABASE_URL` is unset. Strict mypy, Ruff format, and
   Ruff lint pass with no project-controlled warnings.
 - Latest GitHub Actions run on `main` is green, plus a container job that
@@ -364,8 +364,9 @@ evaluation, A2A security schemes, and credential adapters are still open.
   Control Plane management mutation and external-agent invocation; expose
   the redaction-safe `/audit-events` read API and persist PostgreSQL events in
   migration 0006.
-- [ ] Extend audit coverage to runtime/A2A invocations and failed or denied
-  privileged requests without capturing prompts, credentials, or payloads.
+- [x] Extend audit coverage to runtime/A2A boundary invocations and failed or
+  denied requests without capturing prompts, credentials, or payloads. Internal
+  capability-level events and distributed persistence remain future work.
 
 **Acceptance:** no production management or invocation endpoint is anonymous;
 authorization and secret-redaction tests cover deny paths.

@@ -5,7 +5,7 @@ from collections.abc import AsyncGenerator
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-from osa.generic_agent import AgentDefinition, AgentMetadataConfig, AgentSpec, ModelRef
+from osa.generic_agent import AgentDefinition, AgentMetadataConfig, AgentSpec, InMemoryAuditEventSink, ModelRef
 from osa.runtimes.adk.api import initialize_runtime, runtime_app
 
 
@@ -20,6 +20,9 @@ async def setup_runtime() -> AsyncGenerator[None, None]:
         ),
     )
     await initialize_runtime(definition)
+    sink = runtime_app.state.audit_sink
+    if isinstance(sink, InMemoryAuditEventSink):
+        sink.events.clear()
     yield
     # Reset global state
     import osa.runtimes.adk.api as api_module
@@ -53,6 +56,20 @@ async def test_invoke_agent() -> None:
         assert data["output"] == "I'm a runtime agent. How can I help?"
         assert data["error"] is None
         assert "invocation_id" in data
+        events = runtime_app.state.audit_sink.events
+        assert len(events) == 1
+        assert events[0].action == "runtime.invoke"
+        assert events[0].detail == {"decision": "succeeded", "status_code": 200, "method": "POST"}
+
+
+async def test_runtime_audit_does_not_capture_prompt_or_output() -> None:
+    prompt = "do not store this prompt"
+    async with AsyncClient(transport=ASGITransport(app=runtime_app), base_url="http://test") as client:
+        response = await client.post("/v1/invoke", json={"input": prompt})
+        assert response.status_code == 200
+    event = runtime_app.state.audit_sink.events[0]
+    assert prompt not in str(event)
+    assert "How can I help" not in str(event)
 
 
 async def test_invoke_with_session_reuse() -> None:
