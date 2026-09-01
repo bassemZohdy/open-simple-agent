@@ -67,6 +67,7 @@ deployments_table = Table(
     METADATA,
     Column("deployment_id", Text, primary_key=True),
     Column("agent_id", Text, nullable=False),
+    Column("tenant_id", Text, nullable=True),
     Column("agent_name", Text, nullable=False, server_default=""),
     Column("version", Text, nullable=False, server_default=""),
     Column("status", Text, nullable=False),
