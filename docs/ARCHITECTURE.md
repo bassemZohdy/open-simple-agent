@@ -203,8 +203,9 @@ claim is bound to invocation metadata: omitted metadata is filled from the
 claim, a mismatch is rejected, and an unscoped token cannot spoof a tenant.
 Control Plane managed agents now carry optional tenant ownership, assigned from
 the authenticated claim and enforced across list/read/lifecycle routes; the
-PostgreSQL schema uses migration 0003. Resource/deployment ownership, resource
-policy, audit events, and A2A security-scheme enforcement remain open in P2.2.
+PostgreSQL schema uses migration 0003. Deployments inherit agent tenant
+ownership and migration 0004 persists it. Resource ownership, resource policy,
+audit events, and A2A security-scheme enforcement remain open in P2.2.
 
 ## Deployment
 
