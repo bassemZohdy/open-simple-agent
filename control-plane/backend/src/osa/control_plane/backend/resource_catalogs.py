@@ -34,6 +34,23 @@ class ResourceCatalogs:
         self.tools = ToolCatalog()
         self.skills = SkillCatalog()
         self._memory_policies: dict[str, MemoryPolicy] = {}
+        self._tenant_scopes: dict[str, ResourceCatalogs] = {}
+
+    def for_tenant(self, tenant_id: str | None) -> ResourceCatalogs:
+        """Return the catalog namespace owned by ``tenant_id``.
+
+        ``None`` is the shared scope used by local development and by
+        authentication-disabled applications. Tenant-specific scopes are
+        separate catalog instances, so equal resource names can safely exist
+        in different tenants without cross-tenant resolution.
+        """
+        if tenant_id is None:
+            return self
+        scoped = self._tenant_scopes.get(tenant_id)
+        if scoped is None:
+            scoped = ResourceCatalogs()
+            self._tenant_scopes[tenant_id] = scoped
+        return scoped
 
     # --- Model Catalog ---
 
