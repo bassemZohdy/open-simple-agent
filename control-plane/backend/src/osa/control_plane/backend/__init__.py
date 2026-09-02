@@ -18,6 +18,11 @@ from osa.control_plane.backend.deployment import (
     DeploymentStatus,
     LocalDeploymentProvider,
 )
+from osa.control_plane.backend.kubernetes_deployment import (
+    KubectlError,
+    KubernetesDeploymentProvider,
+    KubernetesSecretRef,
+)
 from osa.control_plane.backend.repositories import (
     AgentRepository,
     AuditEvent,
@@ -61,8 +66,6 @@ __all__ = [
     "DeploymentRecord",
     "DeploymentRecordRepository",
     "DeploymentProvider",
-    "DeploymentRecord",
-    "DeploymentRecordRepository",
     "DeploymentSpec",
     "DeploymentStatus",
     "GENERIC_TEMPLATE",
@@ -70,6 +73,9 @@ __all__ = [
     "InMemoryAuditEventRepository",
     "InMemoryDeploymentRecordRepository",
     "InMemoryResourceDefinitionRepository",
+    "KubernetesDeploymentProvider",
+    "KubernetesSecretRef",
+    "KubectlError",
     "RESEARCH_TEMPLATE",
     "LocalDeploymentProvider",
     "PostgresAgentRepository",
