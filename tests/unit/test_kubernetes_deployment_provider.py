@@ -97,7 +97,7 @@ async def test_deploy_builds_configmap_service_probes_and_security_context(tmp_p
     assert container["securityContext"]["runAsNonRoot"] is True
     secret_env = next(item for item in container["env"] if item["name"] == "MODEL_API_KEY")
     assert secret_env["valueFrom"]["secretKeyRef"] == {"name": "model-secret", "key": "api-key"}
-    assert "api-key" not in json.dumps(resources["ConfigMap"]["data"].values())
+    assert "api-key" not in json.dumps(resources["ConfigMap"]["data"])
 
 
 @pytest.mark.asyncio
