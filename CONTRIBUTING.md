@@ -129,11 +129,32 @@ the single authoritative version source. `tests/unit/test_versioning.py`
 fails when the manifests drift or when the installed distributions / FastAPI
 application metadata report a different version.
 
-Before tagging a release:
+Before releasing:
 
 1. Bump `version` in `pyproject.toml` and the three member manifests to the
    same value and refresh `uv.lock`.
-2. Move relevant changelog entries out of `Unreleased` into the new version.
-3. Run the full local and CI validation suite.
-4. Create a signed/tagged release and publish artifacts with provenance
-   (automation is tracked in `TODO.md`, P3.3).
+2. Move relevant changelog entries out of `Unreleased` into a dated
+   `## [X.Y.Z] - YYYY-MM-DD` section.
+3. Run the full local suite and merge only after CI is green on `main`.
+
+Releases are automated by `.github/workflows/release.yml`. A maintainer can
+either push the exact tag `vX.Y.Z` or dispatch the workflow from `main` with
+`X.Y.Z`; manual dispatch creates the annotated tag after the build gates pass.
+`scripts/release_validation.py` rejects a tag when the four manifests are not
+lockstep or the dated changelog section is missing.
+
+The workflow publishes:
+
+- `osa-generic-agent`, `osa-adk-runtime`, and `osa-control-plane` wheel/sdist
+  artifacts on the GitHub Release, with SHA-256 checksums and GitHub build
+  provenance attestations.
+- `ghcr.io/<owner>/<repo>-runtime:X.Y.Z` and
+  `ghcr.io/<owner>/<repo>-control-plane:X.Y.Z`, plus the corresponding
+  `latest` tags. Image names are normalized to lowercase for OCI compatibility.
+- OCI provenance/SBOM metadata and GitHub artifact attestations for both
+  images, followed by keyless Cosign signing using GitHub OIDC.
+
+Release tags are immutable. To roll back a deployment, select a previously
+published immutable version/digest rather than rebuilding or replacing an old
+release. Automation for moving deployment/channel pointers back to a prior
+release remains backlog work.
