@@ -1,10 +1,12 @@
 from __future__ import annotations
 
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
-
 from scripts.release_validation import MANIFESTS, validate_release
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 def _write_release_fixture(root: Path, *, version: str = "1.2.3", changelog_version: str | None = None) -> None:
