@@ -26,7 +26,8 @@ documentation, and appropriate failure/security behavior are complete.
 - A first `kubectl`-backed Kubernetes deployment-provider slice exists, but all
   further Kubernetes/Kind work is intentionally paused as described below.
 - The React/TypeScript Control Panel foundation exists with an API-authenticated
-  shell, real Agents list/filtering, readiness view, and frontend CI coverage.
+  shell, Agents list/filtering, template and resource-catalog views, readiness
+  view, and frontend CI coverage.
 
 ---
 
@@ -89,7 +90,9 @@ binding, resource policy, outbound credentials, and audit coverage.
   - [x] Read-only Agents list/search/status filtering.
   - [x] Control Plane readiness view.
   - [ ] Agent detail/version history and lifecycle actions.
-  - [ ] Templates and resource catalogs.
+  - [x] Templates and resource catalogs, including tenant-scoped Model, Tool,
+    Skill, MCP, and MemoryPolicy browsing/search and safe redacted-definition
+    inspection.
   - [ ] Deployment lifecycle/status/logs.
   - [ ] Audit events and operational metrics.
 - [ ] Add validated agent create/edit/clone flows.
@@ -150,8 +153,8 @@ Remaining release work:
 
 # Priority order while Kubernetes is paused
 
-1. Continue P3.1 Control Panel with the remaining real Control Plane views,
-   starting with templates/resources and agent details/version/lifecycle flows.
+1. Continue P3.1 Control Panel with agent detail/version/lifecycle flows, then
+   deployment lifecycle/status/logs and audit/operational views.
 2. Implement the opt-in live-provider acceptance path when a suitable CI secret
    is available.
 3. Complete the remaining P3.3 registry/rollback/first-release decisions when a
