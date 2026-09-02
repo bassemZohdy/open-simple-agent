@@ -50,6 +50,23 @@ export interface CreateAgentVersionRequest {
   change_summary?: string;
 }
 
+export type DeploymentStatus = "starting" | "running" | "stopped" | "failed" | string;
+
+export interface DeploymentSummary {
+  deployment_id: string;
+  agent_id: string;
+  agent_name: string;
+  tenant_id: string | null;
+  version: string;
+  status: DeploymentStatus;
+  detail: string;
+}
+
+export interface DeploymentLogsResponse {
+  deployment_id: string;
+  lines: string[];
+}
+
 export interface HealthResponse {
   status: string;
   [key: string]: unknown;
@@ -135,6 +152,41 @@ export class ControlPlaneClient {
     return this.transitionAgent(agentId, "archive");
   }
 
+  async deployAgent(agentId: string): Promise<DeploymentSummary> {
+    return this.request<DeploymentSummary>(`${this.agentPath(agentId)}/deploy`, {
+      method: "POST",
+      body: JSON.stringify({}),
+    });
+  }
+
+  async listAgentDeployments(agentId: string): Promise<DeploymentSummary[]> {
+    return this.request<DeploymentSummary[]>(`${this.agentPath(agentId)}/deployments`);
+  }
+
+  async getDeployment(deploymentId: string): Promise<DeploymentSummary> {
+    return this.request<DeploymentSummary>(this.deploymentPath(deploymentId));
+  }
+
+  async stopDeployment(deploymentId: string): Promise<DeploymentSummary> {
+    return this.request<DeploymentSummary>(`${this.deploymentPath(deploymentId)}/stop`, { method: "POST" });
+  }
+
+  async restartDeployment(deploymentId: string): Promise<DeploymentSummary> {
+    return this.request<DeploymentSummary>(`${this.deploymentPath(deploymentId)}/restart`, { method: "POST" });
+  }
+
+  async rollbackDeployment(deploymentId: string, version?: string): Promise<DeploymentSummary> {
+    const query = version ? `?version=${encodeURIComponent(version)}` : "";
+    return this.request<DeploymentSummary>(`${this.deploymentPath(deploymentId)}/rollback${query}`, {
+      method: "POST",
+    });
+  }
+
+  async getDeploymentLogs(deploymentId: string, tail = 200): Promise<DeploymentLogsResponse> {
+    const query = `?tail=${encodeURIComponent(String(tail))}`;
+    return this.request<DeploymentLogsResponse>(`${this.deploymentPath(deploymentId)}/logs${query}`);
+  }
+
   async listTemplates(): Promise<TemplateSummary[]> {
     return this.request<TemplateSummary[]>("/templates");
   }
@@ -152,6 +204,10 @@ export class ControlPlaneClient {
 
   private agentPath(agentId: string): string {
     return `/agents/${encodeURIComponent(agentId)}`;
+  }
+
+  private deploymentPath(deploymentId: string): string {
+    return `/deployments/${encodeURIComponent(deploymentId)}`;
   }
 
   private async transitionAgent(agentId: string, action: "activate" | "disable" | "archive"): Promise<AgentSummary> {

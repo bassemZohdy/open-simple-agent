@@ -3,6 +3,7 @@ import { Navigate, Route, Routes } from "react-router-dom";
 import { AppShell } from "./components/AppShell";
 import { AgentsPage } from "./pages/AgentsPage";
 import { AgentDetailPage } from "./pages/AgentDetailPage";
+import { DeploymentsPage } from "./pages/DeploymentsPage";
 import { HealthPage } from "./pages/HealthPage";
 import { PlaceholderPage } from "./pages/PlaceholderPage";
 import { ResourcesPage } from "./pages/ResourcesPage";
@@ -18,7 +19,7 @@ export function App() {
         <Route path="/health" element={<HealthPage />} />
         <Route path="/templates" element={<TemplatesPage />} />
         <Route path="/resources" element={<ResourcesPage />} />
-        <Route path="/deployments" element={<PlaceholderPage title="Deployments" />} />
+        <Route path="/deployments" element={<DeploymentsPage />} />
         <Route path="/audit" element={<PlaceholderPage title="Audit" />} />
         <Route path="*" element={<PlaceholderPage title="Page not found" />} />
       </Routes>

@@ -176,6 +176,7 @@ export function AgentDetailPage() {
                 <div><dt>Tenant</dt><dd>{agent.tenant_id ?? "Shared scope"}</dd></div>
                 <div><dt>Skills</dt><dd>{agent.skills.length > 0 ? agent.skills.join(", ") : "—"}</dd></div>
                 <div><dt>Labels</dt><dd>{Object.entries(agent.labels).map(([key, value]) => `${key}=${value}`).join(", ") || "—"}</dd></div>
+                <div><dt>Deployments</dt><dd><Link className="agent-link" to={`/deployments?agent=${encodeURIComponent(agent.agent_id)}`}>View deployment history</Link></dd></div>
               </dl>
             </article>
           </div>

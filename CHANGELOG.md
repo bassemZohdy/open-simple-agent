@@ -1,5 +1,14 @@
 # Changelog
 
+### Added — P3.1: Deployment lifecycle/status/logs Control Panel
+- `DeploymentsPage`: per-agent deployment history with intent-only deploy,
+  stop/restart/rollback lifecycle actions, live observed-status refresh, and
+  bounded captured-log inspection with tail selection; failed deployments get
+  a distinct status badge. Agent detail pages deep-link to the agent's
+  deployment history.
+- Fixed mislabeled deployment audit actions: observed-status checks now
+  record `deployment.status` and stops record `deployment.stop`.
+
 ### Added — P3.4: API schema validation in CI + operations guides
 - `tests/unit/test_openapi_contract.py`: both FastAPI applications must emit
   spec-valid OpenAPI 3.1, every route documented in `docs/API.md` must exist

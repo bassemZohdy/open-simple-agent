@@ -136,7 +136,7 @@ def configure_deployment_routes(app: FastAPI) -> FastAPI:
             record = await service.status(deployment_id)
         except KeyError as exc:
             raise HTTPException(status_code=404, detail=str(exc.args[0])) from exc
-        await record_audit_event(http_request, action="deployment.stop", target=deployment_id)
+        await record_audit_event(http_request, action="deployment.status", target=deployment_id)
         log_event(
             logger, logging.INFO, "deployment status checked", {"deployment_id": deployment_id, "status": record.status}
         )
@@ -151,7 +151,7 @@ def configure_deployment_routes(app: FastAPI) -> FastAPI:
             record = await service.stop(deployment_id)
         except KeyError as exc:
             raise HTTPException(status_code=404, detail=str(exc.args[0])) from exc
-        await record_audit_event(http_request, action="deployment.restart", target=deployment_id)
+        await record_audit_event(http_request, action="deployment.stop", target=deployment_id)
         log_event(logger, logging.INFO, "deployment stopped", {"deployment_id": deployment_id, "status": record.status})
         return _response(record)
 

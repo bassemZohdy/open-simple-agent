@@ -28,8 +28,11 @@ Implemented:
 - readiness view backed by `GET /health/ready`;
 - agent detail pages with redacted version history, version snapshots, and
   guarded activate/disable/archive lifecycle actions;
+- per-agent deployment history with intent-only deploy, stop/restart/rollback
+  lifecycle actions, observed-status refresh, and bounded captured-log
+  inspection backed by the Control Plane deployment APIs;
 - loading, empty, error, 401/403-safe presentation;
 - Vitest/Testing Library coverage for API auth/error behavior and the implemented management views.
 
-Deployment lifecycle/logs, audit/metrics, authoring flows, and the invocation
-console remain P3.1 follow-up work.
+Audit/metrics views, authoring flows, and the invocation console remain P3.1
+follow-up work.
