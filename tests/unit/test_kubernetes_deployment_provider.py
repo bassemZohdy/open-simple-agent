@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -13,10 +14,10 @@ from osa.control_plane.backend.kubernetes_deployment import (
 
 
 class FakeKubernetesProvider(KubernetesDeploymentProvider):
-    def __init__(self, **kwargs):
+    def __init__(self, **kwargs: Any) -> None:
         super().__init__(image="example/osa-runtime:0.1.0", **kwargs)
         self.calls: list[tuple[tuple[str, ...], str | None]] = []
-        self.objects: dict[str, dict] = {}
+        self.objects: dict[str, dict[str, Any]] = {}
 
     async def _run(self, *args: str, stdin: str | None = None) -> str:
         self.calls.append((args, stdin))
@@ -86,8 +87,7 @@ async def test_deploy_builds_configmap_service_probes_and_security_context(tmp_p
     resources = {item["kind"]: item for item in manifest["items"]}
     assert {"ConfigMap", "Deployment", "Service"} <= resources.keys()
     assert "agent.yaml" in {
-        item["path"]
-        for item in resources["Deployment"]["spec"]["template"]["spec"]["volumes"][0]["configMap"]["items"]
+        item["path"] for item in resources["Deployment"]["spec"]["template"]["spec"]["volumes"][0]["configMap"]["items"]
     }
     container = resources["Deployment"]["spec"]["template"]["spec"]["containers"][0]
     assert container["readinessProbe"]["httpGet"]["path"] == "/health/ready"
