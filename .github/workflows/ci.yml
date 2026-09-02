@@ -10,9 +10,9 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       - run: uv sync --all-packages
@@ -22,9 +22,9 @@ jobs:
   typecheck:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       # Optional extras are part of the checked surface (e.g. the PostgreSQL
@@ -49,9 +49,9 @@ jobs:
           --health-timeout 5s
           --health-retries 10
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       - run: uv sync --all-packages --extra postgres --extra a2a
@@ -64,9 +64,9 @@ jobs:
   security:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       - run: uv sync --all-packages --extra postgres --extra a2a
@@ -91,18 +91,19 @@ jobs:
         run: |
           uvx --from cyclonedx-bom cyclonedx-py requirements requirements-audit.txt \
             --of JSON -o osa-sbom-python.cdx.json
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: sbom-python-cyclonedx
           path: osa-sbom-python.cdx.json
+          if-no-files-found: error
 
   container:
     runs-on: ubuntu-latest
     needs: [lint, typecheck, test]
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       - run: uv lock --check
@@ -113,7 +114,8 @@ jobs:
         with:
           image: osa-runtime:ci
           format: cyclonedx-json
-          artifact-name: sbom-osa-runtime.cdx.json
+          output-file: sbom-osa-runtime.cdx.json
+          upload-artifact: false
       - name: Container smoke test (ready, invoke, SIGTERM)
         run: |
           docker run -d --name osa-smoke -p 8080:8080 \
@@ -138,12 +140,6 @@ jobs:
             echo "::error::container exited with $exit_code on SIGTERM"; docker logs osa-smoke; exit 1
           fi
           echo "Container smoke test passed."
-      - uses: actions/upload-artifact@v4
-        with:
-          name: sbom-images-cyclonedx
-          path: |
-            sbom-osa-runtime.cdx.json
-            sbom-osa-control-plane.cdx.json
       - name: Build Control Plane image
         run: docker build -f Dockerfile.control-plane -t osa-control-plane:ci .
       - name: Generate Control Plane image SBOM (CycloneDX)
@@ -151,7 +147,8 @@ jobs:
         with:
           image: osa-control-plane:ci
           format: cyclonedx-json
-          artifact-name: sbom-osa-control-plane.cdx.json
+          output-file: sbom-osa-control-plane.cdx.json
+          upload-artifact: false
       - name: Control Plane smoke test (health)
         run: |
           docker run -d --name osa-cp-smoke -p 8000:8000 osa-control-plane:ci
@@ -169,3 +166,10 @@ jobs:
             echo "::error::control plane exited with $exit_code on SIGTERM"; docker logs osa-cp-smoke; exit 1
           fi
           echo "Control Plane image smoke test passed."
+      - uses: actions/upload-artifact@v7
+        with:
+          name: sbom-images-cyclonedx
+          path: |
+            sbom-osa-runtime.cdx.json
+            sbom-osa-control-plane.cdx.json
+          if-no-files-found: error
