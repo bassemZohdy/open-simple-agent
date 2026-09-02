@@ -170,9 +170,11 @@ Supported configuration scopes currently are `user`, `agent`, `tenant`, and
 
 ### A2A
 
-A2A is the target interoperability protocol for Agent Cards, discovery, skills,
-and remote agent invocation. It belongs to the data plane. It is not the
-deployment-management protocol and is not implemented yet.
+A2A is the interoperability protocol used for Agent Cards, discovery, skills,
+and remote agent invocation. It belongs to the data plane and is separate from
+deployment management. The initial A2A server/client and external-agent registry
+are implemented; future work may deepen delegation/consent semantics without
+turning A2A into a management protocol.
 
 ## Major components
 
@@ -199,8 +201,11 @@ Owns framework-specific construction and execution:
 - runtime HTTP and A2A exposure;
 - framework lifecycle and graceful shutdown.
 
-Only part of this target is implemented today. The current live invocation path
-still uses the generic `ModelProvider` and a transitional text tool-call loop.
+The current implementation invokes through the ADK `Runner`, maps declared
+native tools to ADK-native function calling, integrates MCP toolsets, maintains
+OSA-owned session/memory boundaries, supports SSE invocation streaming, and
+exposes optional A2A routes. Provider adapters remain replaceable behind OSA
+contracts.
 
 ### Control Plane
 
@@ -210,26 +215,36 @@ Owns administrative state and lifecycle:
 - resource catalogs;
 - deployment intent and observed status;
 - configuration validation and policy;
-- administrative API and future UI;
+- administrative API and Control Panel surface;
 - operational metadata and audit integration.
 
-It does not execute normal agent requests. The current implementation is
-in-memory and exposes only agent CRUD/version endpoints plus health checks.
+It does not execute normal agent requests. The current API supports managed
+agent/resource/template/deployment/external-agent/audit surfaces with an
+in-memory development mode or PostgreSQL repositories and migrations. Shared
+authentication/authorization and tenant ownership are enforced at the API
+boundary.
 
 ### Deployment providers
 
 Deployment providers own process/container/workload lifecycle and remain
 separate from `AgentRuntime`, which owns in-process behavior.
 
-Target providers may include local processes, containers, and
-Kubernetes/OpenShift. Only the local development provider exists today and it
-is not yet exposed by the Control Plane API.
+The local deployment provider is integrated through the Control Plane lifecycle
+API. A first generic `kubectl`-backed Kubernetes provider slice also exists with
+Deployment/Service/config/secret/probe/lifecycle behavior, but further
+Kubernetes/Kind validation and packaged provider selection are deliberately
+paused. OpenShift-specific behavior remains separately deferred.
 
 ### Control Panel
 
-The target administrative UI is TypeScript/React. It is not present in the
-repository and should begin only after the deterministic Control Plane APIs and
-authentication model are stable.
+The administrative UI is TypeScript/React. Its first implementation slice is
+present under `control-plane/frontend`: a responsive shell, optional
+session-scoped Bearer-token handling, a typed Control Plane client, real Agents
+list/filtering, readiness status, and frontend CI checks. Remaining P3.1 work
+adds the rest of the management views, authoring/lifecycle flows, invocation
+console, and broader accessibility/localization acceptance. Deployment-specific
+OIDC browser login semantics are not invented until issuer/client/redirect
+requirements are explicit.
 
 ## Control plane vs data plane
 
@@ -279,10 +294,11 @@ field is overrideable. See [docs/CONFIGURATION.md](docs/CONFIGURATION.md).
 
 ## Persistence
 
-Production Control Plane state requires a transactional persistent store.
-PostgreSQL is the initial candidate for agent/catalog/version/deployment
-metadata. Sessions and memory may use different providers because their access,
-expiry, and search semantics differ.
+Production Control Plane state uses PostgreSQL through repository contracts and
+Alembic-owned migrations. In-memory repositories remain available for tests and
+development. Sessions and memory use separate provider contracts because their
+access, expiry, and search semantics differ; persistent policy-scoped memory has
+an initial PostgreSQL implementation.
 
 Provider contracts must allow in-memory implementations in tests without making
 in-memory behavior the production model.
@@ -307,17 +323,20 @@ to the generic agent contract.
 ## APIs
 
 The Control Plane API is administrative. The runtime API is per-agent data
-plane. Future A2A endpoints are data plane. OpenAPI descriptions are generated
-from FastAPI models, but generated schemas do not replace maintained behavioral
+plane. A2A endpoints are data plane. OpenAPI descriptions are generated from
+FastAPI models, but generated schemas do not replace maintained behavioral
 documentation and compatibility tests.
 
 See [docs/API.md](docs/API.md) for routes implemented today.
 
 ## Observability
 
-Every invocation should eventually provide correlated structured logs, metrics,
-and OpenTelemetry spans across agent, model, tool, MCP, session, memory, and A2A
-operations. Secret redaction and bounded payload capture are mandatory.
+Runtime and management operations should provide correlated structured logs,
+metrics, and OpenTelemetry spans across agent, model, tool, MCP, session,
+memory, A2A, and administrative operations. Secret redaction and bounded
+payload capture are mandatory. The current observability baseline includes
+request IDs, Prometheus metrics, structured/redaction-safe logs, traces, and
+audit events; future work may deepen fleet-level operational views.
 
 ## Packaging and deployment
 
@@ -326,8 +345,11 @@ and UI. Images run non-root, support arbitrary OpenShift UIDs where practical,
 contain no development dependencies, install nothing at startup, externalize
 configuration, expose health probes, and handle graceful shutdown.
 
-The current Dockerfile is only a base-image definition, has no executable
-service command, and is not validated by CI.
+Runtime and Control Plane images are built and smoke-tested in CI. Release
+automation publishes versioned GHCR images with SBOM/provenance attestations and
+keyless signatures, plus validated Python distributions on GitHub Releases. A
+separate production UI image is still future work because the Control Panel is
+currently a source/build artifact only.
 
 ## Completion rule
 
@@ -351,10 +373,13 @@ The dependency order is:
 2. session isolation/context and configuration correctness;
 3. Control Plane persistence and complete resource APIs;
 4. MCP runtime client and tool resolution;
-5. container/Kubernetes deployment integration;
+5. deployment-provider integration;
 6. A2A and external-agent catalog;
 7. authentication, policy, and observability hardening;
 8. Control Panel and Manager Agent;
 9. release automation and production distribution.
 
-The detailed, acceptance-tested backlog is maintained in [TODO.md](TODO.md).
+Items 1–7 and the Manager Agent/release foundations are substantially
+implemented. Current delivery focus is the remaining Control Panel product
+surface while Kubernetes follow-up stays paused. The detailed,
+acceptance-tested backlog is maintained in [TODO.md](TODO.md).
