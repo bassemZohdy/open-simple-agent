@@ -11,10 +11,12 @@ The first runtime targets [Google ADK](https://google.github.io/adk-docs/).
 > deployment bundles, in-memory catalogs, control-plane API, a runnable
 > real-model ADK runtime (LiteLLM adapter, native function calling, session
 > isolation), MCP runtime, PostgreSQL persistence, A2A interoperability, the
-> `osa-runtime` service CLI, a production-oriented container image, and
-> deterministic tests are implemented. JWT bearer authentication, opt-in
+> `osa-runtime` service CLI, production-oriented runtime and Control Plane
+> container images, release supply-chain automation, and a first React/TypeScript
+> Control Panel shell are implemented. JWT bearer authentication, opt-in
 > role/permission route enforcement, and runtime tenant binding are available;
-> enterprise policy, streaming, Kubernetes deployment, and the UI remain open.
+> enterprise identity lifecycle, live-provider CI acceptance, remaining Control
+> Panel views, and paused Kubernetes follow-up remain open.
 
 ## What works today
 
@@ -29,9 +31,11 @@ The first runtime targets [Google ADK](https://google.github.io/adk-docs/).
 | Memory | Policy catalog resolution (authoritative scope/limits/retention), scope-id isolation (user/agent/tenant/application), enforcement after every write, explicit writes, PostgreSQL persistence (ADR-003) | Extraction pipeline (auto-extract) reserved; vector search deferred |
 | ADK runtime | Invocation through the ADK `Runner`; timeouts, iteration limits, stable error types; SSE streaming (`/v1/invoke/stream`) with stable OSA events and disconnect cancellation; A2A Agent Card + JSON-RPC server (ADR-005) | Token-level streaming requires a streaming model |
 | Control Plane | Agent CRUD, lifecycle transitions, immutable versions, optimistic concurrency, validated contracts; tenant-owned agent CRUD/lifecycle routes; tenant-scoped resource CRUD/list/search APIs with reference checks and bundle import/export; tenant-owned deployment APIs (deploy/status/stop/restart/logs/rollback); external A2A agent registry with card validation, health, and outbound credential adapters; append-only tenant-filtered audit events; in-memory default or PostgreSQL repositories via `OSA_CONTROL_PLANE_DATABASE_URL` (ADR-004), Alembic schema (`osa-cp-migrate`); shared JWT bearer authentication and opt-in route permissions | Definition resource policy is enforced by the runtime; enterprise policy remains open |
-| Deployment | Local provider with bounded logs, health probing, and startup-failure capture; deploy/status/stop/restart/logs/rollback APIs through the Control Plane with persisted tenant-owned records | Kubernetes provider pending |
+| Control Panel | React/TypeScript/Vite shell; session-scoped Bearer token support; typed Control Plane client; real Agents list/search/status filtering and readiness view; responsive/loading/empty/error states | Remaining views, agent authoring/lifecycle, invocation console, full accessibility/localization, and deployment-specific OIDC login are P3.1 follow-up |
+| Deployment | Local provider with bounded logs, health probing, and startup-failure capture; deploy/status/stop/restart/logs/rollback APIs through the Control Plane with persisted tenant-owned records; first generic Kubernetes provider slice retained | Further Kubernetes/Kind work is intentionally paused |
 | Runtime API | Invoke, capabilities, liveness, readiness, optional A2A Agent Card/JSON-RPC, shared JWT/OIDC bearer authentication including RFC 7662 opaque-token introspection, opt-in route permissions, tenant-claim binding, request IDs, Prometheus metrics, redaction-safe structured logs and runtime/A2A audit events; SSE streaming (`/v1/invoke/stream`) with stable OSA events; `osa-runtime` CLI with bundle bootstrap | - |
-| CI | Format, lint, strict mypy, full test suite with PostgreSQL + A2A services and an 84% coverage gate, container build + smoke tests for both images, pip-audit + license allow-list + CycloneDX SBOMs | Image signing and release publishing automation pending |
+| CI | Ruff format/lint, strict mypy, full Python suite with PostgreSQL + A2A services and an 84% coverage gate, Control Panel typecheck/test/build, both image smoke tests, dependency/license scanning, CycloneDX SBOMs | Live-provider acceptance remains opt-in/pending |
+| Release | Lockstep release validation; three Python distributions; GHCR runtime/Control Plane images; SBOM/provenance attestations; keyless Cosign image signing; GitHub Releases with checksums | First public release, optional package-registry publication, and mutable-channel rollback automation remain open |
 
 ## Architecture
 
@@ -126,6 +130,7 @@ Requirements:
 
 - Python 3.12+
 - [uv](https://docs.astral.sh/uv/)
+- Node.js 22+ for Control Panel development
 
 ```bash
 git clone https://github.com/bassemZohdy/open-simple-agent.git
@@ -139,6 +144,19 @@ uv run ruff check .
 
 `uv sync --all-packages` is required because this is a three-member uv
 workspace. A bare `uv sync` does not install the member packages.
+
+The Control Panel is a separate frontend package:
+
+```bash
+cd control-plane/frontend
+npm install
+npm run dev
+```
+
+Set `VITE_OSA_API_BASE_URL` when the Control Plane is not available at
+`http://localhost:8000`. See
+[Control Panel development](control-plane/frontend/README.md) for its current
+scope and authentication behavior.
 
 ## Using the current Python API
 
@@ -247,17 +265,16 @@ and invocation routes. See the
 
 ```text
 open-simple-agent/
-├── control-plane/backend/   # FastAPI management API and in-memory catalogs
+├── control-plane/backend/   # FastAPI management API and repositories
+├── control-plane/frontend/  # React/TypeScript administrative Control Panel
 ├── generic-agent/           # Stable domain model, bundles, and runtime contracts
 ├── runtimes/adk/            # Google ADK runtime, model adapters, service CLI
-├── docs/                    # Architecture, configuration, API, and ADRs
-├── examples/                # Runnable bundles (smoke bundle)
-├── tests/                   # Unit and integration tests
+├── docs/                    # Architecture, configuration, API, guides, and ADRs
+├── examples/                # Runnable bundles
+├── tests/                   # Python unit/integration tests
 ├── Dockerfile               # Production runtime image (non-root, health check)
-└── TODO.md                  # Prioritized implementation backlog
+└── TODO.md                  # Active prioritized implementation backlog
 ```
-
-The planned React Control Panel does not exist in the repository yet.
 
 ## Core decisions
 
@@ -279,6 +296,7 @@ The planned React Control Panel does not exist in the repository yet.
 - [Architecture](docs/ARCHITECTURE.md) — current components and execution flows
 - [Configuration](docs/CONFIGURATION.md) — current schema and environment overrides
 - [API reference](docs/API.md) — implemented HTTP endpoints
+- [Control Panel](control-plane/frontend/README.md) — frontend development and current UI scope
 - [Contributing](CONTRIBUTING.md) — setup, checks, and contribution rules
 - [Backlog](TODO.md) — prioritized work and acceptance criteria
 - [Operations guide](docs/guides/operations.md) — health, observability, deployments, upgrades
@@ -289,13 +307,13 @@ The planned React Control Panel does not exist in the repository yet.
 
 ## Release status
 
-The P0 "runnable agent" gate is implemented: external bundle loading, secret
-resolution, live-model invocation through the ADK Runner with native function
-calling, isolated session continuity, and a CLI/container service path — the
-same acceptance test passes locally and from the built container. Remaining
-work is tracked in [TODO.md](TODO.md): Kubernetes deployment (Kind validation
-planned; OpenShift deferred), enterprise authorization policy, streaming/replica behavior, UI, and
-release automation.
+The P0 runnable-agent gate and the core managed-platform foundation are
+implemented. Release supply-chain automation can build validated Python
+artifacts and signed/attested GHCR images from an intentional version/tag, while
+the Control Panel now has its first real API-backed shell. Remaining work is
+tracked in [TODO.md](TODO.md), led by the rest of P3.1, opt-in live-provider
+acceptance, enterprise identity lifecycle semantics, release rollback/registry
+decisions, and deliberately paused Kubernetes/Kind/OpenShift follow-up.
 
 ## License
 

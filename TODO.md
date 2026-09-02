@@ -21,11 +21,12 @@ documentation, and appropriate failure/security behavior are complete.
 - The Manager Agent management-tool surface and its approval/security guards are
   implemented.
 - CI enforces Ruff formatting/lint, strict mypy, the full PostgreSQL/A2A test
-  suite with an 84% coverage floor, dependency/license scanning, and runtime +
-  Control Plane image smoke/SBOM checks.
+  suite with an 84% coverage floor, dependency/license scanning, runtime +
+  Control Plane image smoke/SBOM checks, and Control Panel typecheck/test/build.
 - A first `kubectl`-backed Kubernetes deployment-provider slice exists, but all
   further Kubernetes/Kind work is intentionally paused as described below.
-- The React Control Panel does not yet exist.
+- The React/TypeScript Control Panel foundation exists with an API-authenticated
+  shell, real Agents list/filtering, readiness view, and frontend CI coverage.
 
 ---
 
@@ -78,17 +79,28 @@ binding, resource policy, outbound credentials, and audit coverage.
 
 ## P3.1 Control Panel
 
-- [ ] Create the TypeScript/React application and authenticated shell.
+- [x] Create the TypeScript/React application and authenticated API shell. The
+  current shell accepts an optional short-lived Bearer token stored only in
+  browser `sessionStorage`; deployment-specific OIDC login/refresh orchestration
+  remains an integration concern until issuer/client/redirect semantics are
+  defined.
 - [ ] Add agents, versions, templates, resources, deployments, health, and audit
   views.
+  - [x] Read-only Agents list/search/status filtering.
+  - [x] Control Plane readiness view.
+  - [ ] Agent detail/version history and lifecycle actions.
+  - [ ] Templates and resource catalogs.
+  - [ ] Deployment lifecycle/status/logs.
+  - [ ] Audit events and operational metrics.
 - [ ] Add validated agent create/edit/clone flows.
 - [ ] Add an invocation console with sessions, streaming, tools, and A2A tests.
-- [ ] Add accessibility, localization, responsive behavior, error handling, and
-  empty/loading states.
+- [ ] Complete accessibility, localization, and responsive behavior coverage.
+  Responsive layout plus loading/empty/error states are implemented in the
+  foundation slice; broader accessibility/localization acceptance remains open.
 
 ## P3.3 Packaging, CI/CD, and release
 
-Completed release-supply-chain automation in the current slice:
+Completed release-supply-chain automation:
 
 - [x] Validate that release tags match the lockstep version in all four
   manifests and require a dated matching changelog section.
@@ -138,11 +150,13 @@ Remaining release work:
 
 # Priority order while Kubernetes is paused
 
-1. Finish P3.3 release validation/publishing infrastructure and keep `main`
-   green.
+1. Continue P3.1 Control Panel with the remaining real Control Plane views,
+   starting with templates/resources and agent details/version/lifecycle flows.
 2. Implement the opt-in live-provider acceptance path when a suitable CI secret
    is available.
-3. Start P3.1 Control Panel as the next major product capability, unless the
-   enterprise identity lifecycle requirements in P2.2 are prioritized first.
-4. Keep all Kubernetes/Kind/OpenShift follow-up pending until explicitly
+3. Complete the remaining P3.3 registry/rollback/first-release decisions when a
+   release is intentionally scheduled.
+4. Define P2.2 enterprise identity lifecycle semantics before adding any
+   provider-specific enterprise identity integration.
+5. Keep all Kubernetes/Kind/OpenShift follow-up pending until explicitly
    resumed.
