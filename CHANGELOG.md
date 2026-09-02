@@ -1,5 +1,15 @@
 # Changelog
 
+### Added — P3.1: Agent authoring Control Panel flows
+- Validated create/clone panel on the Agents page: empty draft, built-in
+  template, or pasted JSON definition sources with client pre-flight
+  validation (required name, JSON parse, `metadata.name` match) and inline
+  surfacing of Control Plane 422 validation errors; successful creates
+  navigate to the new agent's detail page.
+- Clone deep-link from agent detail pages pre-fills name/description metadata
+  (definitions are write-only in the Control Plane API, so copies re-select a
+  template or paste a definition).
+
 ### Added — P3.1: Audit and metrics Control Panel
 - `AuditPage`: recent tenant-scoped audit events (`GET /audit-events`) with
   client-side action filtering, bounded limit selection, and truncated

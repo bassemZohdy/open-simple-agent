@@ -23,6 +23,9 @@ button { cursor: pointer; }
 .status-disabled, .status-archived { background: #f1f2f4; color: #59636e; }
 .status-failed { background: #fdecec; color: #a12622; }
 .logs-view { background: #101828; color: #d0d5dd; border-radius: .6rem; max-height: 26rem; overflow: auto; margin: 0; padding: 1rem; font-size: .8rem; line-height: 1.5; white-space: pre-wrap; word-break: break-word; }
+.create-panel { margin-bottom: 1.25rem; display: grid; gap: .75rem; }
+.create-panel .filter-bar { margin-bottom: 0; }
+.definition-editor { width: 100%; font-family: "Cascadia Code", Consolas, monospace; resize: vertical; }
 .token-form { grid-column: 1 / -1; display: grid; gap: .45rem; max-width: 46rem; }
 .token-row { display: flex; gap: .5rem; }
 .token-row input { flex: 1; }

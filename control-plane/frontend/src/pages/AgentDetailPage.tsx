@@ -153,6 +153,7 @@ export function AgentDetailPage() {
                     {busyAction === action ? `${actionLabel(action)}…` : actionLabel(action)}
                   </button>
                 ))}
+                <Link className="agent-link" to={`/agents?create=1&cloneOf=${encodeURIComponent(agent.agent_id)}`}>Clone agent</Link>
                 {lifecycleActions.includes("archive") && !confirmingArchive ? (
                   <button type="button" className="danger-button" disabled={busyAction !== null || creatingVersion} onClick={() => setConfirmingArchive(true)}>Archive</button>
                 ) : null}

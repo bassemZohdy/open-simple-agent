@@ -50,6 +50,13 @@ export interface CreateAgentVersionRequest {
   change_summary?: string;
 }
 
+export interface CreateAgentRequest {
+  name: string;
+  description?: string;
+  template?: string;
+  definition?: Record<string, unknown>;
+}
+
 export type DeploymentStatus = "starting" | "running" | "stopped" | "failed" | string;
 
 export interface DeploymentSummary {
@@ -166,6 +173,14 @@ export class ControlPlaneClient {
     return this.request<DeploymentSummary>(`${this.agentPath(agentId)}/deploy`, {
       method: "POST",
       body: JSON.stringify({}),
+    });
+  }
+
+  async createAgent(request: CreateAgentRequest): Promise<AgentSummary> {
+    return this.request<AgentSummary>("/agents", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request),
     });
   }
 

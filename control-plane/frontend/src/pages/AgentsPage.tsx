@@ -1,19 +1,46 @@
 import { type FormEvent, useCallback, useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 
-import { ApiError, type AgentSummary } from "../api/client";
+import { ApiError, type AgentSummary, type TemplateSummary } from "../api/client";
 import { useControlPlaneClient } from "../api/useControlPlaneClient";
 
 const statuses = ["", "draft", "active", "disabled", "archived"] as const;
 
+type CreateSource = "draft" | "template" | "definition";
+
+const DEFINITION_TEMPLATE = `{
+  "apiVersion": "osa/v1alpha1",
+  "kind": "Agent",
+  "metadata": { "name": "AGENT_NAME" },
+  "spec": { "instruction": "You are a helpful assistant." }
+}`;
+
+function errorMessage(caught: unknown, fallback: string): string {
+  return caught instanceof ApiError ? `${caught.code}: ${caught.message}` : fallback;
+}
+
 export function AgentsPage() {
   const client = useControlPlaneClient();
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [agents, setAgents] = useState<AgentSummary[]>([]);
   const [total, setTotal] = useState(0);
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  const [showCreate, setShowCreate] = useState(() => searchParams.get("create") === "1");
+  const cloneOf = searchParams.get("cloneOf");
+  const [cloneSource, setCloneSource] = useState<AgentSummary | null>(null);
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
+  const [source, setSource] = useState<CreateSource>("draft");
+  const [templateName, setTemplateName] = useState("");
+  const [templates, setTemplates] = useState<TemplateSummary[]>([]);
+  const [definitionText, setDefinitionText] = useState("");
+  const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
 
   const loadAgents = useCallback(
     async (nextQuery = query, nextStatus = status) => {
@@ -24,8 +51,7 @@ export function AgentsPage() {
         setAgents(response.agents);
         setTotal(response.total);
       } catch (caught) {
-        const message = caught instanceof ApiError ? `${caught.code}: ${caught.message}` : "Unable to load agents";
-        setError(message);
+        setError(errorMessage(caught, "Unable to load agents"));
         setAgents([]);
         setTotal(0);
       } finally {
@@ -38,6 +64,114 @@ export function AgentsPage() {
   useEffect(() => {
     void loadAgents("", "");
   }, [client]);
+
+  useEffect(() => {
+    if (!showCreate || !cloneOf) return;
+    let cancelled = false;
+    client
+      .getAgent(cloneOf)
+      .then((agent) => {
+        if (cancelled) return;
+        setCloneSource(agent);
+        setName(`${agent.name}-copy`);
+        setDescription(agent.description);
+      })
+      .catch((caught) => {
+        if (!cancelled) setCreateError(errorMessage(caught, "Unable to load the agent to clone"));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [showCreate, cloneOf, client]);
+
+  useEffect(() => {
+    if (!showCreate || source !== "template" || templates.length > 0) return;
+    let cancelled = false;
+    client
+      .listTemplates()
+      .then((items) => {
+        if (!cancelled) setTemplates(items);
+      })
+      .catch((caught) => {
+        if (!cancelled) setCreateError(errorMessage(caught, "Unable to load templates"));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [showCreate, source, templates.length, client]);
+
+  function openCreate() {
+    setShowCreate(true);
+    setCreateError(null);
+  }
+
+  function closeCreate() {
+    setShowCreate(false);
+    setCreateError(null);
+    setCloneSource(null);
+    setName("");
+    setDescription("");
+    setSource("draft");
+    setTemplateName("");
+    setDefinitionText("");
+  }
+
+  function parseDefinition(): Record<string, unknown> | undefined {
+    if (source !== "definition") return undefined;
+    const trimmed = definitionText.trim();
+    if (!trimmed) {
+      setCreateError("A definition is required in definition mode");
+      return undefined;
+    }
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(trimmed);
+    } catch {
+      setCreateError("Definition is not valid JSON");
+      return undefined;
+    }
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+      setCreateError("Definition must be a JSON object");
+      return undefined;
+    }
+    const metadata = (parsed as Record<string, unknown>).metadata;
+    const definitionName =
+      typeof metadata === "object" && metadata !== null && !Array.isArray(metadata)
+        ? (metadata as Record<string, unknown>).name
+        : undefined;
+    if (definitionName !== name.trim()) {
+      setCreateError(`Definition metadata.name must match the agent name "${name.trim()}"`);
+      return undefined;
+    }
+    return parsed as Record<string, unknown>;
+  }
+
+  async function submitCreate(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const trimmedName = name.trim();
+    if (!trimmedName) {
+      setCreateError("Agent name is required");
+      return;
+    }
+    const definition = parseDefinition();
+    if (source === "definition" && definition === undefined) return;
+    setCreating(true);
+    setCreateError(null);
+    try {
+      const created = await client.createAgent({
+        name: trimmedName,
+        description: description.trim(),
+        ...(source === "template" && templateName ? { template: templateName } : {}),
+        ...(source === "definition" && definition ? { definition } : {}),
+      });
+      closeCreate();
+      navigate(`/agents/${encodeURIComponent(created.agent_id)}`);
+    } catch (caught) {
+      setCreateError(errorMessage(caught, "Unable to create agent"));
+    } finally {
+      setCreating(false);
+    }
+  }
 
   function submitFilters(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -69,7 +203,73 @@ export function AgentsPage() {
           </select>
         </label>
         <button type="submit">Apply filters</button>
+        {showCreate ? (
+          <button type="button" className="secondary-button" onClick={closeCreate}>Close create</button>
+        ) : (
+          <button type="button" onClick={openCreate}>Create agent</button>
+        )}
       </form>
+
+      {showCreate ? (
+        <form className="detail-card create-panel" onSubmit={(event) => void submitCreate(event)} aria-labelledby="create-agent-title">
+          <div className="card-heading">
+            <div>
+              <span className="eyebrow">{cloneSource ? `Cloning ${cloneSource.name}` : "New agent"}</span>
+              <h3 id="create-agent-title">Create agent</h3>
+            </div>
+          </div>
+          {cloneSource ? (
+            <p className="muted-text">
+              Metadata is copied. Agent definitions are write-only in the Control Plane, so choose a template or
+              paste a definition for the copy.
+            </p>
+          ) : null}
+          <div className="filter-bar">
+            <label htmlFor="create-name">Name
+              <input id="create-name" value={name} onChange={(event) => setName(event.target.value)} placeholder="e.g. support-agent" disabled={creating} />
+            </label>
+            <label htmlFor="create-description">Description
+              <input id="create-description" value={description} onChange={(event) => setDescription(event.target.value)} placeholder="What does this agent do?" disabled={creating} />
+            </label>
+            <label htmlFor="create-source">Configuration source
+              <select id="create-source" value={source} onChange={(event) => setSource(event.target.value as CreateSource)} disabled={creating}>
+                <option value="draft">Empty draft (no definition)</option>
+                <option value="template">Built-in template</option>
+                <option value="definition">JSON definition</option>
+              </select>
+            </label>
+            {source === "template" ? (
+              <label htmlFor="create-template">Template
+                <select id="create-template" value={templateName} onChange={(event) => setTemplateName(event.target.value)} disabled={creating}>
+                  <option value="">Select a template…</option>
+                  {templates.map((template) => (
+                    <option key={template.name} value={template.name}>{template.name}</option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
+          </div>
+          {source === "definition" ? (
+            <label htmlFor="create-definition">Definition (JSON)
+              <textarea
+                id="create-definition"
+                className="logs-view definition-editor"
+                value={definitionText}
+                onChange={(event) => setDefinitionText(event.target.value)}
+                rows={10}
+                placeholder={DEFINITION_TEMPLATE}
+                disabled={creating}
+                spellCheck={false}
+              />
+            </label>
+          ) : null}
+          {createError ? <div className="state-card error-card inline-state" role="alert"><strong>Create failed</strong><span>{createError}</span></div> : null}
+          <div className="action-row">
+            <button type="submit" disabled={creating}>{creating ? "Creating…" : "Create agent"}</button>
+            <button type="button" className="secondary-button" onClick={closeCreate} disabled={creating}>Cancel</button>
+          </div>
+        </form>
+      ) : null}
 
       {loading ? <div className="state-card" role="status">Loading agents…</div> : null}
       {!loading && error ? (

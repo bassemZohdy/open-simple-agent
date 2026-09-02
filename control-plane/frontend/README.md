@@ -34,7 +34,10 @@ Implemented:
 - audit event list with action filtering backed by `GET /audit-events` and
   operational metrics backed by `GET /metrics` (parsed samples plus the raw
   Prometheus exposition);
+- validated create/clone agent flows: empty draft, built-in template, or
+  pasted JSON definition with client and server validation, plus clone
+  deep-links that pre-fill agent metadata;
 - loading, empty, error, 401/403-safe presentation;
 - Vitest/Testing Library coverage for API auth/error behavior and the implemented management views.
 
-Authoring flows and the invocation console remain P3.1 follow-up work.
+The invocation console remains P3.1 follow-up work.
