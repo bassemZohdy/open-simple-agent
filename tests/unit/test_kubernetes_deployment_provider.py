@@ -85,7 +85,10 @@ async def test_deploy_builds_configmap_service_probes_and_security_context(tmp_p
     manifest = json.loads(apply_call[1] or "{}")
     resources = {item["kind"]: item for item in manifest["items"]}
     assert {"ConfigMap", "Deployment", "Service"} <= resources.keys()
-    assert "agent.yaml" in {item["path"] for item in resources["Deployment"]["spec"]["template"]["spec"]["volumes"][0]["configMap"]["items"]}
+    assert "agent.yaml" in {
+        item["path"]
+        for item in resources["Deployment"]["spec"]["template"]["spec"]["volumes"][0]["configMap"]["items"]
+    }
     container = resources["Deployment"]["spec"]["template"]["spec"]["containers"][0]
     assert container["readinessProbe"]["httpGet"]["path"] == "/health/ready"
     assert container["livenessProbe"]["httpGet"]["path"] == "/health/live"
