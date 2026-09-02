@@ -20,6 +20,26 @@ describe("ControlPlaneClient", () => {
     expect(new Headers(init.headers).get("Authorization")).toBe("Bearer secret-token");
   });
 
+  it("builds resource catalog queries using the API kind", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ kind: "MemoryPolicy", total: 0, resources: [] }), { status: 200, headers: { "Content-Type": "application/json" } }));
+    vi.stubGlobal("fetch", fetchMock);
+    const client = new ControlPlaneClient("https://control.example", () => null);
+
+    await client.listResources("MemoryPolicy", "user memory");
+
+    expect(fetchMock.mock.calls[0]?.[0]).toBe("https://control.example/resources/MemoryPolicy?q=user+memory");
+  });
+
+  it("loads built-in templates from the Control Plane", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify([]), { status: 200, headers: { "Content-Type": "application/json" } }));
+    vi.stubGlobal("fetch", fetchMock);
+    const client = new ControlPlaneClient("https://control.example", () => null);
+
+    await client.listTemplates();
+
+    expect(fetchMock.mock.calls[0]?.[0]).toBe("https://control.example/templates");
+  });
+
   it("maps the stable OSA error envelope", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({ error: { code: "authorization_denied", message: "missing permission" } }), { status: 403, headers: { "Content-Type": "application/json" } })));
     const client = new ControlPlaneClient("https://control.example", () => null);

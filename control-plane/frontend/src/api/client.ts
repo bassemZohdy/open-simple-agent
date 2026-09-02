@@ -48,6 +48,28 @@ export interface AgentListFilters {
   offset?: number;
 }
 
+export type ResourceKind = "Model" | "Tool" | "Skill" | "Mcp" | "MemoryPolicy";
+
+export interface ResourceEnvelope {
+  apiVersion: string;
+  kind: string;
+  spec: Record<string, unknown>;
+}
+
+export interface ResourceListResponse {
+  kind: string;
+  total: number;
+  resources: ResourceEnvelope[];
+}
+
+export interface TemplateSummary {
+  name: string;
+  description: string;
+  skills: string[];
+  memory_enabled: boolean;
+  memory_policy: string | null;
+}
+
 function normalizedBaseUrl(baseUrl: string): string {
   return baseUrl.replace(/\/$/, "");
 }
@@ -69,6 +91,17 @@ export class ControlPlaneClient {
     if (filters.offset !== undefined) params.set("offset", String(filters.offset));
     const query = params.size > 0 ? `?${params.toString()}` : "";
     return this.request<AgentListResponse>(`/agents${query}`);
+  }
+
+  async listTemplates(): Promise<TemplateSummary[]> {
+    return this.request<TemplateSummary[]>("/templates");
+  }
+
+  async listResources(kind: ResourceKind, q?: string): Promise<ResourceListResponse> {
+    const params = new URLSearchParams();
+    if (q) params.set("q", q);
+    const query = params.size > 0 ? `?${params.toString()}` : "";
+    return this.request<ResourceListResponse>(`/resources/${encodeURIComponent(kind)}${query}`);
   }
 
   async healthReady(): Promise<HealthResponse> {
