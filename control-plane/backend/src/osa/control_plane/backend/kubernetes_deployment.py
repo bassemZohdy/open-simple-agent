@@ -223,7 +223,9 @@ class KubernetesDeploymentProvider(DeploymentProvider):
             data[key] = content
             items.append({"key": key, "path": relative_path})
 
-        env = [{"name": key, "value": value} for key, value in sorted(spec.env.items())]
+        env: list[dict[str, Any]] = [
+            {"name": key, "value": value} for key, value in sorted(spec.env.items())
+        ]
         env.extend(
             {
                 "name": env_name,
