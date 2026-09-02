@@ -29,7 +29,8 @@ documentation, and appropriate failure/security behavior are complete.
   shell, Agents list/filtering, template and resource-catalog views, readiness
   view, agent detail/version history/lifecycle actions, deployment
   lifecycle/status/log views, audit/metrics views, validated agent
-  create/edit/clone flows, and frontend CI coverage.
+  create/edit/clone flows, an A2A invocation test console, and frontend CI
+  coverage.
 
 ---
 
@@ -107,7 +108,12 @@ binding, resource policy, outbound credentials, and audit coverage.
   flows through immutable version creation on the detail page; clone
   deep-links into a pre-filled create panel (definitions are write-only, so
   the copy re-selects a template or definition).
-- [ ] Add an invocation console with sessions, streaming, tools, and A2A tests.
+- [x] Add an A2A test console: external agents listed with card/version and
+  health status, message + timeout invocation through
+  `POST /external-agents/{id}/invoke`, and inline response/error rendering.
+- [ ] Add managed-agent invocation console capabilities (sessions, streaming,
+  tool traces) once the runtime-access design is decided: expose runtime URLs
+  in the deployment API, add Control Plane proxy routes, or another mechanism.
 - [ ] Complete accessibility, localization, and responsive behavior coverage.
   Responsive layout plus loading/empty/error states are implemented in the
   foundation slice; broader accessibility/localization acceptance remains open.
@@ -164,8 +170,9 @@ Remaining release work:
 
 # Priority order while Kubernetes is paused
 
-1. Continue P3.1 Control Panel with the invocation console (sessions,
-   streaming, tools, A2A tests).
+1. Decide the managed-agent runtime-access design (deployment-API runtime URL
+   exposure vs Control Plane proxy routes) and build the invocation console's
+   sessions/streaming/tool-trace capabilities on it.
 2. Implement the opt-in live-provider acceptance path when a suitable CI secret
    is available.
 3. Complete the remaining P3.3 registry/rollback/first-release decisions when a

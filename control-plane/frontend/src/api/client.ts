@@ -118,6 +118,22 @@ export interface AuditEvent {
   detail: Record<string, unknown>;
 }
 
+export interface ExternalAgentSummary {
+  external_id: string;
+  name: string;
+  url: string;
+  card_name: string;
+  card_version: string;
+  skills: Array<Record<string, unknown>>;
+  status: string;
+  detail: string;
+  agent_type: string;
+}
+
+export interface ExternalAgentInvocation {
+  output: string;
+}
+
 function normalizedBaseUrl(baseUrl: string): string {
   return baseUrl.replace(/\/$/, "");
 }
@@ -219,6 +235,22 @@ export class ControlPlaneClient {
 
   async getMetrics(): Promise<string> {
     return this.requestText("/metrics");
+  }
+
+  async listExternalAgents(): Promise<ExternalAgentSummary[]> {
+    return this.request<ExternalAgentSummary[]>("/external-agents");
+  }
+
+  async invokeExternalAgent(
+    externalId: string,
+    message: string,
+    timeoutSeconds = 30,
+  ): Promise<ExternalAgentInvocation> {
+    const params = new URLSearchParams({ message, timeout_seconds: String(timeoutSeconds) });
+    return this.request<ExternalAgentInvocation>(
+      `/external-agents/${encodeURIComponent(externalId)}/invoke?${params.toString()}`,
+      { method: "POST" },
+    );
   }
 
   async listTemplates(): Promise<TemplateSummary[]> {

@@ -1,5 +1,12 @@
 # Changelog
 
+### Added — P3.1: A2A invocation test console
+- `InvocationPage` at `/console`: registered external agents listed with
+  card/version, URL, and health status; message + timeout invocation through
+  `POST /external-agents/{id}/invoke` with inline response rendering and
+  502/remote-failure surfacing. Managed-agent sessions/streaming/tool traces
+  remain pending the runtime-access design decision.
+
 ### Added — P3.1: Agent authoring Control Panel flows
 - Validated create/clone panel on the Agents page: empty draft, built-in
   template, or pasted JSON definition sources with client pre-flight

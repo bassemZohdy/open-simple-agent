@@ -37,7 +37,11 @@ Implemented:
 - validated create/clone agent flows: empty draft, built-in template, or
   pasted JSON definition with client and server validation, plus clone
   deep-links that pre-fill agent metadata;
+- A2A invocation test console: external agents with health status, message +
+  timeout invocation, and inline response/error rendering backed by
+  `POST /external-agents/{id}/invoke`;
 - loading, empty, error, 401/403-safe presentation;
 - Vitest/Testing Library coverage for API auth/error behavior and the implemented management views.
 
-The invocation console remains P3.1 follow-up work.
+Managed-agent invocation (sessions, streaming, tool traces) remains P3.1
+follow-up work pending the runtime-access design decision.
