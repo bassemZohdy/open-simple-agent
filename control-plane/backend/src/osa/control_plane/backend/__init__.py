@@ -19,9 +19,9 @@ from osa.control_plane.backend.deployment import (
     LocalDeploymentProvider,
 )
 from osa.control_plane.backend.kubernetes_deployment import (
+    KubectlError,
     KubernetesDeploymentProvider,
     KubernetesSecretRef,
-    KubectlError,
 )
 from osa.control_plane.backend.repositories import (
     AgentRepository,
