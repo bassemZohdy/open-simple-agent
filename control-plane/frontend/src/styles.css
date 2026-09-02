@@ -1,0 +1,68 @@
+:root {
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  color: #17202a;
+  background: #f4f6f8;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; min-width: 320px; min-height: 100vh; }
+button, input, select { font: inherit; }
+button { cursor: pointer; }
+
+.app-shell { min-height: 100vh; }
+.topbar { position: sticky; top: 0; z-index: 10; display: grid; grid-template-columns: 1fr auto; gap: 1rem; align-items: center; padding: 1rem 1.5rem; background: rgba(255,255,255,.96); border-bottom: 1px solid #d8dee4; backdrop-filter: blur(12px); }
+.topbar h1, .page-heading h2 { margin: .15rem 0 0; }
+.topbar h1 { font-size: 1.35rem; }
+.eyebrow { color: #667085; font-size: .75rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+.auth-controls { display: flex; align-items: center; gap: .75rem; }
+.connection-pill, .count-badge, .status { display: inline-flex; align-items: center; border-radius: 999px; padding: .35rem .65rem; background: #eef2f6; font-size: .8rem; font-weight: 700; }
+.connection-pill.is-authenticated, .status-active { background: #e8f7ee; color: #17653a; }
+.status-draft { background: #fff5d6; color: #7a5a00; }
+.status-disabled, .status-archived { background: #f1f2f4; color: #59636e; }
+.token-form { grid-column: 1 / -1; display: grid; gap: .45rem; max-width: 46rem; }
+.token-row { display: flex; gap: .5rem; }
+.token-row input { flex: 1; }
+.shell-body { display: grid; grid-template-columns: 220px minmax(0, 1fr); min-height: calc(100vh - 74px); }
+.sidebar { padding: 1rem; border-right: 1px solid #d8dee4; background: #fff; }
+.nav-link { display: block; padding: .65rem .75rem; margin-bottom: .2rem; border-radius: .55rem; color: #344054; text-decoration: none; font-weight: 650; }
+.nav-link:hover, .nav-link.active { background: #eef4ff; color: #174ea6; }
+.content { padding: 2rem; max-width: 1400px; width: 100%; }
+.page-heading { display: flex; justify-content: space-between; gap: 1rem; align-items: flex-start; margin-bottom: 1.25rem; }
+.page-heading h2 { font-size: 2rem; }
+.page-heading p { margin: .5rem 0 0; color: #667085; max-width: 60rem; }
+.filter-bar { display: flex; flex-wrap: wrap; gap: .8rem; align-items: end; margin-bottom: 1rem; padding: 1rem; background: #fff; border: 1px solid #d8dee4; border-radius: .8rem; }
+.filter-bar label { display: grid; gap: .3rem; min-width: 14rem; color: #475467; font-size: .85rem; font-weight: 650; }
+input, select { min-height: 2.5rem; padding: .5rem .65rem; color: inherit; background: #fff; border: 1px solid #c7d0d9; border-radius: .5rem; }
+button { min-height: 2.5rem; padding: .5rem .8rem; border: 1px solid #174ea6; border-radius: .5rem; color: #fff; background: #174ea6; font-weight: 700; }
+.secondary-button { border-color: #c7d0d9; color: #344054; background: #fff; }
+.state-card { display: grid; gap: .5rem; padding: 1.25rem; background: #fff; border: 1px solid #d8dee4; border-radius: .8rem; color: #475467; }
+.error-card { border-color: #f2b8b5; background: #fff7f6; color: #8a1c13; }
+.error-card .secondary-button { justify-self: start; }
+.table-wrap { overflow-x: auto; border: 1px solid #d8dee4; border-radius: .8rem; background: #fff; }
+table { width: 100%; border-collapse: collapse; }
+th, td { padding: .85rem 1rem; border-bottom: 1px solid #edf0f2; text-align: left; vertical-align: top; }
+th { color: #667085; font-size: .78rem; letter-spacing: .04em; text-transform: uppercase; }
+td small { display: block; margin-top: .2rem; color: #667085; }
+
+@media (max-width: 760px) {
+  .topbar { position: static; grid-template-columns: 1fr; }
+  .auth-controls { flex-wrap: wrap; }
+  .shell-body { grid-template-columns: 1fr; }
+  .sidebar { display: flex; gap: .35rem; overflow-x: auto; border-right: 0; border-bottom: 1px solid #d8dee4; }
+  .nav-link { white-space: nowrap; }
+  .content { padding: 1.2rem; }
+  .filter-bar { align-items: stretch; }
+  .filter-bar label { min-width: 100%; }
+  .token-row { flex-direction: column; }
+}
+
+@media (prefers-color-scheme: dark) {
+  :root { color: #eef2f6; background: #11161c; }
+  .topbar, .sidebar, .filter-bar, .state-card, .table-wrap { background: #171d24; border-color: #303844; }
+  .nav-link { color: #c8d1dc; }
+  .nav-link:hover, .nav-link.active { background: #203a63; color: #fff; }
+  input, select, .secondary-button { color: #eef2f6; background: #11161c; border-color: #46515e; }
+  th, td { border-color: #29313b; }
+}
