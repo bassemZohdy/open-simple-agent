@@ -1,0 +1,199 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version from the lockstep manifests (for example 0.2.0)"
+        required: true
+        type: string
+
+permissions: {}
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.release.outputs.version }}
+      tag: ${{ steps.release.outputs.tag }}
+      registry_base: ${{ steps.release.outputs.registry_base }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Validate release metadata
+        id: release
+        env:
+          DISPATCH_VERSION: ${{ inputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then
+            if [[ "$GITHUB_REF" != "refs/heads/main" ]]; then
+              echo "::error::manual releases must be dispatched from main"
+              exit 1
+            fi
+            tag="v${DISPATCH_VERSION}"
+          else
+            tag="$GITHUB_REF_NAME"
+          fi
+
+          version="$(python scripts/release_validation.py "$tag")"
+          registry_base="ghcr.io/${GITHUB_REPOSITORY,,}"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "registry_base=$registry_base" >> "$GITHUB_OUTPUT"
+
+  packages:
+    needs: prepare
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - run: uv lock --check
+      - name: Build lockstep Python distributions
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          uv build --package osa-generic-agent --out-dir dist --no-sources
+          uv build --package osa-adk-runtime --out-dir dist --no-sources
+          uv build --package osa-control-plane --out-dir dist --no-sources
+          uvx twine check dist/*
+      - name: Attest Python distributions
+        uses: actions/attest@v4
+        with:
+          subject-path: "dist/*"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: release-python-${{ needs.prepare.outputs.version }}
+          path: dist/*
+          if-no-files-found: error
+
+  images:
+    needs: prepare
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - component: runtime
+            dockerfile: Dockerfile
+          - component: control-plane
+            dockerfile: Dockerfile.control-plane
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: docker/setup-buildx-action@v3
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@v4.1.0
+      - name: Resolve image name
+        id: image
+        shell: bash
+        run: echo "name=${{ needs.prepare.outputs.registry_base }}-${{ matrix.component }}" >> "$GITHUB_OUTPUT"
+      - name: Build and push ${{ matrix.component }} image
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          push: true
+          tags: |
+            ${{ steps.image.outputs.name }}:${{ needs.prepare.outputs.version }}
+            ${{ steps.image.outputs.name }}:latest
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.version=${{ needs.prepare.outputs.version }}
+          provenance: mode=max
+          sbom: true
+      - name: Generate GitHub build provenance
+        uses: actions/attest@v4
+        with:
+          subject-name: ${{ steps.image.outputs.name }}
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true
+      - name: Keyless-sign image digest
+        env:
+          IMAGE: ${{ steps.image.outputs.name }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: cosign sign --yes "${IMAGE}@${DIGEST}"
+
+  release:
+    needs: [prepare, packages, images]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/download-artifact@v7
+        with:
+          name: release-python-${{ needs.prepare.outputs.version }}
+          path: dist
+      - name: Create annotated tag for manual releases
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          TAG: ${{ needs.prepare.outputs.tag }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          set -euo pipefail
+          if git ls-remote --exit-code --tags origin "refs/tags/${TAG}" >/dev/null 2>&1; then
+            echo "::error::tag ${TAG} already exists"
+            exit 1
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "$TAG" -m "Open Simple Agent ${VERSION}"
+          git push origin "$TAG"
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.prepare.outputs.tag }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+          REGISTRY_BASE: ${{ needs.prepare.outputs.registry_base }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          sha256sum dist/* > SHA256SUMS
+          cat > release-notes.md <<EOF
+          Open Simple Agent ${VERSION}
+
+          Python distributions and checksums are attached to this release and have GitHub build-provenance attestations.
+
+          Container images:
+          - ${REGISTRY_BASE}-runtime:${VERSION}
+          - ${REGISTRY_BASE}-control-plane:${VERSION}
+
+          Both images are published by digest, carry OCI provenance/SBOM metadata, have GitHub build-provenance attestations, and are keyless-signed with Cosign using GitHub OIDC.
+
+          See CHANGELOG.md for the versioned change record.
+          EOF
+          gh release create "$TAG" dist/* SHA256SUMS \
+            --repo "$GITHUB_REPOSITORY" \
+            --verify-tag \
+            --title "Open Simple Agent ${VERSION}" \
+            --notes-file release-notes.md
