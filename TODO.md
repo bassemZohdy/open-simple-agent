@@ -431,17 +431,17 @@ session ownership or leaking another caller's events. ✅
 - [ ] Add accessibility, localization, responsive, error, and empty/loading
   states.
 
-## P3.2 Manager Agent
+## P3.2 Manager Agent (in progress 2026-09-01)
 
 *Start after deterministic Control Plane APIs, authorization, and approval
 policy are stable.*
 
-- [ ] Expose narrow Control Plane tools for search, draft, validate, compare,
+- [x] Expose narrow Control Plane tools for search, draft, validate, compare,
   version, deploy, restart, scale, rollback, health, and logs.
-- [ ] Require explicit approval for high-impact operations.
-- [ ] Prevent raw secret access, direct database access, policy bypass, and
+- [x] Require explicit approval for high-impact operations.
+- [x] Prevent raw secret access, direct database access, policy bypass, and
   direct Kubernetes manipulation.
-- [ ] Test prompt-injection and confused-deputy scenarios.
+- [x] Test prompt-injection and confused-deputy scenarios.
 
 ## P3.3 Packaging, CI/CD, and release
 
