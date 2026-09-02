@@ -19,6 +19,6 @@ describe("AgentsPage", () => {
     render(<MemoryRouter><AuthProvider><AgentsPage /></AuthProvider></MemoryRouter>);
     expect(await screen.findAllByText("support")).toHaveLength(2);
     expect(screen.getByText("1.0.0")).toBeInTheDocument();
-    expect(screen.getByText("active")).toBeInTheDocument();
+    expect(await screen.findByText("active", { selector: "span" })).toBeInTheDocument();
   });
 });
