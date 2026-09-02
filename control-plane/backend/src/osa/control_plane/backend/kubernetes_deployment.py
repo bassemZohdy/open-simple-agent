@@ -160,8 +160,7 @@ class KubernetesDeploymentProvider(DeploymentProvider):
         ready = int(status.get("readyReplicas", 0) or 0)
         unavailable = int(status.get("unavailableReplicas", 0) or 0)
         failed = any(
-            condition.get("type") == "Progressing"
-            and condition.get("status") == "False"
+            condition.get("type") == "Progressing" and condition.get("status") == "False"
             for condition in status.get("conditions", [])
         )
         if failed:
@@ -228,9 +227,7 @@ class KubernetesDeploymentProvider(DeploymentProvider):
         env.extend(
             {
                 "name": env_name,
-                "valueFrom": {
-                    "secretKeyRef": {"name": ref.secret_name, "key": ref.key}
-                },
+                "valueFrom": {"secretKeyRef": {"name": ref.secret_name, "key": ref.key}},
             }
             for env_name, ref in sorted(self._secret_env.items())
         )
