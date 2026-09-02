@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { ApiError, ControlPlaneClient } from "./client";
+import { ControlPlaneClient } from "./client";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -24,6 +24,6 @@ describe("ControlPlaneClient", () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({ error: { code: "authorization_denied", message: "missing permission" } }), { status: 403, headers: { "Content-Type": "application/json" } })));
     const client = new ControlPlaneClient("https://control.example", () => null);
 
-    await expect(client.listAgents()).rejects.toEqual(expect.objectContaining<ApiError>({ status: 403, code: "authorization_denied", message: "missing permission" }));
+    await expect(client.listAgents()).rejects.toEqual(expect.objectContaining({ status: 403, code: "authorization_denied", message: "missing permission" }));
   });
 });
