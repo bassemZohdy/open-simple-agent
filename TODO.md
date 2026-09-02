@@ -28,7 +28,8 @@ documentation, and appropriate failure/security behavior are complete.
 - The React/TypeScript Control Panel foundation exists with an API-authenticated
   shell, Agents list/filtering, template and resource-catalog views, readiness
   view, agent detail/version history/lifecycle actions, deployment
-  lifecycle/status/log views, and frontend CI coverage.
+  lifecycle/status/log views, audit/metrics views, and frontend CI
+  coverage.
 
 ---
 
@@ -97,7 +98,9 @@ binding, resource policy, outbound credentials, and audit coverage.
   - [x] Deployment lifecycle/status/logs, including per-agent history,
     intent-only deploy, stop/restart/rollback actions, observed-status
     refresh, and bounded captured-log inspection with tail selection.
-  - [ ] Audit events and operational metrics.
+  - [x] Audit events and operational metrics, including client-side action
+    filtering, bounded event limits, parsed Prometheus sample tables, and the
+    raw exposition view.
 - [ ] Add validated agent create/edit/clone flows.
 - [ ] Add an invocation console with sessions, streaming, tools, and A2A tests.
 - [ ] Complete accessibility, localization, and responsive behavior coverage.
@@ -156,8 +159,8 @@ Remaining release work:
 
 # Priority order while Kubernetes is paused
 
-1. Continue P3.1 Control Panel with audit/operational views, then validated
-   agent create/edit/clone flows and the invocation console.
+1. Continue P3.1 Control Panel with validated agent create/edit/clone flows,
+   then the invocation console.
 2. Implement the opt-in live-provider acceptance path when a suitable CI secret
    is available.
 3. Complete the remaining P3.3 registry/rollback/first-release decisions when a

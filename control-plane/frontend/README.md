@@ -31,8 +31,10 @@ Implemented:
 - per-agent deployment history with intent-only deploy, stop/restart/rollback
   lifecycle actions, observed-status refresh, and bounded captured-log
   inspection backed by the Control Plane deployment APIs;
+- audit event list with action filtering backed by `GET /audit-events` and
+  operational metrics backed by `GET /metrics` (parsed samples plus the raw
+  Prometheus exposition);
 - loading, empty, error, 401/403-safe presentation;
 - Vitest/Testing Library coverage for API auth/error behavior and the implemented management views.
 
-Audit/metrics views, authoring flows, and the invocation console remain P3.1
-follow-up work.
+Authoring flows and the invocation console remain P3.1 follow-up work.

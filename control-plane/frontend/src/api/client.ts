@@ -101,6 +101,16 @@ export interface TemplateSummary {
   memory_policy: string | null;
 }
 
+export interface AuditEvent {
+  event_id: string;
+  actor: string;
+  action: string;
+  target: string;
+  occurred_at: string;
+  tenant_id: string | null;
+  detail: Record<string, unknown>;
+}
+
 function normalizedBaseUrl(baseUrl: string): string {
   return baseUrl.replace(/\/$/, "");
 }
@@ -187,6 +197,15 @@ export class ControlPlaneClient {
     return this.request<DeploymentLogsResponse>(`${this.deploymentPath(deploymentId)}/logs${query}`);
   }
 
+  async listAuditEvents(limit = 100): Promise<AuditEvent[]> {
+    const query = `?limit=${encodeURIComponent(String(limit))}`;
+    return this.request<AuditEvent[]>(`/audit-events${query}`);
+  }
+
+  async getMetrics(): Promise<string> {
+    return this.requestText("/metrics");
+  }
+
   async listTemplates(): Promise<TemplateSummary[]> {
     return this.request<TemplateSummary[]>("/templates");
   }
@@ -215,6 +234,16 @@ export class ControlPlaneClient {
   }
 
   private async request<T>(path: string, init: RequestInit = {}): Promise<T> {
+    const response = await this.send(path, init);
+    return (await response.json()) as T;
+  }
+
+  private async requestText(path: string, init: RequestInit = {}): Promise<string> {
+    const response = await this.send(path, init);
+    return response.text();
+  }
+
+  private async send(path: string, init: RequestInit): Promise<Response> {
     const headers = new Headers(init.headers);
     headers.set("Accept", "application/json");
     if (init.body !== undefined && init.body !== null) {
@@ -237,7 +266,7 @@ export class ControlPlaneClient {
       const message = body.error?.message ?? `Control Plane request failed with HTTP ${response.status}`;
       throw new ApiError(response.status, code, message);
     }
-    return (await response.json()) as T;
+    return response;
   }
 }
 

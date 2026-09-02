@@ -1,5 +1,12 @@
 # Changelog
 
+### Added — P3.1: Audit and metrics Control Panel
+- `AuditPage`: recent tenant-scoped audit events (`GET /audit-events`) with
+  client-side action filtering, bounded limit selection, and truncated
+  redaction-safe detail rendering, plus operational metrics (`GET /metrics`)
+  parsed into a sample table with labels and a collapsible raw Prometheus
+  exposition view.
+
 ### Added — P3.1: Deployment lifecycle/status/logs Control Panel
 - `DeploymentsPage`: per-agent deployment history with intent-only deploy,
   stop/restart/rollback lifecycle actions, live observed-status refresh, and
