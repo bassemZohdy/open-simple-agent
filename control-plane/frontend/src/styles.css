@@ -28,7 +28,11 @@ button { cursor: pointer; }
 .sidebar { padding: 1rem; border-right: 1px solid #d8dee4; background: #fff; }
 .nav-link { display: block; padding: .65rem .75rem; margin-bottom: .2rem; border-radius: .55rem; color: #344054; text-decoration: none; font-weight: 650; }
 .nav-link:hover, .nav-link.active { background: #eef4ff; color: #174ea6; }
+.agent-link { color: #174ea6; text-decoration: none; }
+.agent-link:hover { text-decoration: underline; }
 .content { padding: 2rem; max-width: 1400px; width: 100%; }
+.back-link { display: inline-block; margin-bottom: 1rem; color: #174ea6; font-weight: 700; text-decoration: none; }
+.back-link:hover { text-decoration: underline; }
 .page-heading { display: flex; justify-content: space-between; gap: 1rem; align-items: flex-start; margin-bottom: 1.25rem; }
 .page-heading h2 { font-size: 2rem; }
 .page-heading p { margin: .5rem 0 0; color: #667085; max-width: 60rem; }
@@ -39,7 +43,9 @@ button { min-height: 2.5rem; padding: .5rem .8rem; border: 1px solid #174ea6; bo
 .secondary-button { border-color: #c7d0d9; color: #344054; background: #fff; }
 .state-card { display: grid; gap: .5rem; padding: 1.25rem; background: #fff; border: 1px solid #d8dee4; border-radius: .8rem; color: #475467; }
 .error-card { border-color: #f2b8b5; background: #fff7f6; color: #8a1c13; }
+.success-card { border-color: #9bd7b2; background: #f0fbf4; color: #17653a; }
 .error-card .secondary-button { justify-self: start; }
+.inline-state { margin-bottom: 1rem; }
 .table-wrap { overflow-x: auto; border: 1px solid #d8dee4; border-radius: .8rem; background: #fff; }
 table { width: 100%; border-collapse: collapse; }
 th, td { padding: .85rem 1rem; border-bottom: 1px solid #edf0f2; text-align: left; vertical-align: top; }
@@ -61,6 +67,25 @@ td small { display: block; margin-top: .2rem; color: #667085; }
 .definition-details { margin-top: 1rem; border-top: 1px solid #edf0f2; padding-top: .8rem; }
 .definition-details summary { cursor: pointer; color: #174ea6; font-weight: 700; }
 .definition-details pre { max-height: 22rem; overflow: auto; padding: .8rem; border-radius: .55rem; background: #f6f8fa; font-size: .78rem; white-space: pre-wrap; overflow-wrap: anywhere; }
+.detail-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1rem; }
+.detail-card { min-width: 0; padding: 1.1rem; background: #fff; border: 1px solid #d8dee4; border-radius: .8rem; }
+.detail-card h3, .detail-section h3 { margin: .2rem 0 0; font-size: 1.25rem; }
+.detail-card p { color: #667085; }
+.card-heading, .section-heading, .version-card-heading { display: flex; justify-content: space-between; gap: .8rem; align-items: flex-start; }
+.action-row { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: 1rem; }
+.danger-button { border-color: #a32116; background: #a32116; }
+.confirmation { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; margin-top: 1rem; padding: .75rem; border: 1px solid #f2b8b5; border-radius: .55rem; background: #fff7f6; color: #8a1c13; }
+.confirmation span { flex: 1 1 100%; }
+.muted-text { display: block; margin-top: 1rem; color: #667085; }
+.detail-section { margin-top: 1.75rem; }
+.section-heading { margin-bottom: 1rem; }
+.version-form { margin-bottom: 1rem; }
+.version-form label { min-width: min(20rem, 100%); }
+.version-list { display: grid; gap: .75rem; }
+.version-card { padding: 1rem 1.1rem; background: #fff; border: 1px solid #d8dee4; border-radius: .8rem; }
+.version-card h4 { margin: .2rem 0 0; font-size: 1.15rem; }
+.version-card p { margin: .7rem 0 0; color: #475467; }
+.version-metadata { margin-top: .8rem; }
 
 @media (max-width: 760px) {
   .topbar { position: static; grid-template-columns: 1fr; }
@@ -77,10 +102,12 @@ td small { display: block; margin-top: .2rem; color: #667085; }
 
 @media (prefers-color-scheme: dark) {
   :root { color: #eef2f6; background: #11161c; }
-  .topbar, .sidebar, .filter-bar, .state-card, .table-wrap, .catalog-card { background: #171d24; border-color: #303844; }
+  .topbar, .sidebar, .filter-bar, .state-card, .table-wrap, .catalog-card, .detail-card, .version-card { background: #171d24; border-color: #303844; }
   .nav-link { color: #c8d1dc; }
   .nav-link:hover, .nav-link.active, .segment.active { background: #203a63; color: #fff; }
   input, select, .secondary-button, .segment { color: #eef2f6; background: #11161c; border-color: #46515e; }
   th, td, .definition-details { border-color: #29313b; }
   .definition-details pre { background: #11161c; }
+  .agent-link, .back-link { color: #9fc1ff; }
+  .confirmation { border-color: #6f2f2a; background: #291b1c; }
 }

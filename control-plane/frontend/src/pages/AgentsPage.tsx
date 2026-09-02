@@ -1,4 +1,5 @@
 import { type FormEvent, useCallback, useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 
 import { ApiError, type AgentSummary } from "../api/client";
 import { useControlPlaneClient } from "../api/useControlPlaneClient";
@@ -93,7 +94,7 @@ export function AgentsPage() {
             <tbody>
               {agents.map((agent) => (
                 <tr key={agent.agent_id}>
-                  <td><strong>{agent.name}</strong><small>{agent.description || "No description"}</small></td>
+                  <td><Link className="agent-link" to={`/agents/${encodeURIComponent(agent.agent_id)}`}><strong>{agent.name}</strong></Link><small>{agent.description || "No description"}</small></td>
                   <td><span className={`status status-${agent.status}`}>{agent.status}</span></td>
                   <td>{agent.current_version || "—"}</td>
                   <td>{agent.runtime || "—"}</td>

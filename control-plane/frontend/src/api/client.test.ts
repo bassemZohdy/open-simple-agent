@@ -40,6 +40,29 @@ describe("ControlPlaneClient", () => {
     expect(fetchMock.mock.calls[0]?.[0]).toBe("https://control.example/templates");
   });
 
+  it("loads redacted agent version history", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify([]), { status: 200, headers: { "Content-Type": "application/json" } }));
+    vi.stubGlobal("fetch", fetchMock);
+    const client = new ControlPlaneClient("https://control.example", () => null);
+
+    await client.listAgentVersions("support/agent");
+
+    expect(fetchMock.mock.calls[0]?.[0]).toBe("https://control.example/agents/support%2Fagent/versions");
+  });
+
+  it("posts lifecycle actions without putting the agent id in a query", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ agent_id: "a/1", status: "disabled" }), { status: 200, headers: { "Content-Type": "application/json" } }));
+    vi.stubGlobal("fetch", fetchMock);
+    const client = new ControlPlaneClient("https://control.example", () => null);
+
+    await client.disableAgent("a/1");
+
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("https://control.example/agents/a%2F1/disable");
+    expect(init.method).toBe("POST");
+    expect(url).not.toContain("?");
+  });
+
   it("maps the stable OSA error envelope", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({ error: { code: "authorization_denied", message: "missing permission" } }), { status: 403, headers: { "Content-Type": "application/json" } })));
     const client = new ControlPlaneClient("https://control.example", () => null);

@@ -27,7 +27,8 @@ documentation, and appropriate failure/security behavior are complete.
   further Kubernetes/Kind work is intentionally paused as described below.
 - The React/TypeScript Control Panel foundation exists with an API-authenticated
   shell, Agents list/filtering, template and resource-catalog views, readiness
-  view, and frontend CI coverage.
+  view, agent detail/version history/lifecycle actions, and frontend CI
+  coverage.
 
 ---
 
@@ -89,7 +90,7 @@ binding, resource policy, outbound credentials, and audit coverage.
   views.
   - [x] Read-only Agents list/search/status filtering.
   - [x] Control Plane readiness view.
-  - [ ] Agent detail/version history and lifecycle actions.
+  - [x] Agent detail/version history and lifecycle actions.
   - [x] Templates and resource catalogs, including tenant-scoped Model, Tool,
     Skill, MCP, and MemoryPolicy browsing/search and safe redacted-definition
     inspection.

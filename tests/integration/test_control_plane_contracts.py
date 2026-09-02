@@ -196,6 +196,26 @@ class TestLifecycleTransitions:
 
 
 class TestVersions:
+    async def test_version_history_returns_redacted_metadata(self) -> None:
+        async with await client() as c:
+            created = await _create(c, "a", definition=_definition("a"))
+            agent_id = str(created["agent_id"])
+            snapshot = await c.post(
+                f"/agents/{agent_id}/versions",
+                json={"version": "1.0.0", "change_summary": "Initial release"},
+            )
+            assert snapshot.status_code == 201
+
+            response = await c.get(f"/agents/{agent_id}/versions")
+
+            assert response.status_code == 200
+            versions = response.json()
+            assert len(versions) == 1
+            assert versions[0]["version"] == "1.0.0"
+            assert versions[0]["change_summary"] == "Initial release"
+            assert versions[0]["has_definition"] is True
+            assert "definition" not in versions[0]
+
     async def test_version_is_immutable_snapshot(self) -> None:
         async with await client() as c:
             created = await _create(c, "a", definition=_definition("a"))

@@ -28,7 +28,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, PlainTextResponse
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
-from osa.control_plane.backend.agent_catalog import AgentCatalogError, AgentRecord, AgentRecordStatus
+from osa.control_plane.backend.agent_catalog import AgentCatalogError, AgentRecord, AgentRecordStatus, AgentVersion
 from osa.control_plane.backend.audit import record_audit_event
 from osa.control_plane.backend.repositories import (
     AgentRepository,
@@ -137,6 +137,22 @@ class AgentResponse(BaseModel):
     labels: dict[str, str]
 
 
+class AgentVersionResponse(BaseModel):
+    """Redacted metadata for an immutable agent version snapshot.
+
+    Version definitions are intentionally not returned. They may contain
+    credentials or other configuration that belongs behind the deployment
+    bundle and runtime boundaries.
+    """
+
+    version_id: str
+    version: str
+    created_at: str
+    created_by: str
+    change_summary: str
+    has_definition: bool
+
+
 class AgentListResponse(BaseModel):
     """Paginated response containing agents."""
 
@@ -231,6 +247,17 @@ def _record_to_response(record: AgentRecord) -> AgentResponse:
         tenant_id=record.tenant_id,
         skills=record.skills,
         labels=record.labels,
+    )
+
+
+def _version_to_response(version: AgentVersion) -> AgentVersionResponse:
+    return AgentVersionResponse(
+        version_id=version.version_id,
+        version=version.version,
+        created_at=version.created_at.isoformat(),
+        created_by=version.created_by,
+        change_summary=version.change_summary,
+        has_definition=version.definition is not None,
     )
 
 
@@ -541,6 +568,15 @@ def configure_control_plane_app(
             raise HTTPException(status_code=404, detail=f"Agent not found: {agent_id}")
         return _record_to_response(_owned_record(record, http_request))
 
+    @app.get("/agents/{agent_id}/versions", response_model=list[AgentVersionResponse])
+    async def list_agent_versions(http_request: Request, agent_id: str) -> list[AgentVersionResponse]:
+        """List immutable version metadata without exposing definitions."""
+        record = await agent_repository.get(agent_id)
+        if record is None:
+            raise HTTPException(status_code=404, detail=f"Agent not found: {agent_id}")
+        _owned_record(record, http_request)
+        return [_version_to_response(version) for version in record.versions]
+
     @app.patch("/agents/{agent_id}", response_model=AgentResponse)
     async def update_agent(http_request: Request, agent_id: str, request: UpdateAgentRequest) -> AgentResponse:
         """Update an agent (optionally guarded by optimistic concurrency)."""
@@ -586,8 +622,6 @@ def configure_control_plane_app(
         http_request: Request, agent_id: str, request: CreateVersionRequest
     ) -> AgentResponse:
         """Snapshot the current definition as a new immutable version."""
-        from osa.control_plane.backend.agent_catalog import AgentVersion
-
         record = await agent_repository.get(agent_id)
         if record is None:
             raise HTTPException(status_code=404, detail=f"Agent not found: {agent_id}")

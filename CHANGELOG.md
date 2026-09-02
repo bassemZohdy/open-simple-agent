@@ -67,6 +67,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added — P3.1: Agent detail and lifecycle Control Panel
+- Added a typed `GET /agents/{agent_id}/versions` endpoint that exposes only
+  immutable version metadata; definitions remain outside the UI/API history
+  response because they may contain credentials or deployment-only settings.
+- Added the Control Panel agent detail route with version history, immutable
+  version snapshot creation, and guarded activate/disable/archive actions.
+- Added frontend and API contract coverage for version metadata redaction and
+  lifecycle/version interactions.
+
 ### Added — P2.2: Resource tenant ownership
 - Control Plane resource definitions now have tenant-scoped repository keys and catalog namespaces; equal model, tool, skill, MCP, and memory-policy names can exist independently across tenants.
 - Resource CRUD, import/export, deletion reference checks, agent activation, and deployment bundle export resolve only the authenticated tenant's resources.

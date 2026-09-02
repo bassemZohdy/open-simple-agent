@@ -26,7 +26,10 @@ Implemented:
 - tenant-scoped Model, Tool, Skill, MCP, and MemoryPolicy catalog browsing backed by `GET /resources/{kind}`;
 - resource name filtering and safe inspection of the already-redacted resource definition returned by the Control Plane;
 - readiness view backed by `GET /health/ready`;
+- agent detail pages with redacted version history, version snapshots, and
+  guarded activate/disable/archive lifecycle actions;
 - loading, empty, error, 401/403-safe presentation;
 - Vitest/Testing Library coverage for API auth/error behavior and the implemented management views.
 
-Agent details/versioning/lifecycle, deployment lifecycle/logs, audit/metrics, authoring flows, and the invocation console remain P3.1 follow-up work.
+Deployment lifecycle/logs, audit/metrics, authoring flows, and the invocation
+console remain P3.1 follow-up work.

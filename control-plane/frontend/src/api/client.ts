@@ -36,6 +36,20 @@ export interface AgentListResponse {
   offset: number;
 }
 
+export interface AgentVersionSummary {
+  version_id: string;
+  version: string;
+  created_at: string;
+  created_by: string;
+  change_summary: string;
+  has_definition: boolean;
+}
+
+export interface CreateAgentVersionRequest {
+  version: string;
+  change_summary?: string;
+}
+
 export interface HealthResponse {
   status: string;
   [key: string]: unknown;
@@ -93,6 +107,34 @@ export class ControlPlaneClient {
     return this.request<AgentListResponse>(`/agents${query}`);
   }
 
+  async getAgent(agentId: string): Promise<AgentSummary> {
+    return this.request<AgentSummary>(this.agentPath(agentId));
+  }
+
+  async listAgentVersions(agentId: string): Promise<AgentVersionSummary[]> {
+    return this.request<AgentVersionSummary[]>(`${this.agentPath(agentId)}/versions`);
+  }
+
+  async createAgentVersion(agentId: string, request: CreateAgentVersionRequest): Promise<AgentSummary> {
+    return this.request<AgentSummary>(`${this.agentPath(agentId)}/versions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request),
+    });
+  }
+
+  async activateAgent(agentId: string): Promise<AgentSummary> {
+    return this.transitionAgent(agentId, "activate");
+  }
+
+  async disableAgent(agentId: string): Promise<AgentSummary> {
+    return this.transitionAgent(agentId, "disable");
+  }
+
+  async archiveAgent(agentId: string): Promise<AgentSummary> {
+    return this.transitionAgent(agentId, "archive");
+  }
+
   async listTemplates(): Promise<TemplateSummary[]> {
     return this.request<TemplateSummary[]>("/templates");
   }
@@ -108,14 +150,26 @@ export class ControlPlaneClient {
     return this.request<HealthResponse>("/health/ready");
   }
 
-  private async request<T>(path: string): Promise<T> {
-    const headers = new Headers({ Accept: "application/json" });
+  private agentPath(agentId: string): string {
+    return `/agents/${encodeURIComponent(agentId)}`;
+  }
+
+  private async transitionAgent(agentId: string, action: "activate" | "disable" | "archive"): Promise<AgentSummary> {
+    return this.request<AgentSummary>(`${this.agentPath(agentId)}/${action}`, { method: "POST" });
+  }
+
+  private async request<T>(path: string, init: RequestInit = {}): Promise<T> {
+    const headers = new Headers(init.headers);
+    headers.set("Accept", "application/json");
+    if (init.body !== undefined && init.body !== null) {
+      headers.set("Content-Type", "application/json");
+    }
     const token = this.getToken();
     if (token) {
       headers.set("Authorization", `Bearer ${token}`);
     }
 
-    const response = await fetch(`${this.baseUrl}${path}`, { headers });
+    const response = await fetch(`${this.baseUrl}${path}`, { ...init, headers });
     if (!response.ok) {
       let body: ApiErrorBody = {};
       try {

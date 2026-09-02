@@ -22,6 +22,10 @@ htmlcov/
 
 # Type checking
 .mypy_cache/
+*.tsbuildinfo
+
+# Frontend dependencies
+node_modules/
 
 # Linting
 .ruff_cache/

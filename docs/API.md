@@ -27,6 +27,7 @@ running.
 | `POST` | `/agents` | Create a draft agent record from a built-in template, an inline definition, or neither (explicit draft placeholder) |
 | `GET` | `/agents` | List records; filters (`q`, `status`, `skill`, `runtime`) combine with AND; results are sorted and paginated |
 | `GET` | `/agents/{agent_id}` | Get one record |
+| `GET` | `/agents/{agent_id}/versions` | List immutable version metadata without returning definitions |
 | `PATCH` | `/agents/{agent_id}` | Replace selected record fields; optional `expected_version` for optimistic concurrency |
 | `POST` | `/agents/{agent_id}/versions` | Snapshot the current definition as a new immutable version |
 | `POST` | `/agents/{agent_id}/activate` | Transition to `active` after validating the definition and its resource references |
@@ -83,6 +84,12 @@ model, tool, skill, MCP, and memory-policy references resolve in the resource
 catalogs (422 otherwise).
 
 ### Versions
+
+`GET /agents/{agent_id}/versions` returns the agent's immutable version history
+in creation order. Each entry includes its identifier, version label, creation
+metadata, change summary, and whether a definition snapshot exists. Definition
+contents are never returned by this endpoint because they may contain
+credentials or other deployment-only configuration.
 
 `POST /agents/{agent_id}/versions` takes a JSON body:
 
