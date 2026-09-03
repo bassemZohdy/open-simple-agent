@@ -1,5 +1,16 @@
 # Changelog
 
+### Added — P2.2: Enterprise identity lifecycle semantics (ADR-007)
+- ADR-007 defines claim-driven lifecycle semantics with the IdP as lifecycle
+  authority: provisioning/deprovisioning expectations, disabled identities,
+  role/group synchronization, service-account lifecycle, the permission
+  revocation bound (token lifetime; unknown-`kid` JWKS refresh is immediate),
+  and stale-token behavior. The external policy engine stays deferred with an
+  explicit revisit trigger.
+- The shared JWT/introspection validation path now rejects tokens carrying an
+  `active` claim that is not boolean `true`; operator guidance added to the
+  security guide.
+
 ### Added — P3.1: A2A invocation test console
 - `InvocationPage` at `/console`: registered external agents listed with
   card/version, URL, and health status; message + timeout invocation through

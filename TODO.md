@@ -63,19 +63,25 @@ reprioritized.
 
 ## P2.2 Enterprise identity lifecycle
 
-The built-in authorization baseline is complete: OIDC/JWT and opaque-token
-validation, role/permission/scope mapping, tenant ownership, runtime identity
-binding, resource policy, outbound credentials, and audit coverage.
+The enterprise identity lifecycle semantics are defined in ADR-007
+(`docs/adrs/007-enterprise-identity-lifecycle.md`): authorization remains
+**claim-driven** with the IdP as the lifecycle authority — no external policy
+engine and no OSA-side identity store. The shared validation path rejects
+tokens carrying an `active` claim that is not `true`; opaque tokens gain live
+disablement through RFC 7662 introspection.
 
-- [ ] Define enterprise identity lifecycle semantics beyond the built-in
-  baseline: provisioning/deprovisioning expectations, disabled identities,
-  role/group synchronization, service-account lifecycle, permission revocation,
-  and stale-token behavior.
-- [ ] Decide whether enterprise authorization remains claim-driven or requires
-  an external policy/identity integration before implementing provider-specific
-  behavior.
-- [ ] Add integration/contract tests once the enterprise identity source and
-  lifecycle semantics are selected.
+- [x] Define enterprise identity lifecycle semantics: provisioning/
+  deprovisioning expectations, disabled identities, role/group
+  synchronization, service-account lifecycle, permission revocation bound,
+  and stale-token behavior (ADR-007).
+- [x] Decide whether enterprise authorization remains claim-driven or requires
+  an external policy/identity integration (claim-driven; the external policy
+  engine stays a deferred item with an explicit revisit trigger).
+- [x] Reject tokens whose `active` claim is present but not `true` in the
+  shared JWT/introspection validation path.
+- [ ] Add integration/contract tests once a concrete enterprise identity
+  source is selected, covering introspection liveness, key rotation, and
+  role-change propagation.
 
 ---
 
@@ -177,7 +183,7 @@ Remaining release work:
    is available.
 3. Complete the remaining P3.3 registry/rollback/first-release decisions when a
    release is intentionally scheduled.
-4. Define P2.2 enterprise identity lifecycle semantics before adding any
-   provider-specific enterprise identity integration.
+4. P2.2 lifecycle semantics are defined (ADR-007); add integration/contract
+   tests when a concrete enterprise identity source is selected.
 5. Keep all Kubernetes/Kind/OpenShift follow-up pending until explicitly
    resumed.

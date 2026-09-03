@@ -25,6 +25,24 @@ expiry, and scopes; opaque tokens are introspected. A2A JSON-RPC and the
 Agent Card use the same boundary, and protected Agent Cards advertise the
 required security scheme.
 
+## Identity lifecycle
+
+OSA keeps no identity store; your IdP is the lifecycle authority (ADR-007,
+claim-driven). Practical expectations:
+
+- **Disabled identities**: tokens carrying an `active` claim set to anything
+  other than boolean `true` are rejected. Omitting the claim disables the
+  check. For immediate revocation of JWTs, keep access tokens short-lived
+  (5–15 minutes recommended) or use introspected opaque tokens, whose
+  `active: false` introspection response is enforced live.
+- **Role/group changes**: re-read from claims on every request; they apply
+  when the IdP issues a fresh token. OSA runs no sync jobs.
+- **Key rotation**: an unknown signing-key id triggers an immediate JWKS
+  refresh; other key changes propagate within
+  `OSA_AUTH_JWKS_CACHE_SECONDS` (default 300).
+- **Service accounts** are IdP-issued clients whose tokens carry the same
+  role/scope/tenant claims as user tokens and are validated identically.
+
 ## Roles and permissions
 
 With `OSA_AUTH_ENFORCE_PERMISSIONS=true`, role/permission/scope claims map to

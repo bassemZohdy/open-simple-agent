@@ -509,6 +509,10 @@ def _principal_from_claims(settings: AuthSettings, claims: Mapping[str, Any]) ->
     issuer = claims.get("iss")
     if not isinstance(subject, str) or not subject or not isinstance(issuer, str) or not issuer:
         raise AuthenticationError("The bearer token identity claims are invalid")
+    # ADR-007: an explicit non-true `active` claim marks the identity disabled;
+    # absence of the claim carries no provisioning information.
+    if "active" in claims and claims["active"] is not True:
+        raise AuthenticationError("The bearer token identity is inactive")
     if issuer != settings.issuer:
         raise AuthenticationError("The bearer token issuer is invalid")
     audience = _audience_values(claims.get("aud"))

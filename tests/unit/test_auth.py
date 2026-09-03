@@ -350,6 +350,34 @@ async def test_jwt_extracts_common_roles_permissions_and_tenant_claims(
     assert principal.tenant_id == "tenant-1"
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("claim", "description"),
+    [
+        (False, "explicit false"),
+        ("true", "non-boolean value"),
+    ],
+)
+async def test_inactive_identity_claim_is_rejected(
+    signing_material: tuple[rsa.RSAPrivateKey, dict[str, str]], claim: object, description: str
+) -> None:
+    private_key, jwk = signing_material
+    authenticator = _authenticator(_settings(), jwk)
+
+    with pytest.raises(AuthenticationError, match="inactive"):
+        await authenticator.authenticate(f"Bearer {_token(private_key, active=claim)}")
+
+
+@pytest.mark.asyncio
+async def test_absent_active_claim_is_accepted(
+    signing_material: tuple[rsa.RSAPrivateKey, dict[str, str]],
+) -> None:
+    private_key, jwk = signing_material
+    principal = await _authenticator(_settings(), jwk).authenticate(f"Bearer {_token(private_key)}")
+
+    assert principal.subject == "user-123"
+
+
 def test_authorization_policy_expands_roles_and_explicit_permissions() -> None:
     policy = AuthorizationPolicy(enabled=True)
     viewer = AuthenticatedPrincipal(
