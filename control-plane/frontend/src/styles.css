@@ -91,6 +91,9 @@ td small { display: block; margin-top: .2rem; color: #667085; }
 .version-card h4 { margin: .2rem 0 0; font-size: 1.15rem; }
 .version-card p { margin: .7rem 0 0; color: #475467; }
 .version-metadata { margin-top: .8rem; }
+.skip-link { position: absolute; left: -100vw; top: 0; z-index: 20; background: #1c64f2; color: #fff; padding: .5rem 1rem; border-radius: 0 0 .45rem 0; font-weight: 600; }
+.skip-link:focus { left: 0; }
+.content:focus { outline: none; }
 
 @media (max-width: 760px) {
   .topbar { position: static; grid-template-columns: 1fr; }

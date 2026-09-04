@@ -1,5 +1,5 @@
-import { type FormEvent, type ReactNode, useState } from "react";
-import { NavLink } from "react-router-dom";
+import { type FormEvent, type ReactNode, useEffect, useRef, useState } from "react";
+import { NavLink, useLocation } from "react-router-dom";
 
 import { useAuth } from "../auth/AuthContext";
 
@@ -17,6 +17,12 @@ export function AppShell({ children }: { children: ReactNode }) {
   const { token, setToken, clearToken } = useAuth();
   const [draftToken, setDraftToken] = useState("");
   const [showTokenForm, setShowTokenForm] = useState(false);
+  const mainRef = useRef<HTMLElement>(null);
+  const { pathname } = useLocation();
+
+  useEffect(() => {
+    mainRef.current?.focus({ preventScroll: true });
+  }, [pathname]);
 
   function submitToken(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -28,6 +34,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   return (
     <div className="app-shell">
+      <a className="skip-link" href="#main-content">Skip to content</a>
       <header className="topbar">
         <div>
           <span className="eyebrow">Open Simple Agent</span>
@@ -73,7 +80,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             </NavLink>
           ))}
         </nav>
-        <main className="content" id="main-content">
+        <main ref={mainRef} className="content" id="main-content" tabIndex={-1}>
           {children}
         </main>
       </div>

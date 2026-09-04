@@ -40,6 +40,7 @@ Implemented:
 - A2A invocation test console: external agents with health status, message +
   timeout invocation, and inline response/error rendering backed by
   `POST /external-agents/{id}/invoke`;
+- skip-to-content link and route-change focus management for keyboard users;
 - loading, empty, error, 401/403-safe presentation;
 - Vitest/Testing Library coverage for API auth/error behavior and the implemented management views.
 

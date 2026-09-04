@@ -122,7 +122,9 @@ disablement through RFC 7662 introspection.
   in the deployment API, add Control Plane proxy routes, or another mechanism.
 - [ ] Complete accessibility, localization, and responsive behavior coverage.
   Responsive layout plus loading/empty/error states are implemented in the
-  foundation slice; broader accessibility/localization acceptance remains open.
+  foundation slice, and keyboard accessibility now includes a skip-to-content
+  link plus route-change focus management (tested). Broader
+  accessibility/localization acceptance remains open.
 
 ## P3.3 Packaging, CI/CD, and release
 

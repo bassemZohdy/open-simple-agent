@@ -1,5 +1,10 @@
 # Changelog
 
+### Added — P3.1: Control Panel keyboard accessibility
+- Skip-to-content link targeting the main content region, and focus moves to
+  the content region on every route change so keyboard and screen-reader
+  navigation starts at the page body; covered by AppShell tests.
+
 ### Added — P2.2: Enterprise identity lifecycle semantics (ADR-007)
 - ADR-007 defines claim-driven lifecycle semantics with the IdP as lifecycle
   authority: provisioning/deprovisioning expectations, disabled identities,
