@@ -1,5 +1,13 @@
 # Changelog
 
+### Added — P1.5/P3.1: Deployment invoke URLs (ADR-008)
+- Deployment records expose an optional public runtime endpoint synthesized
+  server-side from `OSA_DEPLOY_INVOKE_URL_TEMPLATE` (placeholders
+  `{deployment_id}`, `{agent_id}`, `{version}`, `{port}`); `null` when unset.
+  Persisted via migration 0007 and shown in the Control Panel deployment
+  detail view. ADR-008 records the decision: no Control Plane proxy —
+  invocation traffic stays direct to runtimes.
+
 ### Added — P3.1: Control Panel keyboard accessibility
 - Skip-to-content link targeting the main content region, and focus moves to
   the content region on every route change so keyboard and screen-reader

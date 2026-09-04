@@ -117,9 +117,13 @@ disablement through RFC 7662 introspection.
 - [x] Add an A2A test console: external agents listed with card/version and
   health status, message + timeout invocation through
   `POST /external-agents/{id}/invoke`, and inline response/error rendering.
-- [ ] Add managed-agent invocation console capabilities (sessions, streaming,
-  tool traces) once the runtime-access design is decided: expose runtime URLs
-  in the deployment API, add Control Plane proxy routes, or another mechanism.
+- [x] Decide the managed-agent runtime-access design (ADR-008): deployment
+  records expose an optional operator-configured public runtime URL
+  (`OSA_DEPLOY_INVOKE_URL_TEMPLATE`, synthesized server-side, migration 0007);
+  the Control Plane still carries no invocation traffic.
+- [ ] Add managed-agent invocation from the Control Panel (sessions,
+  streaming, tool traces) using the recorded runtime endpoint — requires the
+  runtime to allow browser cross-origin calls or a future proxy route.
 - [ ] Complete accessibility, localization, and responsive behavior coverage.
   Responsive layout plus loading/empty/error states are implemented in the
   foundation slice, and keyboard accessibility now includes a skip-to-content
@@ -178,9 +182,9 @@ Remaining release work:
 
 # Priority order while Kubernetes is paused
 
-1. Decide the managed-agent runtime-access design (deployment-API runtime URL
-   exposure vs Control Plane proxy routes) and build the invocation console's
-   sessions/streaming/tool-trace capabilities on it.
+1. Enable managed-agent invocation from the Panel on top of ADR-008's
+   recorded runtime endpoints (runtime CORS or a proxy route), bringing
+   sessions, streaming, and tool traces to the console.
 2. Implement the opt-in live-provider acceptance path when a suitable CI secret
    is available.
 3. Complete the remaining P3.3 registry/rollback/first-release decisions when a

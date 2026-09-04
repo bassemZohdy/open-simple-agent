@@ -72,6 +72,7 @@ deployments_table = Table(
     Column("version", Text, nullable=False, server_default=""),
     Column("status", Text, nullable=False),
     Column("detail", Text, nullable=False, server_default=""),
+    Column("invoke_url", Text, nullable=True),
     Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
     Column("updated_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
 )

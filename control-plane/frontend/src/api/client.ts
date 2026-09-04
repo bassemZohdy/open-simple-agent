@@ -67,6 +67,7 @@ export interface DeploymentSummary {
   version: string;
   status: DeploymentStatus;
   detail: string;
+  invoke_url: string | null;
 }
 
 export interface DeploymentLogsResponse {

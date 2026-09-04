@@ -31,6 +31,7 @@ const deployment = {
   version: "1.0.0",
   status: "running",
   detail: "pid 4242",
+  invoke_url: "https://agents.example.test/a-1/dep-1",
 };
 
 let calls: Array<{ url: string; method: string; body: string | null }>;
@@ -122,6 +123,14 @@ describe("DeploymentsPage", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Stop" }));
     expect(await screen.findAllByText("stopped").then((elements) => elements.length)).toBeGreaterThan(0);
     expect(calls.some((call) => call.method === "POST" && call.url.endsWith("/deployments/dep-1/stop"))).toBe(true);
+  });
+
+  it("shows the runtime endpoint link when the deployment publishes one", async () => {
+    renderPage();
+    await selectAgent();
+    fireEvent.click(screen.getByRole("button", { name: "Manage" }));
+    const link = await screen.findByRole("link", { name: "https://agents.example.test/a-1/dep-1" });
+    expect(link).toHaveAttribute("href", "https://agents.example.test/a-1/dep-1");
   });
 
   it("loads captured logs into the output panel", async () => {

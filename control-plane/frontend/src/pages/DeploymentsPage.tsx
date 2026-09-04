@@ -289,6 +289,7 @@ export function DeploymentsPage() {
                   <div><dt>Version</dt><dd>{selected.version}</dd></div>
                   <div><dt>Tenant</dt><dd>{selected.tenant_id ?? "Shared scope"}</dd></div>
                   <div><dt>Detail</dt><dd>{selected.detail || "—"}</dd></div>
+                  <div><dt>Runtime endpoint</dt><dd>{selected.invoke_url ? <a className="agent-link" href={selected.invoke_url}>{selected.invoke_url}</a> : "Not configured"}</dd></div>
                 </dl>
                 <div className="action-row">
                   <button type="button" disabled={busyAction !== null} onClick={() => void runLifecycle("status", selected.deployment_id)}>

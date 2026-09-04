@@ -221,6 +221,10 @@ server-owned command template (`OSA_DEPLOY_COMMAND_TEMPLATE`, default
 `osa-runtime --config {bundle_path} --port {port}`). **Requests never carry
 process commands** — unknown fields are rejected — and readiness is probed
 against the launched runtime before the deployment reports `running`.
+Deployment responses also carry `invoke_url`: an optional public runtime
+endpoint synthesized from `OSA_DEPLOY_INVOKE_URL_TEMPLATE` (placeholders
+`{deployment_id}`, `{agent_id}`, `{version}`, `{port}`; ADR-008), or `null`
+when the template is unset.
 
 | Method | Path | Behavior |
 |---|---|---|

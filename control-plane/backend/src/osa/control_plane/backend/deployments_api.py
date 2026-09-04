@@ -50,6 +50,7 @@ class DeploymentResponse(BaseModel):
     version: str
     status: str
     detail: str
+    invoke_url: str | None = None
 
 
 class DeploymentLogsResponse(BaseModel):
@@ -68,6 +69,7 @@ def _response(record: Any) -> DeploymentResponse:
         version=record.version,
         status=record.status,
         detail=record.detail,
+        invoke_url=record.invoke_url,
     )
 
 

@@ -656,6 +656,8 @@ class DeploymentRecord:
     version: str = ""
     status: str = "starting"
     detail: str = ""
+    #: Operator-configured public invoke endpoint (ADR-008); unset by default.
+    invoke_url: str | None = None
     created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     updated_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
@@ -718,6 +720,7 @@ class PostgresDeploymentRecordRepository(DeploymentRecordRepository):
                     version=record.version,
                     status=record.status,
                     detail=record.detail,
+                    invoke_url=record.invoke_url,
                     created_at=record.created_at,
                     updated_at=record.updated_at,
                 )
@@ -726,6 +729,7 @@ class PostgresDeploymentRecordRepository(DeploymentRecordRepository):
                     set_={
                         "status": record.status,
                         "detail": record.detail,
+                        "invoke_url": record.invoke_url,
                         "updated_at": record.updated_at,
                     },
                 )
@@ -751,6 +755,7 @@ class PostgresDeploymentRecordRepository(DeploymentRecordRepository):
             version=row.version,
             status=row.status,
             detail=row.detail,
+            invoke_url=row.invoke_url,
             created_at=row.created_at,
             updated_at=row.updated_at,
         )
@@ -776,6 +781,7 @@ class PostgresDeploymentRecordRepository(DeploymentRecordRepository):
                 version=row.version,
                 status=row.status,
                 detail=row.detail,
+                invoke_url=row.invoke_url,
                 created_at=row.created_at,
                 updated_at=row.updated_at,
             )

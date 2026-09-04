@@ -43,6 +43,7 @@ API_VERSION = "osa/v1alpha1"
 DEFAULT_COMMAND_TEMPLATE = "osa-runtime --config {bundle_path} --port {port}"
 DEPLOY_COMMAND_TEMPLATE_ENV_VAR = "OSA_DEPLOY_COMMAND_TEMPLATE"
 DEPLOY_ROOT_ENV_VAR = "OSA_DEPLOY_ROOT"
+INVOKE_URL_TEMPLATE_ENV_VAR = "OSA_DEPLOY_INVOKE_URL_TEMPLATE"
 
 
 @dataclass
@@ -70,6 +71,22 @@ def command_template() -> str:
     import os
 
     return os.environ.get(DEPLOY_COMMAND_TEMPLATE_ENV_VAR, DEFAULT_COMMAND_TEMPLATE)
+
+
+def public_invoke_url(deployment_id: str, agent_id: str, version: str, port: int) -> str | None:
+    """Synthesize the operator-configured public invoke URL (ADR-008).
+
+    Templates come only from the ``OSA_DEPLOY_INVOKE_URL_TEMPLATE``
+    environment variable — never from API input. Placeholders:
+    ``{deployment_id}``, ``{agent_id}``, ``{version}``, ``{port}``. Unset
+    means the deployment publishes no public endpoint.
+    """
+    import os
+
+    template = os.environ.get(INVOKE_URL_TEMPLATE_ENV_VAR, "")
+    if not template:
+        return None
+    return template.format(deployment_id=deployment_id, agent_id=agent_id, version=version, port=port)
 
 
 def deploy_root() -> Path:
@@ -134,6 +151,7 @@ class DeploymentService:
             version=record.current_version,
             status=deployment.status.value,
             detail=deployment.error or "",
+            invoke_url=public_invoke_url(deployment.deployment_id, agent_id, record.current_version, port),
         )
         await self._records.upsert(record_row)
         return record_row

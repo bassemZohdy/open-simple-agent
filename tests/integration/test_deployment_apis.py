@@ -114,6 +114,33 @@ class TestDeployContract:
             assert body["status"] == "running"
             assert body["deployment_id"] == "dep-1"
 
+    async def test_deploy_without_invoke_url_template_omits_invoke_url(
+        self, provider: ScriptedProvider, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.delenv("OSA_DEPLOY_INVOKE_URL_TEMPLATE", raising=False)
+        async with await client() as c:
+            agent_id = await _active_agent(c)
+            response = await c.post(f"/agents/{agent_id}/deploy", json={})
+            assert response.status_code == 201
+            assert response.json()["invoke_url"] is None
+
+    async def test_deploy_synthesizes_invoke_url_from_server_template(
+        self, provider: ScriptedProvider, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv(
+            "OSA_DEPLOY_INVOKE_URL_TEMPLATE",
+            "https://agents.example.test/{agent_id}/{deployment_id}",
+        )
+        async with await client() as c:
+            agent_id = await _active_agent(c)
+            response = await c.post(f"/agents/{agent_id}/deploy", json={})
+            assert response.status_code == 201
+            body = response.json()
+            assert body["invoke_url"] == f"https://agents.example.test/{agent_id}/dep-1"
+            # The synthesized endpoint persists with the record.
+            status = await c.get(f"/deployments/dep-1")
+            assert status.json()["invoke_url"] == body["invoke_url"]
+
             # The command is synthesized server-side from the record.
             assert len(provider.requests) == 1
             spec = provider.requests[0]
