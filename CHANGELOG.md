@@ -1,5 +1,13 @@
 # Changelog
 
+### Added — P3.3: Image channel rollback automation
+- `Rollback image channel` workflow (manual dispatch from `main`): re-points
+  the mutable `latest` tag at any previously published digest with
+  `docker buildx imagetools create` — no rebuild, immutable version tags are
+  untouchable, and digest-bound Cosign signatures/attestations carry over.
+  Policy validation and command planning live in
+  `scripts/rollback_release.py` with unit tests.
+
 ### Added — P1.5/P3.1: Deployment invoke URLs (ADR-008)
 - Deployment records expose an optional public runtime endpoint synthesized
   server-side from `OSA_DEPLOY_INVOKE_URL_TEMPLATE` (placeholders

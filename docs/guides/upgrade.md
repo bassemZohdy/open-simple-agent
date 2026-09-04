@@ -58,7 +58,11 @@ startup.
 
 ## Downgrading
 
-- Images: roll back to the previous image tag.
+- Images: roll back to the previous image tag. To move the mutable `latest`
+  channel back to an older digest without rebuilding, dispatch the
+  `Rollback image channel` workflow from `main` with the component and
+  `sha256:` digest — immutable version tags are never rewritten and the
+  digest-bound signatures and attestations stay valid.
 - Schema: only if the release notes confirm the newer migration is
   compatible with the older code (additive migrations are; destructive ones
   are not). Otherwise restore the database backup.

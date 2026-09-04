@@ -157,9 +157,12 @@ Remaining release work:
 - [ ] Decide whether Python distributions also need publication to PyPI or
   another package registry; GitHub Release assets are the implemented
   distribution path today.
-- [ ] Automate rollback of mutable release/deployment channel pointers to a
-  previously published immutable version/digest. Never rebuild or overwrite an
-  existing version tag.
+- [x] Automate rollback of mutable release/deployment channel pointers to a
+  previously published immutable digest: the `Rollback image channel` workflow
+  re-tags `latest` via `docker buildx imagetools create` after policy
+  validation (`scripts/rollback_release.py`, unit-tested). Immutable version
+  tags are never rebuilt or overwritten; signatures and attestations survive
+  because they are digest-bound.
 - [ ] Perform the first automated public release only after intentionally
   selecting/bumping the release version and moving the desired changelog
   entries out of `Unreleased`.
