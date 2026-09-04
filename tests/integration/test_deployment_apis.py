@@ -138,7 +138,7 @@ class TestDeployContract:
             body = response.json()
             assert body["invoke_url"] == f"https://agents.example.test/{agent_id}/dep-1"
             # The synthesized endpoint persists with the record.
-            status = await c.get(f"/deployments/dep-1")
+            status = await c.get("/deployments/dep-1")
             assert status.json()["invoke_url"] == body["invoke_url"]
 
             # The command is synthesized server-side from the record.
