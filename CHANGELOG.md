@@ -1,5 +1,23 @@
 # Changelog
 
+### Added — P3.1: Managed-agent runtime invocation from Control Panel
+- Runtime CORS support: opt-in `OSA_RUNTIME_ALLOWED_ORIGINS` environment
+  variable adds `CORSMiddleware` to the runtime FastAPI application so browser
+  clients (e.g. the Control Panel) can call `/v1/invoke` cross-origin.
+  Preflight OPTIONS requests bypass the bearer boundary; CORS runs outermost.
+- Deployment service `OSA_DEPLOY_RUNTIME_ALLOWED_ORIGINS` is forwarded as
+  `OSA_RUNTIME_ALLOWED_ORIGINS` to launched runtime processes.
+- Control Panel `invokeRuntimeEndpoint` client method posts directly to the
+  runtime endpoint (never through the Control Plane); authentication is not
+  forwarded — runtimes behind `OSA_AUTH_MODE=require` need their own
+  credential story (see ADR-008).
+- DeploymentsPage managed invocation form: message input + "Send test message"
+  button appears on deployments that publish an `invoke_url`; response output
+  rendered inline.
+- Backend tests for CORS origin parsing, preflight behavior, actual-request
+  headers, and unconfigured behavior (`tests/unit/test_runtime_cors.py`).
+- Frontend test for managed invocation round-trip.
+
 ### Added — P3.3: Image channel rollback automation
 - `Rollback image channel` workflow (manual dispatch from `main`): re-points
   the mutable `latest` tag at any previously published digest with

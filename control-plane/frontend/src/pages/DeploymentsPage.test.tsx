@@ -58,6 +58,7 @@ function defaultRoutes(): FakeRoute[] {
     { pattern: /\/agents\/a-1\/deployments$/, respond: () => [deployment] },
     { pattern: /\/deployments\/dep-1\/logs/, respond: () => ({ deployment_id: "dep-1", lines: ["2026-09-03 boot ok", "osa.runtime listening"] }) },
     { pattern: /\/deployments\/dep-1\/stop$/, method: "POST", respond: () => ({ ...deployment, status: "stopped", detail: "" }) },
+    { pattern: /v1\/invoke$/, respond: () => ({ output: "Sunny, 22°C.", invocation_id: "inv-1", session_id: "sess-1", error: null }) },
     { pattern: /\/agents\?/, respond: () => ({ agents: [agent], total: 1, limit: 100, offset: 0 }) },
   ];
 }
@@ -131,6 +132,18 @@ describe("DeploymentsPage", () => {
     fireEvent.click(screen.getByRole("button", { name: "Manage" }));
     const link = await screen.findByRole("link", { name: "https://agents.example.test/a-1/dep-1" });
     expect(link).toHaveAttribute("href", "https://agents.example.test/a-1/dep-1");
+  });
+
+  it("sends a managed test invocation straight to the runtime endpoint", async () => {
+    renderPage();
+    await selectAgent();
+    fireEvent.click(screen.getByRole("button", { name: "Manage" }));
+    fireEvent.change(await screen.findByLabelText("Message"), { target: { value: "Say hi" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send test message" }));
+    expect(await screen.findByText("Sunny, 22°C.")).toBeInTheDocument();
+    const invoke = calls.find((call) => call.url === "https://agents.example.test/a-1/dep-1/v1/invoke");
+    expect(invoke?.method).toBe("POST");
+    expect(invoke?.body && JSON.parse(invoke.body)).toEqual({ input: "Say hi" });
   });
 
   it("loads captured logs into the output panel", async () => {

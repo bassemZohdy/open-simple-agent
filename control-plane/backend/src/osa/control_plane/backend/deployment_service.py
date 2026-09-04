@@ -44,6 +44,8 @@ DEFAULT_COMMAND_TEMPLATE = "osa-runtime --config {bundle_path} --port {port}"
 DEPLOY_COMMAND_TEMPLATE_ENV_VAR = "OSA_DEPLOY_COMMAND_TEMPLATE"
 DEPLOY_ROOT_ENV_VAR = "OSA_DEPLOY_ROOT"
 INVOKE_URL_TEMPLATE_ENV_VAR = "OSA_DEPLOY_INVOKE_URL_TEMPLATE"
+RUNTIME_CORS_ENV_VAR = "OSA_DEPLOY_RUNTIME_ALLOWED_ORIGINS"
+RUNTIME_CORS_PASSTHROUGH_ENV_VAR = "OSA_RUNTIME_ALLOWED_ORIGINS"
 
 
 @dataclass
@@ -87,6 +89,21 @@ def public_invoke_url(deployment_id: str, agent_id: str, version: str, port: int
     if not template:
         return None
     return template.format(deployment_id=deployment_id, agent_id=agent_id, version=version, port=port)
+
+
+def _runtime_env() -> dict[str, str]:
+    """Environment for the launched runtime process.
+
+    Forwards the operator-configured browser origins (ADR-008) so the
+    deployed runtime allows the Control Panel to call it cross-origin.
+    """
+    import os
+
+    env = {"OSA_ALLOW_FAKE_PROVIDER": "0"}
+    origins = os.environ.get(RUNTIME_CORS_ENV_VAR, "")
+    if origins:
+        env[RUNTIME_CORS_PASSTHROUGH_ENV_VAR] = origins
+    return env
 
 
 def deploy_root() -> Path:
@@ -138,7 +155,7 @@ class DeploymentService:
         spec = DeploymentSpec(
             agent_id=agent_id,
             command=command,
-            env={"OSA_ALLOW_FAKE_PROVIDER": "0"},
+            env=_runtime_env(),
             health_check_url=health_url,
             label=record.current_version,
         )

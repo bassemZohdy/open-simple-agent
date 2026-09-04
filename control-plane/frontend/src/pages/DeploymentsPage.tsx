@@ -11,7 +11,7 @@ import { useControlPlaneClient } from "../api/useControlPlaneClient";
 
 const logTailOptions = [100, 200, 500, 1000] as const;
 
-type LifecycleAction = "deploy" | "stop" | "restart" | "rollback" | "status" | "logs";
+type LifecycleAction = "deploy" | "stop" | "restart" | "rollback" | "status" | "logs" | "invoke-managed";
 
 function errorMessage(caught: unknown, fallback: string): string {
   return caught instanceof ApiError ? `${caught.code}: ${caught.message}` : fallback;
@@ -45,6 +45,8 @@ export function DeploymentsPage() {
   const [logs, setLogs] = useState<string[] | null>(null);
   const [logTail, setLogTail] = useState<number>(200);
   const [rollbackVersion, setRollbackVersion] = useState("");
+  const [managedMessage, setManagedMessage] = useState("");
+  const [managedOutput, setManagedOutput] = useState<string | null>(null);
   const [busyAction, setBusyAction] = useState<LifecycleAction | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -86,6 +88,8 @@ export function DeploymentsPage() {
   useEffect(() => {
     setSelected(null);
     setLogs(null);
+    setManagedMessage("");
+    setManagedOutput(null);
     setMessage(null);
     setActionError(null);
     if (selectedAgentId) {
@@ -147,6 +151,26 @@ export function DeploymentsPage() {
     } catch (caught) {
       setActionError(errorMessage(caught, "Unable to load deployment logs"));
       setLogs(null);
+    } finally {
+      setBusyAction(null);
+    }
+  }
+
+  async function submitManagedInvoke(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!selected?.invoke_url) return;
+    const message = managedMessage.trim();
+    if (!message) {
+      setActionError("A message is required");
+      return;
+    }
+    setBusyAction("invoke-managed");
+    setActionError(null);
+    try {
+      const result = await client.invokeRuntimeEndpoint(selected.invoke_url, message);
+      setManagedOutput(result.error ? `${result.output}\n${result.error}`.trim() : result.output);
+    } catch (caught) {
+      setActionError(errorMessage(caught, "Unable to reach the runtime endpoint"));
     } finally {
       setBusyAction(null);
     }
@@ -259,6 +283,8 @@ export function DeploymentsPage() {
                             onClick={() => {
                               setSelected(entry);
                               setLogs(null);
+                              setManagedMessage("");
+                              setManagedOutput(null);
                               setMessage(null);
                               setActionError(null);
                             }}
@@ -319,6 +345,37 @@ export function DeploymentsPage() {
                   </label>
                 </form>
                 <p className="muted-text">Rollback relaunches this deployment from an earlier immutable version snapshot.</p>
+                {selected.invoke_url ? (
+                  <>
+                    <div className="section-heading">
+                      <div>
+                        <span className="eyebrow">Managed invocation</span>
+                        <h4>Test message</h4>
+                      </div>
+                    </div>
+                    <form className="filter-bar version-form" onSubmit={(event) => void submitManagedInvoke(event)}>
+                      <label htmlFor="managed-invoke-message">Message
+                        <input
+                          id="managed-invoke-message"
+                          value={managedMessage}
+                          onChange={(event) => setManagedMessage(event.target.value)}
+                          placeholder="Ask the deployed agent something"
+                          disabled={busyAction !== null}
+                        />
+                      </label>
+                      <button type="submit" disabled={busyAction !== null}>
+                        {busyAction === "invoke-managed" ? "Invoking…" : "Send test message"}
+                      </button>
+                    </form>
+                    {managedOutput !== null ? (
+                      <pre className="logs-view" aria-label="Managed invocation output">{managedOutput}</pre>
+                    ) : null}
+                    <p className="muted-text">
+                      Sent directly to the runtime endpoint using its own authentication; the Control Plane token is
+                      never forwarded.
+                    </p>
+                  </>
+                ) : null}
               </article>
             </section>
           ) : null}

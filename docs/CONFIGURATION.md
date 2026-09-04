@@ -227,6 +227,25 @@ is encountered.
 | `OSA_AUTH_JWKS_TIMEOUT_SECONDS` | JWKS request timeout, >0 and <=30 seconds | `2.0` |
 | `OSA_AUTH_JWKS_CACHE_SECONDS` | JWKS cache lifetime, >0 and <=86400 seconds | `300` |
 
+### Browser CORS (runtime)
+
+Browser clients such as the Control Panel cannot call the runtime cross-origin
+unless the runtime explicitly allows it. Set `OSA_RUNTIME_ALLOWED_ORIGINS` to a
+comma-separated list of allowed origins to enable CORS on the runtime
+application. When set, the runtime adds `CORSMiddleware` allowing `GET` and
+`POST` from the listed origins, with `Authorization`, `Content-Type`, and
+`X-Request-ID` headers permitted and `X-Request-ID` exposed. Preflight `OPTIONS`
+requests bypass the bearer boundary.
+
+When a deployment is launched through the Control Plane,
+`OSA_DEPLOY_RUNTIME_ALLOWED_ORIGINS` is forwarded as
+`OSA_RUNTIME_ALLOWED_ORIGINS` to the runtime process.
+
+| Variable | Meaning | Default |
+|---|---|---:|
+| `OSA_RUNTIME_ALLOWED_ORIGINS` | Comma-separated browser origins allowed to call the runtime | unset (no CORS) |
+| `OSA_DEPLOY_RUNTIME_ALLOWED_ORIGINS` | Forwarded by the deployment service as `OSA_RUNTIME_ALLOWED_ORIGINS` | unset |
+
 When enabled, `OSA_AUTH_ENFORCE_PERMISSIONS` maps known routes to stable
 permissions: `agent:invoke`, `agent:read`, `agent:write`, `resource:read`,
 `resource:write`, `deployment:read`, `deployment:write`,

@@ -29,8 +29,9 @@ documentation, and appropriate failure/security behavior are complete.
   shell, Agents list/filtering, template and resource-catalog views, readiness
   view, agent detail/version history/lifecycle actions, deployment
   lifecycle/status/log views, audit/metrics views, validated agent
-  create/edit/clone flows, an A2A invocation test console, and frontend CI
-  coverage.
+  create/edit/clone flows, an A2A invocation test console, managed-agent
+  runtime invocation with direct CORS-enabled browser-to-runtime calls, and
+  frontend CI coverage.
 
 ---
 
@@ -121,9 +122,12 @@ disablement through RFC 7662 introspection.
   records expose an optional operator-configured public runtime URL
   (`OSA_DEPLOY_INVOKE_URL_TEMPLATE`, synthesized server-side, migration 0007);
   the Control Plane still carries no invocation traffic.
-- [ ] Add managed-agent invocation from the Control Panel (sessions,
-  streaming, tool traces) using the recorded runtime endpoint — requires the
-  runtime to allow browser cross-origin calls or a future proxy route.
+- [x] Add managed-agent invocation from the Control Panel (sessions,
+  streaming, tool traces) using the recorded runtime endpoint — the runtime
+  now supports opt-in browser CORS via `OSA_RUNTIME_ALLOWED_ORIGINS`, the
+  deployment service forwards configured origins to launched runtimes, and
+  the Control Panel exposes a direct test-message form on deployments that
+  publish an invoke URL (ADR-008).
 - [ ] Complete accessibility, localization, and responsive behavior coverage.
   Responsive layout plus loading/empty/error states are implemented in the
   foundation slice, and keyboard accessibility now includes a skip-to-content
@@ -185,9 +189,9 @@ Remaining release work:
 
 # Priority order while Kubernetes is paused
 
-1. Enable managed-agent invocation from the Panel on top of ADR-008's
+1. ~~Enable managed-agent invocation from the Panel on top of ADR-008's
    recorded runtime endpoints (runtime CORS or a proxy route), bringing
-   sessions, streaming, and tool traces to the console.
+   sessions, streaming, and tool traces to the console.~~ **Done.**
 2. Implement the opt-in live-provider acceptance path when a suitable CI secret
    is available.
 3. Complete the remaining P3.3 registry/rollback/first-release decisions when a

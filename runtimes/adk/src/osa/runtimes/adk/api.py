@@ -16,14 +16,16 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from importlib import metadata
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator
+    from collections.abc import AsyncIterator, Mapping
 from uuid import uuid4
 
 from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, PlainTextResponse, Response, StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -270,6 +272,20 @@ def _install_authentication(
             reset_current_principal(principal_token)
 
 
+CORS_ORIGINS_ENV_VAR = "OSA_RUNTIME_ALLOWED_ORIGINS"
+
+
+def _allowed_origins_from_env(environ: Mapping[str, str] | None = None) -> list[str]:
+    """Parse the opt-in browser origins allowed to call this runtime.
+
+    Unset or empty means no CORS support: browsers cannot call the runtime
+    cross-origin (server-to-server callers are unaffected).
+    """
+    env = os.environ if environ is None else environ
+    raw = env.get(CORS_ORIGINS_ENV_VAR, "")
+    return [origin.strip() for origin in raw.split(",") if origin.strip()]
+
+
 def configure_runtime_app(
     app: FastAPI,
     *,
@@ -288,6 +304,18 @@ def configure_runtime_app(
 
     settings = auth_settings or AuthSettings.from_env()
     _install_authentication(app, settings, authenticator, secret_resolver)
+    allowed_origins = _allowed_origins_from_env()
+    if allowed_origins:
+        # ADR-008: browser clients (e.g. the Control Panel) invoke the runtime
+        # directly at its public endpoint. Added last so CORS runs outermost
+        # and preflight OPTIONS requests bypass the bearer boundary.
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=allowed_origins,
+            allow_methods=["GET", "POST"],
+            allow_headers=["Authorization", "Content-Type", "X-Request-ID"],
+            expose_headers=["X-Request-ID"],
+        )
     if audit_sink is None:
         audit_sink = InMemoryAuditEventSink()
     app.state.audit_sink = audit_sink

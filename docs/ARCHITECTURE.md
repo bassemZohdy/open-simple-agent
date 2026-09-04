@@ -240,6 +240,13 @@ imported. The Kubernetes provider remains open in `TODO.md` and may be
 validated with Kind. OpenShift-specific provider work is intentionally
 deferred.
 
+Deployment records expose an optional public runtime invoke URL synthesized
+from `OSA_DEPLOY_INVOKE_URL_TEMPLATE` (ADR-008, migration 0007). The Control
+Plane never proxies invocation traffic — the URL is informational routing
+metadata. The deployment service forwards `OSA_DEPLOY_RUNTIME_ALLOWED_ORIGINS`
+as `OSA_RUNTIME_ALLOWED_ORIGINS` to launched runtimes so browser clients can
+call the runtime cross-origin (opt-in CORS middleware).
+
 ## A2A interoperability
 
 The runtime exposes A2A-enabled agents (ADR-005, `a2a-sdk` 1.x): the Agent

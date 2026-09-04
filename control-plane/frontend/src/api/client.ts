@@ -135,6 +135,13 @@ export interface ExternalAgentInvocation {
   output: string;
 }
 
+export interface RuntimeInvocation {
+  output: string;
+  invocation_id: string;
+  session_id: string | null;
+  error: string | null;
+}
+
 function normalizedBaseUrl(baseUrl: string): string {
   return baseUrl.replace(/\/$/, "");
 }
@@ -229,6 +236,19 @@ export class ControlPlaneClient {
     return this.request<DeploymentLogsResponse>(`${this.deploymentPath(deploymentId)}/logs${query}`);
   }
 
+  async invokeRuntimeEndpoint(invokeUrl: string, input: string): Promise<RuntimeInvocation> {
+    const url = `${normalizedBaseUrl(invokeUrl)}/v1/invoke`;
+    // The runtime endpoint is deployment-specific: the Control Plane token is
+    // never forwarded cross-origin. Runtimes behind OSA_AUTH_MODE=require
+    // need their own credential story (see ADR-008).
+    const response = await this.sendUrl(
+      url,
+      { method: "POST", body: JSON.stringify({ input }) },
+      { authenticated: false },
+    );
+    return (await response.json()) as RuntimeInvocation;
+  }
+
   async listAuditEvents(limit = 100): Promise<AuditEvent[]> {
     const query = `?limit=${encodeURIComponent(String(limit))}`;
     return this.request<AuditEvent[]>(`/audit-events${query}`);
@@ -282,27 +302,33 @@ export class ControlPlaneClient {
   }
 
   private async request<T>(path: string, init: RequestInit = {}): Promise<T> {
-    const response = await this.send(path, init);
+    const response = await this.sendUrl(`${this.baseUrl}${path}`, init);
     return (await response.json()) as T;
   }
 
   private async requestText(path: string, init: RequestInit = {}): Promise<string> {
-    const response = await this.send(path, init);
+    const response = await this.sendUrl(`${this.baseUrl}${path}`, init);
     return response.text();
   }
 
-  private async send(path: string, init: RequestInit): Promise<Response> {
+  private async sendUrl(
+    url: string,
+    init: RequestInit,
+    options: { authenticated?: boolean } = {},
+  ): Promise<Response> {
     const headers = new Headers(init.headers);
     headers.set("Accept", "application/json");
     if (init.body !== undefined && init.body !== null) {
       headers.set("Content-Type", "application/json");
     }
-    const token = this.getToken();
-    if (token) {
-      headers.set("Authorization", `Bearer ${token}`);
+    if (options.authenticated !== false) {
+      const token = this.getToken();
+      if (token) {
+        headers.set("Authorization", `Bearer ${token}`);
+      }
     }
 
-    const response = await fetch(`${this.baseUrl}${path}`, { ...init, headers });
+    const response = await fetch(url, { ...init, headers });
     if (!response.ok) {
       let body: ApiErrorBody = {};
       try {
