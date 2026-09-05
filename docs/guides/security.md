@@ -73,6 +73,12 @@ back to scope checks. Token claims bind `user_id`/`tenant_id` on invocations
   mTLS adapters via shared credential configuration.
 - API responses redact `credential_ref` to its non-secret coordinates.
 
+External-agent URLs and credential token URLs are currently operator/configured
+outbound destinations, but the application does not yet enforce an SSRF,
+private-address, DNS-rebinding, or redirect policy. Production deployments
+must restrict Control Plane egress at the network boundary until the outbound
+A2A policy task in `TODO.md` is implemented and tested.
+
 ## Policy (allow/deny independent of prompts)
 
 Definitions can carry allow/deny policy rules for model, tool, MCP, skill,

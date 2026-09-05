@@ -32,6 +32,11 @@ documentation, and appropriate failure/security behavior are complete.
   create/edit/clone flows, an A2A invocation test console, managed-agent
   runtime invocation with direct CORS-enabled browser-to-runtime calls, and
   frontend CI coverage.
+- The PostgreSQL Control Plane persistence boundary currently covers agents,
+  resources, deployment records, and audit events. The external-agent registry
+  is still process-local, and the local deployment provider's process state is
+  not restart- or replica-safe; both boundaries are open in the review findings
+  below.
 
 ---
 
@@ -578,6 +583,71 @@ Every item below was independently confirmed by reading the current source
   implement a replica-safe capacity contract before treating the services as
   internet-facing without an external gateway or mesh.
 
+## Full-project contract and security review — 2026-09-05
+
+The following gaps were confirmed against the current implementation and are
+not duplicates of the pending storage, Kubernetes, A2A task-state, or rate
+limit work above.
+
+### Fixes
+
+- [ ] BF13 External A2A agent records are always process-local: `create_control_plane_app`
+  installs a new `ExternalAgentCatalog` even when PostgreSQL is configured, and
+  no external-agent table/repository exists. Failure: a restart loses registered
+  endpoints and credentials, while two replicas have different registries and
+  health state. Add a tenant-scoped durable repository and migration, persist
+  only credential references (never resolved values), and cover restart,
+  replica, health-refresh, deletion, and tenant-isolation behavior.
+- [ ] BF14 Deployment bundle export is not safe for untrusted or colliding names:
+  `_export_bundle` builds paths from `record.name`, `record.current_version`, and
+  referenced resource names directly below the shared `OSA_DEPLOY_ROOT`. Failure:
+  a name containing path separators can escape the root, and equal agent/version
+  names in different tenants can overwrite or race on the same bundle while a
+  runtime is starting. Use deployment-scoped opaque directories and safe
+  filenames, enforce resolved-path containment, stage atomically, clean up
+  partial exports, and add traversal/cross-tenant/concurrency tests.
+- [ ] BF15 Deployment retries are not idempotent at the service boundary:
+  `DeploymentService.deploy` allocates a fresh port for every request, changing
+  the synthesized command so `LocalDeploymentProvider` cannot recognize the
+  same desired deployment. Failure: a client retry after a lost response starts
+  a second runtime for the same agent/version. Define an idempotency/desired
+  deployment identity, serialize concurrent requests, and test retry and
+  duplicate-request behavior for each provider.
+- [ ] BF16 Rollback does not preserve a consistent deployment identity: it does
+  not stop the existing provider deployment before launching the target, does
+  not forward `_runtime_env()`, and does not update the stored deployment ID or
+  `invoke_url` when a provider returns a fresh deployment/port. Failure: the
+  previous process can remain alive, the returned URL can point to a stopped
+  runtime, and browser invocation can lose its configured CORS origins. Make
+  rollback an atomic stop/relaunch/persist operation with failure recovery and
+  regression tests for process count, URL/port, environment, and status.
+- [ ] BF17 Local deployment lifecycle is not reconciled with persisted records:
+  `LocalDeploymentProvider` is explicitly process-local, `shutdown()` is not
+  wired into the Control Plane lifespan, and a PostgreSQL-backed restart has no
+  way to rehydrate provider processes. Failure: Control Plane shutdown can
+  orphan launched runtimes, while persisted `running` records become
+  unmanageable or return 404 after restart. Define local-provider shutdown,
+  orphan cleanup, restart/reconciliation, and multi-replica semantics (or make
+  an external provider mandatory for production), then cover graceful shutdown
+  and restart recovery.
+- [ ] BF18 Outbound A2A registration, refresh, and invocation accept arbitrary
+  user-supplied URLs and the HTTP client has no SSRF/redirect/IP-range policy.
+  Failure: an authorized caller can make the Control Plane or its credential
+  adapters probe internal services or cloud metadata endpoints. Define allowed
+  schemes/hosts, DNS-rebinding and redirect handling, private-address policy,
+  and equivalent protection for credential token URLs; add negative tests and
+  document the operator escape hatch if private A2A endpoints are required.
+
+### Improvements
+
+- [ ] BI8 Add Markdown link/anchor validation to CI. The current contract tests
+  validate documented routes and YAML examples but do not catch a renamed guide,
+  ADR, or changelog link until a reader follows it.
+- [ ] BI9 Replace the frontend wildcard route's `PlaceholderPage` copy (`Planned
+  in P3.1`) with an accessible not-found/recovery page and a route smoke test.
+  Failure: a typo or stale deep link is presented as a planned product route
+  instead of giving the user a clear recovery action.
+
 ## Review Log
 
 - 2026-09-05 — Full documentation and project-contract review: fixed runtime
@@ -673,6 +743,13 @@ Every item below was independently confirmed by reading the current source
   telemetry, conditional MCP, custom-adapter, OIDC, and bundle-API follow-ups
   from the current docs/ADRs. These remain deferred or pending their
   respective storage, transport, and product requirements.
+- 2026-09-05 — Full-project contract and security review: confirmed new open
+  work for durable external-agent records, tenant-safe/atomic bundle export,
+  service-level deployment idempotency, rollback consistency, local-provider
+  shutdown/reconciliation, outbound A2A SSRF policy, CI documentation-link
+  validation, and an honest frontend not-found route. No source behavior was
+  changed during this review; each item is recorded with its failure scenario
+  and acceptance direction above.
 - 2026-09-04 — Control Panel UI presentation review of
   `control-plane/frontend` filed 15 fixes (F1–F15) and 7 improvements
   (I1–I7). Read-only review; no source changes made.

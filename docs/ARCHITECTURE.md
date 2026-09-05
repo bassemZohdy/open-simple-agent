@@ -237,8 +237,9 @@ server-owned command template (`OSA_DEPLOY_COMMAND_TEMPLATE`) — commands are
 never accepted from API input. Intent and observed state persist through the
 `DeploymentRecordRepository` (in-memory, or PostgreSQL when the Control
 Plane uses a database); rollback relaunches an earlier immutable version
-snapshot. Deployed runtimes are external processes: no ADK internals are
-imported. The first generic Kubernetes provider slice exists; packaged
+snapshot. Record persistence does not currently reconcile the local provider's
+subprocess state across Control Plane restarts or replicas. Deployed runtimes
+are external processes: no ADK internals are imported. The first generic Kubernetes provider slice exists; packaged
 provider selection and real Kind validation remain open in `TODO.md`.
 OpenShift-specific provider work is intentionally deferred.
 
@@ -260,7 +261,9 @@ invocation through `GenericAdkAgent.invoke`, with the A2A context id mapped
 to an OSA session. The Control Plane tracks **external** A2A agents as
 records distinct from managed agents: registration fetches and validates the
 remote Agent Card, refresh re-checks health, and invocation goes through the
-A2A client with bounded timeouts and `a2a_remote_failed` error mapping.
+A2A client with bounded timeouts and `a2a_remote_failed` error mapping. The
+registry is currently process-local even when Control Plane records use
+PostgreSQL; durable registry state remains a pending follow-up.
 External records are structurally barred from deployment. Inbound A2A uses the
 same authentication and route-permission middleware as `/v1/invoke`, including
 subject/tenant propagation. Outbound remote-agent credentials use the shared

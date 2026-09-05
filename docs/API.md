@@ -2,10 +2,13 @@
 
 This document describes routes implemented on `main`. The Control Plane uses
 in-memory repositories by default and can use PostgreSQL; the runtime keeps
-session state in its configured provider and memory can use PostgreSQL. Neither
-application currently provides rate limiting. Both use the stable OSA error
-envelope `{"error": {"code", "message"}}` and share the optional JWT Bearer
-authentication boundary described below.
+session state in its configured provider and memory can use PostgreSQL. With a
+Control Plane DSN, agents, resources, deployment records, and audit events are
+shared through PostgreSQL, but external-agent records and local provider
+processes remain process-local until the pending work in `TODO.md` lands.
+Neither application currently provides rate limiting. Both use the stable OSA
+error envelope `{"error": {"code", "message"}}` and share the optional JWT
+Bearer authentication boundary described below.
 
 ## Control Plane API
 
@@ -260,8 +263,11 @@ when the template is unset.
 
 Every transition persists intent and observed state through the
 `DeploymentRecordRepository` (in-memory by default, PostgreSQL when the
-Control Plane is configured with a database). The Kubernetes provider and
-multi-host scheduling remain open (see `TODO.md`).
+Control Plane is configured with a database). This record durability does not
+make the local subprocess provider restart- or replica-safe; provider
+shutdown/reconciliation, service-level retry idempotency, and rollback
+consistency remain open. The Kubernetes provider and multi-host scheduling also
+remain open (see `TODO.md`).
 
 ### A2A and external agents (P2.1)
 
@@ -278,7 +284,8 @@ with the `osa-adk-runtime[a2a]` extra), the runtime API serves:
   session per conversation.
 
 External agents are A2A servers outside OSA, tracked as records distinct
-from managed agents (they are never deployed). Registration may include a
+from managed agents (they are never deployed). The current registry is
+process-local even when the Control Plane uses PostgreSQL. Registration may include a
 redacted credential reference, for example:
 
 ```json
@@ -311,7 +318,10 @@ Attempts to deploy an external record are rejected with 422 — external
 agents are never deployed by OSA. A2A JSON-RPC uses the same shared
 bearer/OIDC enforcement as the runtime invoke route, and protected Agent
 Cards advertise the required `osa_oidc` scheme. Outbound remote-agent calls can
-attach the configured API-key, OAuth2, or mTLS credential.
+attach the configured API-key, OAuth2, or mTLS credential. Application-level
+SSRF, private-address, DNS-rebinding, and redirect policy is not yet enforced;
+restrict egress at the deployment boundary until the corresponding security
+task in `TODO.md` is complete.
 
 ## Runtime API
 

@@ -69,9 +69,11 @@ health probe; startup failures carry the captured logs in the record detail.
 2. Run `osa-cp-migrate` against the target database.
 3. Roll images: the runtime and Control Plane images are built separately
    (`Dockerfile`, `Dockerfile.control-plane`).
-4. Rolling restarts of runtime replicas are safe: sessions live in the
-   `SessionProvider` (shared persistent provider required for cross-replica
-   continuity), and deployments can be rolled back via the rollback API.
+4. Rolling restarts of runtime replicas are safe only when sessions use a
+   shared persistent `SessionProvider`; the default in-memory provider is
+   single-process. Control Plane deployment records persist with PostgreSQL,
+   but local child-process shutdown/reconciliation and rollback consistency
+   remain pending in `TODO.md`.
 
 ## Remaining operational work
 
