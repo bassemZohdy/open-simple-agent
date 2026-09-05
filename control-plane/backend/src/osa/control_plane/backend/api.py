@@ -606,6 +606,11 @@ def configure_control_plane_app(
             for problem in _definition_problems(definition, target_name):
                 raise HTTPException(status_code=422, detail=problem)
             updates["definition"] = definition
+            # Persist derived skills alongside the definition: repositories
+            # that return a fresh copy (PostgreSQL) would otherwise keep a
+            # stale skills column while only the in-memory response looked
+            # updated.
+            updates["skills"] = [ref.ref for ref in definition.spec.skills]
 
         updated = await agent_repository.update(agent_id, expected_version=request.expected_version, **updates)
         _sync_derived_fields(updated)

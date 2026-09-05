@@ -47,6 +47,7 @@ async def engine(dsn: str) -> Any:
         await connection.execute(text("DELETE FROM osa_agents"))
         await connection.execute(text("DELETE FROM osa_resource_definitions"))
         await connection.execute(text("DELETE FROM osa_audit_events"))
+        await connection.execute(text("DELETE FROM osa_deployments"))
     await engine.dispose()
 
 
@@ -244,6 +245,41 @@ class TestDeploymentRecordPersistence:
             await fresh_engine.dispose()
 
         await first.delete("dep-survive-1")
+
+    async def test_deployment_records_are_durable_with_dsn(self, dsn: str) -> None:
+        """BF3: a DSN-configured Control Plane persists deployment intent.
+
+        Regression: ``create_control_plane_app`` declared the deployment record
+        repository but never assigned the Postgres implementation, so deployment
+        history silently stayed in-memory even with
+        ``OSA_CONTROL_PLANE_DATABASE_URL`` set.
+        """
+        from osa.control_plane.backend.repositories import (
+            DeploymentRecord,
+            PostgresDeploymentRecordRepository,
+        )
+        from osa.control_plane.backend.service import create_control_plane_app
+
+        app = create_control_plane_app(database_url=dsn)
+        service = app.state.deployment_service
+        assert isinstance(service._records, PostgresDeploymentRecordRepository)
+
+        record = DeploymentRecord(
+            deployment_id="dep-bf3",
+            agent_id="00000000-0000-0000-0000-0000000000bf",
+            agent_name="bf3-agent",
+            version="1.0.0",
+            status="running",
+        )
+        await service._records.upsert(record)
+
+        # A second app instance (fresh engine, e.g. another replica) sees it.
+        replica = create_control_plane_app(database_url=dsn)
+        seen = await replica.state.deployment_service._records.get("dep-bf3")
+        assert seen is not None
+        assert seen.agent_name == "bf3-agent"
+        assert seen.status == "running"
+        await replica.state.deployment_service._records.delete("dep-bf3")
 
 
 class TestResourceDefinitionRepository:

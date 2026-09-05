@@ -17,10 +17,21 @@ from fastapi import FastAPI, HTTPException, Query, Request
 from pydantic import BaseModel, ConfigDict, Field
 
 from osa.control_plane.backend.audit import record_audit_event
-from osa.generic_agent import EnvironmentSecretResolver, OutboundCredential, SecretResolver
+from osa.generic_agent import (
+    AuthenticatedPrincipal,
+    EnvironmentSecretResolver,
+    OutboundCredential,
+    SecretResolver,
+)
 from osa.generic_agent.a2a_client import RemoteA2aError, resolve_agent_card
 
 AGENT_TYPE_EXTERNAL = "external"
+
+
+def _request_tenant(request: Request) -> str | None:
+    """Tenant of the authenticated caller (kept local to avoid an api.py cycle)."""
+    principal = getattr(request.state, "osa_principal", None)
+    return principal.tenant_id if isinstance(principal, AuthenticatedPrincipal) else None
 
 
 @dataclass
@@ -36,13 +47,31 @@ class ExternalAgentRecord:
     last_checked_at: datetime | None = None
     credential: OutboundCredential | None = None
     agent_type: str = AGENT_TYPE_EXTERNAL
+    tenant_id: str | None = None
 
 
 class ExternalAgentCatalog:
-    """In-memory catalog of external agent records."""
+    """Tenant-scoped in-memory catalog of external agent records.
+
+    ``None`` is the shared scope used by local development and by
+    authentication-disabled applications. Each authenticated tenant resolves
+    its own namespace (like ``ResourceCatalogs.for_tenant``), so records —
+    and the outbound credentials they carry — never cross tenants.
+    """
 
     def __init__(self) -> None:
         self._records: dict[str, ExternalAgentRecord] = {}
+        self._tenant_scopes: dict[str, ExternalAgentCatalog] = {}
+
+    def for_tenant(self, tenant_id: str | None) -> ExternalAgentCatalog:
+        """Return the catalog namespace owned by ``tenant_id``."""
+        if tenant_id is None:
+            return self
+        scoped = self._tenant_scopes.get(tenant_id)
+        if scoped is None:
+            scoped = ExternalAgentCatalog()
+            self._tenant_scopes[tenant_id] = scoped
+        return scoped
 
     def register(self, record: ExternalAgentRecord) -> ExternalAgentRecord:
         if any(r.name == record.name for r in self._records.values()):
@@ -60,7 +89,7 @@ class ExternalAgentCatalog:
         return self._records.pop(external_id, None) is not None
 
     def __len__(self) -> int:
-        return len(self._records)
+        return len(self._records) + sum(len(scope) for scope in self._tenant_scopes.values())
 
 
 # --- API models ---
@@ -124,7 +153,8 @@ def configure_external_agent_routes(
         timeout_seconds: float = Query(default=10.0, gt=0, le=60),
     ) -> ExternalAgentResponse:
         """Register an external A2A agent by fetching and validating its card."""
-        catalog: ExternalAgentCatalog = app.state.external_agent_catalog
+        tenant_id = _request_tenant(http_request)
+        catalog: ExternalAgentCatalog = app.state.external_agent_catalog.for_tenant(tenant_id)
         import asyncio
 
         try:
@@ -145,6 +175,7 @@ def configure_external_agent_routes(
             status="healthy",
             last_checked_at=datetime.now(UTC),
             credential=request.credential,
+            tenant_id=tenant_id,
         )
         try:
             catalog.register(record)
@@ -160,19 +191,20 @@ def configure_external_agent_routes(
 
     @app.get("/external-agents", response_model=list[ExternalAgentResponse])
     async def list_external_agents(
+        request: Request,
         status: str | None = Query(default=None, description="Filter by health status"),
     ) -> list[ExternalAgentResponse]:
-        """List external agent records."""
-        catalog: ExternalAgentCatalog = app.state.external_agent_catalog
+        """List external agent records (scoped to the caller's tenant)."""
+        catalog: ExternalAgentCatalog = app.state.external_agent_catalog.for_tenant(_request_tenant(request))
         records = catalog.list_all()
         if status is not None:
             records = [r for r in records if r.status == status]
         return [_response(r) for r in records]
 
     @app.get("/external-agents/{external_id}", response_model=ExternalAgentResponse)
-    async def get_external_agent(external_id: str) -> ExternalAgentResponse:
+    async def get_external_agent(request: Request, external_id: str) -> ExternalAgentResponse:
         """Get one external agent record."""
-        catalog: ExternalAgentCatalog = app.state.external_agent_catalog
+        catalog: ExternalAgentCatalog = app.state.external_agent_catalog.for_tenant(_request_tenant(request))
         record = catalog.get(external_id)
         if record is None:
             raise HTTPException(status_code=404, detail=f"External agent not found: {external_id}")
@@ -185,7 +217,7 @@ def configure_external_agent_routes(
         timeout_seconds: float = Query(default=10.0, gt=0, le=60),
     ) -> ExternalAgentResponse:
         """Re-fetch the Agent Card and update health."""
-        catalog: ExternalAgentCatalog = app.state.external_agent_catalog
+        catalog: ExternalAgentCatalog = app.state.external_agent_catalog.for_tenant(_request_tenant(http_request))
         record = catalog.get(external_id)
         if record is None:
             raise HTTPException(status_code=404, detail=f"External agent not found: {external_id}")
@@ -226,7 +258,7 @@ def configure_external_agent_routes(
     @app.delete("/external-agents/{external_id}", status_code=204)
     async def delete_external_agent(http_request: Request, external_id: str) -> None:
         """Delete an external agent record."""
-        catalog: ExternalAgentCatalog = app.state.external_agent_catalog
+        catalog: ExternalAgentCatalog = app.state.external_agent_catalog.for_tenant(_request_tenant(http_request))
         if not catalog.delete(external_id):
             raise HTTPException(status_code=404, detail=f"External agent not found: {external_id}")
         await record_audit_event(http_request, action="external_agent.delete", target=external_id)
@@ -241,7 +273,7 @@ def configure_external_agent_routes(
         """Invoke the external agent through the A2A protocol."""
         from osa.generic_agent.a2a_client import invoke_remote_agent
 
-        catalog: ExternalAgentCatalog = app.state.external_agent_catalog
+        catalog: ExternalAgentCatalog = app.state.external_agent_catalog.for_tenant(_request_tenant(http_request))
         record = catalog.get(external_id)
         if record is None:
             raise HTTPException(status_code=404, detail=f"External agent not found: {external_id}")

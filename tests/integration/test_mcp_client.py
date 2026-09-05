@@ -98,7 +98,7 @@ class TestStdioProtocol:
 
     async def test_timeout_is_deterministic(self) -> None:
         connection = McpConnection(
-            _stdio_definition(connection_options=McpConnectionOptions(timeout_seconds=1, max_retries=0))
+            _stdio_definition(connection_options=McpConnectionOptions(timeout_seconds=5, max_retries=0))
         )
         try:
             with pytest.raises(McpToolExecutionError, match="slow_tool"):

@@ -135,7 +135,7 @@ Requirements:
 ```bash
 git clone https://github.com/bassemZohdy/open-simple-agent.git
 cd open-simple-agent
-uv sync --all-packages
+uv sync --all-packages --extra postgres --extra a2a
 uv run pytest --tb=short -q
 uv run mypy .
 uv run ruff format --check .
@@ -143,7 +143,10 @@ uv run ruff check .
 ```
 
 `uv sync --all-packages` is required because this is a three-member uv
-workspace. A bare `uv sync` does not install the member packages.
+workspace. A bare `uv sync` does not install the member packages. The
+`postgres` and `a2a` extras match CI: without them, the PostgreSQL (needs
+`OSA_TEST_DATABASE_URL`) and A2A integration tests are skipped instead of
+run, and `test_a2a.py` is collection-guarded so a bare sync still passes.
 
 The Control Panel is a separate frontend package:
 

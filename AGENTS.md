@@ -52,7 +52,7 @@ See @CONTRIBUTING.md and the frontend README for setup and check commands.
 
 ## Common Workflows
 ```bash
-uv sync --all-packages   # Python setup
+uv sync --all-packages --extra postgres --extra a2a   # Python setup (extras match CI; tests skip without them)
 uv run pytest            # Python tests
 uv run ruff format . && uv run ruff check .   # format + lint
 uv run mypy .            # strict type check across all Python members

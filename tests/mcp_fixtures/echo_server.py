@@ -34,8 +34,12 @@ def failing_tool() -> str:
 
 @mcp.tool()
 def slow_tool() -> str:
-    """Takes about 3 seconds; used to trigger client timeouts."""
-    time.sleep(3.0)
+    """Takes about 12 seconds; used to trigger client timeouts.
+
+    The long sleep keeps the tool timeout well above the connect/initialize
+    budget so the test measures tool-call timeouts, not startup slowness.
+    """
+    time.sleep(12.0)
     return "finally done"
 
 

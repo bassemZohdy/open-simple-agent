@@ -402,6 +402,18 @@ def test_authorization_policy_expands_roles_and_explicit_permissions() -> None:
     policy.require(custom, AuthPermission.AGENT_WRITE)
 
 
+def test_authorization_policy_routes_agent_scoped_deployments_to_deployment_permission() -> None:
+    policy = AuthorizationPolicy(enabled=True)
+
+    assert policy.permission_for_request("/agents/abc/deployments", "GET") == AuthPermission.DEPLOYMENT_READ
+    assert policy.permission_for_request("/agents/abc/deployments", "POST") == AuthPermission.DEPLOYMENT_WRITE
+    # Plain agent routes still resolve to agent permissions.
+    assert policy.permission_for_request("/agents/abc", "GET") == AuthPermission.AGENT_READ
+    assert policy.permission_for_request("/agents/abc/versions", "GET") == AuthPermission.AGENT_READ
+    assert policy.permission_for_request("/agents/abc/deploy", "POST") == AuthPermission.DEPLOYMENT_WRITE
+    assert policy.permission_for_request("/deployments/xyz", "GET") == AuthPermission.DEPLOYMENT_READ
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "authorization",
@@ -600,6 +612,59 @@ async def test_control_plane_middleware_requires_auth(
         )
         assert denied_write.status_code == 403
         assert denied_write.json()["error"]["code"] == "authorization_denied"
+
+
+@pytest.mark.asyncio
+async def test_external_agents_are_scoped_per_tenant(
+    signing_material: tuple[rsa.RSAPrivateKey, dict[str, str]],
+) -> None:
+    """BF2: external-agent records (and their credentials) never cross tenants."""
+    from osa.control_plane.backend.external_agents import ExternalAgentCatalog, ExternalAgentRecord
+
+    private_key, jwk = signing_material
+    settings = _settings(enforce_permissions=True)
+    app = configure_control_plane_app(
+        FastAPI(),
+        agent_repository=InMemoryAgentRepository(),
+        resource_catalogs=ResourceCatalogs(),
+        template_catalog=create_default_template_catalog(),
+        auth_settings=settings,
+        authenticator=_authenticator(settings, jwk),
+    )
+    catalog: ExternalAgentCatalog = app.state.external_agent_catalog
+    catalog.for_tenant("tenant-1").register(
+        ExternalAgentRecord(
+            name="partner-agent",
+            url="http://127.0.0.1:9",
+            status="healthy",
+            tenant_id="tenant-1",
+        )
+    )
+    tenant_one = {"Authorization": f"Bearer {_token(private_key, roles=['operator'], tid='tenant-1')}"}
+    tenant_two = {"Authorization": f"Bearer {_token(private_key, roles=['operator'], tid='tenant-2')}"}
+    external_id = next(iter(catalog.for_tenant("tenant-1")._records))
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        seen_by_owner = await client.get("/external-agents", headers=tenant_one)
+        assert seen_by_owner.status_code == 200
+        assert [record["name"] for record in seen_by_owner.json()] == ["partner-agent"]
+
+        hidden_from_other = await client.get("/external-agents", headers=tenant_two)
+        assert hidden_from_other.status_code == 200
+        assert hidden_from_other.json() == []
+
+        assert (await client.get(f"/external-agents/{external_id}", headers=tenant_two)).status_code == 404
+        assert (
+            await client.post(f"/external-agents/{external_id}/invoke", headers=tenant_two, params={"message": "ping"})
+        ).status_code == 404
+        assert (await client.post(f"/external-agents/{external_id}/refresh", headers=tenant_two)).status_code == 404
+        assert (await client.delete(f"/external-agents/{external_id}", headers=tenant_two)).status_code == 404
+
+        # The owner still has full access to their own record.
+        assert (await client.get(f"/external-agents/{external_id}", headers=tenant_one)).status_code == 200
+        assert (
+            await client.post(f"/external-agents/{external_id}/invoke", headers=tenant_one, params={"message": "ping"})
+        ).status_code in (200, 502)  # unreachable target → 502, but never 404
 
 
 @pytest.mark.asyncio

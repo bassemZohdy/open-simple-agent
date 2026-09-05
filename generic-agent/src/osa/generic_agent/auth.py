@@ -242,6 +242,11 @@ class AuthorizationPolicy:
             return AuthPermission.RESOURCE_READ if normalized_method == "GET" else AuthPermission.RESOURCE_WRITE
         if path.startswith("/deployments/") or path.endswith("/deploy"):
             return AuthPermission.DEPLOYMENT_READ if normalized_method == "GET" else AuthPermission.DEPLOYMENT_WRITE
+        # Agent-scoped deployment sub-resources (e.g. /agents/{id}/deployments)
+        # guard deployment data, so they require deployment permissions rather
+        # than falling through to the generic /agents/ clause.
+        if path.endswith("/deployments"):
+            return AuthPermission.DEPLOYMENT_READ if normalized_method == "GET" else AuthPermission.DEPLOYMENT_WRITE
         if path.startswith("/external-agents"):
             if path.endswith("/invoke") and normalized_method == "POST":
                 return AuthPermission.AGENT_INVOKE

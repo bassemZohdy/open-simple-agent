@@ -310,7 +310,7 @@ Every item below was independently confirmed by reading the current source
   reflect it back to B. Directly contradicts the "isolated sessions" P0
   guarantee. Concurrent in-flight requests make the window worse (A's own
   call can race and pick up B's just-written instruction).
-- [ ] BF2 External A2A agent records have no tenant isolation:
+- [x] BF2 External A2A agent records have no tenant isolation:
   `ExternalAgentRecord`
   (`control-plane/backend/src/osa/control_plane/backend/external_agents.py`)
   has no `tenant_id` field, `ExternalAgentCatalog` is one process-global
@@ -322,7 +322,7 @@ Every item below was independently confirmed by reading the current source
   agent with an `OutboundCredential`; Tenant B (valid token, different
   `tenant_id`, same `external-agent:*` permission) lists it, invokes it —
   using A's stored credential against the remote service — or deletes it.
-- [ ] BF3 PostgreSQL-backed deployment records are never wired up despite a
+- [x] BF3 PostgreSQL-backed deployment records are never wired up despite a
   configured DSN: in `create_control_plane_app`
   (`control-plane/backend/src/osa/control_plane/backend/service.py:88-133`),
   `deployment_records: Any = None` is declared before the `if dsn:` branch
@@ -335,7 +335,7 @@ Every item below was independently confirmed by reading the current source
   replicas per ADR-004's stated goal; a deploy routed to replica A is
   invisible to `GET /deployments/{id}` on replica B, and all deployment
   history is lost on restart.
-- [ ] BF4 `PATCH /agents/{id}` with a new `definition` leaves the Postgres
+- [x] BF4 `PATCH /agents/{id}` with a new `definition` leaves the Postgres
   `skills` column stale: `update_agent`
   (`control-plane/backend/src/osa/control_plane/backend/api.py:595-611`)
   never puts `skills` into the `updates` dict passed to
@@ -349,7 +349,7 @@ Every item below was independently confirmed by reading the current source
   skills (illusion of success), but the stored row — and every later
   `GET /agents?skill=…` filter — keeps the pre-update skill list
   indefinitely.
-- [ ] BF5 `GET /agents/{agent_id}/deployments` is authorized against
+- [x] BF5 `GET /agents/{agent_id}/deployments` is authorized against
   `agent:read` instead of `deployment:read`:
   `permission_for_request`
   (`generic-agent/src/osa/generic_agent/auth.py:230-257`) routes on
@@ -362,7 +362,7 @@ Every item below was independently confirmed by reading the current source
   `deployment:read` can still read deployment ids, status, and `invoke_url`
   through this one route, bypassing the permission boundary enforced
   everywhere else.
-- [ ] BF6 MCP tool-call retries can duplicate non-idempotent tool
+- [x] BF6 MCP tool-call retries can duplicate non-idempotent tool
   executions: `McpToolConnection.call_tool`
   (`runtimes/adk/src/osa/runtimes/adk/mcp_client.py:301-334`) retries on a
   bare `except Exception`, with no distinction between a transient
@@ -370,7 +370,7 @@ Every item below was independently confirmed by reading the current source
   already completed the call, and no idempotency key. Failure: a tool that
   sends an email or creates a record times out waiting for its response,
   OSA retries and the server runs it a second time.
-- [ ] BF7 The documented local quick-start (`README.md`, `CONTRIBUTING.md`,
+- [x] BF7 The documented local quick-start (`README.md`, `CONTRIBUTING.md`,
   `AGENTS.md`: `uv sync --all-packages` then `uv run pytest`) omits the
   `--extra a2a` CI always adds, and `tests/integration/test_a2a.py` has no
   `pytest.mark.skipif`/`importorskip` guard the way
@@ -383,7 +383,7 @@ Every item below was independently confirmed by reading the current source
 
 ### Improvements
 
-- [ ] BI1 `docs/guides/security.md` — the doc that states "current security
+- [x] BI1 `docs/guides/security.md` — the doc that states "current security
   behavior... is tested" — never mentions `OSA_RUNTIME_ALLOWED_ORIGINS` or
   CORS, even though ADR-008 explicitly puts "the runtime's auth/CORS
   posture" on the operator and the CHANGELOG notes the Control Panel's
@@ -392,7 +392,7 @@ Every item below was independently confirmed by reading the current source
   Deployments-page "Send test message" feature, checks the security guide
   for guidance, finds nothing, and doesn't realize the runtime's own
   `OSA_AUTH_MODE` now gates a newly browser-reachable endpoint.
-- [ ] BI2 `scripts/release_validation.py`'s changelog check
+- [x] BI2 `scripts/release_validation.py`'s changelog check
   (`release_heading = re.compile(rf"^## \[{{version}}\] - \d{{4}}-\d{{2}}-\d{{2}}$")`)
   matches *any* heading anywhere in the file, regardless of position or
   date, and `CHANGELOG.md` already carries pre-release dev-milestone
@@ -407,7 +407,7 @@ Every item below was independently confirmed by reading the current source
   a GitHub Release whose linked changelog section is stale, unrelated
   content.
 
-- [ ] BF8 `TestStdioProtocol::test_timeout_is_deterministic` is
+- [x] BF8 `TestStdioProtocol::test_timeout_is_deterministic` is
   load-sensitive. Under machine load, the mcp library's read-timeout race can
   surface a raw `CancelledError` out of `McpToolConnection.call_tool`
   (`runtimes/adk/src/osa/runtimes/adk/mcp_client.py`) instead of the expected
@@ -424,6 +424,28 @@ Every item below was independently confirmed by reading the current source
 
 ## Review Log
 
+- 2026-09-05 — Backend finding resolutions (BF1 remains open, in progress):
+  BF2 tenant-scoped `ExternalAgentCatalog` (`for_tenant` namespaces mirroring
+  `ResourceCatalogs`; records carry `tenant_id`; cross-tenant list/get/invoke/
+  refresh/delete return 404 — regression-tested with two JWT tenants);
+  BF3 `create_control_plane_app` now wires `PostgresDeploymentRecordRepository`
+  when a DSN is set (wiring unit test + CI persistence round-trip test);
+  BF4 `PATCH /agents/{id}` persists derived `skills` alongside the definition
+  (copy-on-write repository regression test mimicking Postgres read
+  semantics); BF5 agent-scoped `/deployments` routes resolve to
+  `deployment:read|write` (route-mapping test); BF6+BF8 `call_tool` retries
+  only connection-level failures, in-flight failures surface immediately as
+  `McpToolExecutionError`, and a client-side `asyncio.wait_for` deadline makes
+  timeouts deterministic (fixture `slow_tool` sleep and test timeout margins
+  rebalanced so connect cannot eat the call budget under load); BF7 `test_a2a`
+  is collection-guarded without the `a2a` extra and the quickstart docs
+  (README/CONTRIBUTING/AGENTS) now sync with CI's
+  `--extra postgres --extra a2a`; BI1 security guide documents the runtime
+  CORS posture (`OSA_RUNTIME_ALLOWED_ORIGINS` / `OSA_DEPLOY_RUNTIME_ALLOWED_ORIGINS`);
+  BI2 release validation pins the release heading to the FIRST section after
+  `[Unreleased]` (which must be empty), so historical dev-milestone headings
+  can no longer satisfy a release by collision. Cleanup: removed stale empty
+  `.claude/` and `control-plane/ui/` directories.
 - 2026-09-04 — Control Panel UI presentation review of
   `control-plane/frontend` filed 15 fixes (F1–F15) and 7 improvements
   (I1–I7). Read-only review; no source changes made.

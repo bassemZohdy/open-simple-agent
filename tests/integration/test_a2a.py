@@ -3,6 +3,9 @@
 Offline: the A2A server is exercised over a real localhost HTTP server
 (uvicorn thread) with a scripted agent, matching the deterministic pattern
 used by the MCP protocol tests.
+
+Requires the ``a2a`` extra (``uv sync --all-packages --extra a2a``); skipped
+otherwise so default test runs stay clean without protocol dependencies.
 """
 
 from __future__ import annotations
@@ -11,6 +14,7 @@ import asyncio
 import socket
 import threading
 import time
+from importlib.util import find_spec
 
 import pytest
 import uvicorn
@@ -40,6 +44,13 @@ from osa.generic_agent import (
 )
 from osa.runtimes.adk import GenericAdkAgent
 from osa.runtimes.adk.a2a import build_agent_card, invoke_remote_agent
+
+pytestmark = [
+    pytest.mark.skipif(
+        find_spec("a2a") is None,
+        reason="a2a extra not installed (uv sync --all-packages --extra a2a); A2A tests skipped",
+    ),
+]
 
 
 def _free_port() -> int:

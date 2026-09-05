@@ -95,6 +95,22 @@ invocation appends a tenant-filtered, redaction-safe audit event
 (`GET /audit-events`); runtime and A2A boundary invocations record outcomes
 without capturing prompts, credentials, or payloads.
 
+## Browser CORS on the runtime
+
+The runtime API is browser-reachable only when an operator explicitly opts in:
+`OSA_RUNTIME_ALLOWED_ORIGINS` (comma-separated origins) enables CORS with a
+fixed `GET`/`POST` method allowlist and `Authorization`, `Content-Type`, and
+`X-Request-ID` headers; preflight `OPTIONS` requests bypass the bearer
+boundary. Unset (the default), no CORS is configured and browser
+cross-origin calls fail. When the Control Plane launches runtimes, it forwards
+`OSA_DEPLOY_RUNTIME_ALLOWED_ORIGINS` as the runtime's allowlist — this is what
+backs the Control Panel's direct browser-to-runtime "Send test message"
+feature (ADR-008). Because enabling CORS exposes the runtime's own
+`OSA_AUTH_MODE`-gated endpoints to browsers, treat the origin list as an
+authorization-surface decision, not a convenience flag: list only origins that
+must call the runtime directly, and keep the runtime's authentication
+enforcement on (`OSA_AUTH_MODE=required`) whenever any origin is allowed.
+
 ## Not implemented yet
 
 - Image signing and registry provenance

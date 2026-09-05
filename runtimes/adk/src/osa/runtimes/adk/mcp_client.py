@@ -305,6 +305,13 @@ class McpConnection:
         transport failures raise :class:`McpConnectionError` or
         :class:`McpToolExecutionError`, oversized responses are reported as
         payloads so the model can adapt.
+
+        Only connection-level failures are retried: they happen before a
+        request is sent, so a retry cannot repeat a tool execution. An
+        in-flight failure (timeout, protocol error) may have reached the
+        server and even completed — retrying it could duplicate a
+        non-idempotent side effect, so it surfaces immediately as
+        :class:`McpToolExecutionError`.
         """
         session = await self.connect()
         options = self._definition.connection_options
@@ -317,11 +324,17 @@ class McpConnection:
                     labels={"server": self.name, "tool": handle_server_tool_name},
                     attributes={"osa.mcp.server": self.name, "osa.mcp.tool": handle_server_tool_name},
                 ):
-                    result = await session.call_tool(handle_server_tool_name, arguments or {})
+                    # Our own deadline makes the timeout deterministic even
+                    # when the underlying transport's cancellation races the
+                    # response (which can leak a raw CancelledError).
+                    result = await asyncio.wait_for(
+                        session.call_tool(handle_server_tool_name, arguments or {}),
+                        timeout=options.timeout_seconds,
+                    )
                 break
             except McpResponseTooLargeError:
                 raise
-            except Exception as exc:
+            except McpConnectionError as exc:
                 last_error = exc
                 logger.warning(
                     "MCP server '%s' tool '%s' attempt %d failed: %s",
@@ -333,6 +346,10 @@ class McpConnection:
                 if attempt < options.max_retries:
                     await asyncio.sleep(options.retry_delay_seconds)
                     session = await self.connect()
+            except Exception as exc:
+                raise McpToolExecutionError(
+                    self.name, handle_server_tool_name, f"call failed: {exc}", cause=exc
+                ) from exc
         if result is None:
             raise McpToolExecutionError(
                 self.name, handle_server_tool_name, "call failed after retries", cause=last_error

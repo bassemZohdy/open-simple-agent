@@ -24,6 +24,7 @@ from osa.control_plane.backend.repositories import (
     InMemoryResourceDefinitionRepository,
     PostgresAgentRepository,
     PostgresAuditEventRepository,
+    PostgresDeploymentRecordRepository,
     PostgresResourceDefinitionRepository,
     ResourceDefinitionRepository,
 )
@@ -85,17 +86,22 @@ def create_control_plane_app(
     """
     dsn = database_url if database_url is not None else database_url_from_env()
     engine: Any = None
-    deployment_records: Any = None
+    deployment_records: Any
     audit_repository: Any
     if dsn:
         engine = create_db_engine(dsn)
         agents: AgentRepository = PostgresAgentRepository(engine)
         resources: ResourceDefinitionRepository = PostgresResourceDefinitionRepository(engine)
         audit_repository = PostgresAuditEventRepository(engine)
+        # Deployment intent must be as durable as agent records (ADR-004):
+        # without this, multi-replica Control Planes cannot see each other's
+        # deployments and history is lost on restart.
+        deployment_records = PostgresDeploymentRecordRepository(engine)
     else:
         agents = agent_repository if agent_repository is not None else InMemoryAgentRepository()
         resources = resource_repository if resource_repository is not None else InMemoryResourceDefinitionRepository()
         audit_repository = InMemoryAuditEventRepository()
+        deployment_records = None
 
     resource_catalogs = ResourceCatalogs()
 
