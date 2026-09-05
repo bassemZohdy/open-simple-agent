@@ -297,7 +297,7 @@ Every item below was independently confirmed by reading the current source
 
 ### Fixes
 
-- [ ] BF1 Cross-user memory leakage via a shared, never-reset `LlmAgent`
+- [x] BF1 Cross-user memory leakage via a shared, never-reset `LlmAgent`
   instruction: `GenericAdkAgent._invoke`/`stream_invoke`
   (`runtimes/adk/src/osa/runtimes/adk/runtime.py:487-488`, `:559-560`) run on
   one process-wide `llm_agent` instance and only *set*
@@ -424,6 +424,17 @@ Every item below was independently confirmed by reading the current source
 
 ## Review Log
 
+- 2026-09-05 — BF1 resolved: `GenericAdkAgent._invocation_runner()` builds a
+  fresh `LlmAgent` + `Runner` per invocation with the effective instruction
+  (base + this caller's policy-loaded memory context) baked in; `invoke`,
+  `stream_invoke`, and `_run_adk` consume the per-invocation runner instead of
+  mutating the shared `llm_agent.instruction`, so one caller's memory can no
+  longer leak into the next caller's request (regression test asserts user B's
+  prompt never contains user A's memory and the shared agent object stays at
+  its base instruction). `build_llm_agent` gained an `instruction` override.
+  Sessions remain continuous: every per-invocation runner shares the app name
+  and the OSA-backed session service. Full suite: 534 passed / 22 skipped at
+  86.32% coverage.
 - 2026-09-05 — Control Panel fixes F1–F15: dark-mode now restyles every
   muted surface and pill (F1); route changes reset scroll (F2); agent lists
   page past the first 100 records on the Agents list and the Deployments

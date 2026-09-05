@@ -22,6 +22,8 @@ from google.genai import types
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator
 
+    from google.adk import Runner
+
 from osa.generic_agent import (
     AbstractAgent,
     AgentDefinition,
@@ -401,7 +403,31 @@ class GenericAdkAgent(AbstractAgent):
         if existing is None:
             await service.create_session(app_name=self.runner.app_name, user_id=adk_user_id, session_id=session_id)
 
-    async def _run_adk(self, session_id: str, adk_user_id: str, user_input: str) -> str:
+    def _invocation_runner(self, memory_context: str) -> Runner:
+        """Build a per-invocation runner with the effective instruction.
+
+        BF1: the instruction (base plus this caller's policy-loaded memory
+        context) goes into a fresh LlmAgent per invocation. Mutating the
+        shared ``llm_agent`` instead leaked one caller's memory into the next
+        caller's request — nothing restored the base instruction when a later
+        lookup returned nothing. Sessions stay continuous because every
+        runner shares the same app name and session service.
+        """
+        instruction = self.definition.spec.instruction or ""
+        if memory_context:
+            instruction = f"{instruction}\n\n{memory_context}"
+        agent = build_llm_agent(
+            self.definition,
+            self._model,
+            self._tools,
+            self._tool_definitions,
+            toolsets=self._mcp_toolsets,
+            observability=self._observability,
+            instruction=instruction,
+        )
+        return build_runner(agent, session_service=self._session_service)
+
+    async def _run_adk(self, runner: Runner, session_id: str, adk_user_id: str, user_input: str) -> str:
         """Consume Runner events, enforcing iteration and timeout limits."""
         max_iterations = self.definition.spec.runtime.max_iterations or _DEFAULT_MAX_TOOL_ITERATIONS
         timeout_seconds = self.definition.spec.runtime.timeout_seconds
@@ -410,7 +436,7 @@ class GenericAdkAgent(AbstractAgent):
         async def consume() -> str:
             function_call_rounds = 0
             final_text = ""
-            async for event in self.runner.run_async(user_id=adk_user_id, session_id=session_id, new_message=message):
+            async for event in runner.run_async(user_id=adk_user_id, session_id=session_id, new_message=message):
                 usage = getattr(event, "usage_metadata", None)
                 if usage is not None:
                     self._observability.record_token_usage(
@@ -476,16 +502,14 @@ class GenericAdkAgent(AbstractAgent):
         adk_user_id = self._adk_user_id(request.user_id, tenant_id)
         await self._ensure_adk_session(str(session.session_id), adk_user_id)
 
-        # Policy-controlled memory context is injected into the instruction
-        # for this invocation only.
-        instruction = self.definition.spec.instruction or ""
+        # Policy-controlled memory context is baked into a per-invocation
+        # runner (BF1): the shared llm_agent's instruction is never mutated.
         memory_scope, _ = self._effective_memory()
         memory_context = await self._load_memory_context(
             memory_scope_id(memory_scope, user_id=request.user_id, agent_name=self.metadata.name, tenant_id=tenant_id),
             request.input,
         )
-        if memory_context:
-            self.llm_agent.instruction = f"{instruction}\n\n{memory_context}"
+        runner = self._invocation_runner(memory_context)
 
         try:
             # Pre-flight MCP connections: ADK resolves toolsets fail-open (a
@@ -493,7 +517,7 @@ class GenericAdkAgent(AbstractAgent):
             # predictable nor observable; OSA fails deterministically.
             for mcp_toolset in self._mcp_toolsets:
                 await mcp_toolset.connection.connect()
-            output = await self._run_adk(str(session.session_id), adk_user_id, request.input)
+            output = await self._run_adk(runner, str(session.session_id), adk_user_id, request.input)
         except SessionError:
             raise
         except OsaError as exc:
@@ -550,14 +574,14 @@ class GenericAdkAgent(AbstractAgent):
         adk_user_id = self._adk_user_id(request.user_id, tenant_id)
         await self._ensure_adk_session(str(session.session_id), adk_user_id)
 
-        instruction = self.definition.spec.instruction or ""
+        # BF1: memory context goes into a per-invocation runner; the shared
+        # llm_agent's instruction is never mutated across callers.
         memory_scope, _ = self._effective_memory()
         memory_context = await self._load_memory_context(
             memory_scope_id(memory_scope, user_id=request.user_id, agent_name=self.metadata.name, tenant_id=tenant_id),
             request.input,
         )
-        if memory_context:
-            self.llm_agent.instruction = f"{instruction}\n\n{memory_context}"
+        runner = self._invocation_runner(memory_context)
 
         session_id = str(session.session_id)
         invocation_id = str(request.invocation_id)
@@ -594,7 +618,7 @@ class GenericAdkAgent(AbstractAgent):
                 function_call_rounds = 0
                 timed_out = False
                 async with asyncio.timeout(timeout_seconds):
-                    async for event in self.runner.run_async(
+                    async for event in runner.run_async(
                         user_id=adk_user_id,
                         session_id=session_id,
                         new_message=types.Content(role="user", parts=[types.Part(text=request.input)]),

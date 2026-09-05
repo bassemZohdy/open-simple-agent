@@ -504,6 +504,51 @@ class TestMemoryIntegration:
         assert "Memory:" in prompt
         assert "Prefers dark mode" in prompt
 
+    async def test_memory_context_never_leaks_across_callers(self) -> None:
+        """BF1: memory baked into the shared llm_agent instruction leaked.
+
+        User A's request pulled A's memory into the shared instruction; user
+        B's next request (no memory hits, so the ``if memory_context:`` branch
+        was skipped) was sent to the model with A's memory still attached.
+        The per-invocation runner bakes the instruction fresh each time.
+        """
+        memory = InMemoryProvider()
+        await memory.store(
+            MemoryEntry(key="secret", content="User A private note: the launch code is 1234", scope_id="user-a")
+        )
+        definition = _make_definition(instruction="Help.")
+        with_memory = definition.model_copy(
+            update={
+                "spec": AgentSpec(
+                    instruction=definition.spec.instruction,
+                    model=ModelRef(ref="default"),
+                    memory=MemoryConfig(enabled=True),
+                )
+            }
+        )
+        model = FakeModelProvider(response="ok")
+        agent = GenericAdkAgent(
+            definition=with_memory,
+            model_provider=model,
+            model_catalog=_make_catalog_with_default(),
+            memory_provider=memory,
+        )
+        base_instruction = agent.llm_agent.instruction
+
+        await agent.invoke(AgentRequest(input="private note", user_id="user-a"))
+        prompt_a = model.calls[-1]["prompt"]
+        assert isinstance(prompt_a, str)
+        assert "launch code is 1234" in prompt_a  # A sees their own memory.
+
+        await agent.invoke(AgentRequest(input="what is the weather", user_id="user-b"))
+        prompt_b = model.calls[-1]["prompt"]
+        assert isinstance(prompt_b, str)
+        assert "launch code is 1234" not in prompt_b
+        assert "Memory:" not in prompt_b
+
+        # The shared agent object never carried any caller's memory.
+        assert agent.llm_agent.instruction == base_instruction
+
     async def test_memory_disabled_by_default(self) -> None:
         memory = InMemoryProvider()
         await memory.store(MemoryEntry(key="pref", content="Prefers dark mode", scope_id="user1"))

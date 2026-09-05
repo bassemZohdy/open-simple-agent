@@ -250,14 +250,17 @@ def build_llm_agent(
     tool_definitions: dict[str, ToolDefinition] | None = None,
     toolsets: list[Any] | None = None,
     observability: Observability | None = None,
+    instruction: str | None = None,
 ) -> LlmAgent:
     """Build an ADK ``LlmAgent`` from an AgentDefinition.
 
     ``model`` is either an ADK model identifier string or an ADK model
     instance built by a :class:`~osa.runtimes.adk.model_adapter.ModelAdapter`.
     ``toolsets`` (e.g. MCP toolsets) are resolved by ADK per invocation.
-    The agent name is sanitized to satisfy ADK's identifier requirement
-    (``customer-support`` becomes ``customer_support``).
+    ``instruction`` overrides the definition's instruction — used to bake
+    per-invocation memory context into a throwaway agent instead of mutating
+    the shared one (BF1). The agent name is sanitized to satisfy ADK's
+    identifier requirement (``customer-support`` becomes ``customer_support``).
     """
     all_tools: list[Any] = list(build_function_tools(tools, tool_definitions, observability))
     all_tools.extend(toolsets or [])
@@ -265,7 +268,7 @@ def build_llm_agent(
         name=adk_name(definition.metadata.name),
         description=definition.spec.description or "",
         model=model,
-        instruction=definition.spec.instruction or "",
+        instruction=instruction if instruction is not None else definition.spec.instruction or "",
         tools=all_tools,
         disallow_transfer_to_parent=True,
         disallow_transfer_to_peers=True,
