@@ -150,6 +150,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added — Control Panel production serving and version inspection
+- Added a non-root Nginx UI image with `/health/live`, immutable static-asset
+  caching, and React Router SPA fallback for deep links.
+- Added a safe immutable-version detail endpoint and Control Panel inspection
+  view; secret-like values are redacted before the snapshot leaves the Control
+  Plane.
+- Added backend, frontend, and container smoke coverage for snapshot access and
+  production deep-link serving.
+
 ### Added — P3.1: Agent detail and lifecycle Control Panel
 - Added a typed `GET /agents/{agent_id}/versions` endpoint that exposes only
   immutable version metadata; definitions remain outside the UI/API history

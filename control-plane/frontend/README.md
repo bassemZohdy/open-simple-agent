@@ -26,8 +26,9 @@ Implemented:
 - tenant-scoped Model, Tool, Skill, MCP, and MemoryPolicy catalog browsing backed by `GET /resources/{kind}`;
 - resource name filtering and safe inspection of the already-redacted resource definition returned by the Control Plane;
 - readiness view backed by `GET /health/ready`;
-- agent detail pages with redacted version history, version snapshots, and
-  guarded activate/disable/archive lifecycle actions;
+- agent detail pages with redacted version history, version snapshots, safe
+  on-demand inspection of immutable snapshot content, and guarded
+  activate/disable/archive lifecycle actions;
 - per-agent deployment history with intent-only deploy, stop/restart/rollback
   lifecycle actions, observed-status refresh, and bounded captured-log
   inspection backed by the Control Plane deployment APIs;
@@ -40,9 +41,13 @@ Implemented:
 - A2A invocation test console: external agents with health status, message +
   timeout invocation, and inline response/error rendering backed by
   `POST /external-agents/{id}/invoke`;
-- skip-to-content link and route-change focus management for keyboard users;
+- skip-to-content link, route-change focus management, visible focus states,
+  semantic status/error regions, and narrow-viewport layout coverage for
+  keyboard users;
 - loading, empty, error, 401/403-safe presentation;
 - Vitest/Testing Library coverage for API auth/error behavior and the implemented management views.
 
-Managed-agent invocation (sessions, streaming, tool traces) remains P3.1
-follow-up work pending the runtime-access design decision.
+Managed-agent invocation (sessions, streaming, tool traces) is available from
+the Deployments page when a deployment publishes a runtime invoke URL. The
+Control Plane never proxies that traffic; configure the runtime's own auth and
+CORS posture as described in ADR-008 and the security guide.

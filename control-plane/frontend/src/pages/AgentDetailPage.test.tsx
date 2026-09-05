@@ -53,6 +53,38 @@ describe("AgentDetailPage", () => {
     expect(screen.getByRole("button", { name: "Archive" })).toBeInTheDocument();
   });
 
+  it("loads and renders a safe immutable snapshot on demand", async () => {
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/versions")) {
+        return Promise.resolve(new Response(JSON.stringify([
+          { version_id: "v-1", version: "1.0.0", created_at: "2026-09-02T10:00:00Z", created_by: "", change_summary: "Initial release", has_definition: true },
+        ]), { status: 200 }));
+      }
+      if (url.endsWith("/versions/v-1")) {
+        return Promise.resolve(new Response(JSON.stringify({
+          version_id: "v-1",
+          version: "1.0.0",
+          created_at: "2026-09-02T10:00:00Z",
+          created_by: "",
+          change_summary: "Initial release",
+          has_definition: true,
+          definition: { metadata: { name: "support" }, spec: { instruction: "Help safely." } },
+          redacted_fields: [],
+        }), { status: 200 }));
+      }
+      return Promise.resolve(new Response(JSON.stringify(agent), { status: 200 }));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderPage();
+    await screen.findByRole("heading", { name: "support" });
+    fireEvent.click(screen.getByRole("button", { name: "View safe snapshot" }));
+
+    expect(await screen.findByLabelText("Safe definition for version 1.0.0")).toHaveTextContent("Help safely.");
+    expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining("/agents/a-1/versions/v-1"), expect.anything());
+  });
+
   it("creates a version and applies a lifecycle transition", async () => {
     let created = false;
     let activated = false;

@@ -217,7 +217,7 @@ export function AgentsPage() {
         <span className="count-badge" aria-label={`${total} matching agents`}>{total}</span>
       </div>
 
-      <form className="filter-bar" onSubmit={submitFilters}>
+      <form className="filter-bar" onSubmit={submitFilters} noValidate>
         <label>
           Search
           <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Name or description" />
@@ -239,7 +239,7 @@ export function AgentsPage() {
       </form>
 
       {showCreate ? (
-        <form className="detail-card create-panel" onSubmit={(event) => void submitCreate(event)} aria-labelledby="create-agent-title">
+        <form className="detail-card create-panel" onSubmit={(event) => void submitCreate(event)} aria-labelledby="create-agent-title" noValidate>
           <div className="card-heading">
             <div>
               <span className="eyebrow">{cloneSource ? `Cloning ${cloneSource.name}` : "New agent"}</span>
@@ -281,7 +281,7 @@ export function AgentsPage() {
             <label htmlFor="create-definition">Definition (JSON)
               <textarea
                 id="create-definition"
-                className="logs-view definition-editor"
+                className="logs-view definition-editor resize-none"
                 value={definitionText}
                 onChange={(event) => setDefinitionText(event.target.value)}
                 rows={10}
@@ -316,8 +316,9 @@ export function AgentsPage() {
       {!loading && !error && agents.length > 0 ? (
         <div className="table-wrap">
           <table>
+            <caption className="sr-only">Managed agents</caption>
             <thead>
-              <tr><th>Name</th><th>Status</th><th>Version</th><th>Runtime</th><th>Skills</th></tr>
+              <tr><th scope="col">Name</th><th scope="col">Status</th><th scope="col">Version</th><th scope="col">Runtime</th><th scope="col">Skills</th></tr>
             </thead>
             <tbody>
               {agents.map((agent) => (

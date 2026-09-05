@@ -50,6 +50,16 @@ describe("ControlPlaneClient", () => {
     expect(fetchMock.mock.calls[0]?.[0]).toBe("https://control.example/agents/support%2Fagent/versions");
   });
 
+  it("loads one safe immutable version snapshot", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ definition: null }), { status: 200, headers: { "Content-Type": "application/json" } }));
+    vi.stubGlobal("fetch", fetchMock);
+    const client = new ControlPlaneClient("https://control.example", () => null);
+
+    await client.getAgentVersion("support/agent", "version/1");
+
+    expect(fetchMock.mock.calls[0]?.[0]).toBe("https://control.example/agents/support%2Fagent/versions/version%2F1");
+  });
+
   it("posts lifecycle actions without putting the agent id in a query", async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ agent_id: "a/1", status: "disabled" }), { status: 200, headers: { "Content-Type": "application/json" } }));
     vi.stubGlobal("fetch", fetchMock);

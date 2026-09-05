@@ -251,7 +251,7 @@ export function DeploymentsPage() {
         ) : null}
       </div>
 
-      <form className="filter-bar" onSubmit={submitFilters}>
+      <form className="filter-bar" onSubmit={submitFilters} noValidate>
         <label htmlFor="deployment-agent">Agent
           <select id="deployment-agent" value={selectedAgentId} onChange={(event) => selectAgent(event.target.value)}>
             <option value="">Select an agent…</option>
@@ -319,8 +319,9 @@ export function DeploymentsPage() {
             {deployments.length > 0 ? (
               <div className="table-wrap">
                 <table>
+                  <caption className="sr-only">Deployment history</caption>
                   <thead>
-                    <tr><th>Deployment</th><th>Version</th><th>Status</th><th>Detail</th><th>Actions</th></tr>
+                    <tr><th scope="col">Deployment</th><th scope="col">Version</th><th scope="col">Status</th><th scope="col">Detail</th><th scope="col">Actions</th></tr>
                   </thead>
                   <tbody>
                     {deployments.map((entry) => (
@@ -404,6 +405,7 @@ export function DeploymentsPage() {
                 ) : null}
                 <form
                   className="filter-bar version-form"
+                  noValidate
                   onSubmit={(event) => {
                     event.preventDefault();
                     void requestRollback();
@@ -434,7 +436,7 @@ export function DeploymentsPage() {
                         <h4>Test message</h4>
                       </div>
                     </div>
-                    <form className="filter-bar version-form" onSubmit={(event) => void submitManagedInvoke(event)}>
+                    <form className="filter-bar version-form" onSubmit={(event) => void submitManagedInvoke(event)} noValidate>
                       <label htmlFor="managed-invoke-message">Message
                         <input
                           id="managed-invoke-message"
@@ -469,7 +471,7 @@ export function DeploymentsPage() {
                   <h3 id="deployment-logs-title">Logs</h3>
                 </div>
               </div>
-              <form className="filter-bar version-form" onSubmit={(event) => void loadLogs(event)}>
+              <form className="filter-bar version-form" onSubmit={(event) => void loadLogs(event)} noValidate>
                 <label htmlFor="log-tail">Tail lines
                   <select
                     id="log-tail"

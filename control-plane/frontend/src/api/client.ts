@@ -45,6 +45,11 @@ export interface AgentVersionSummary {
   has_definition: boolean;
 }
 
+export interface AgentVersionDetail extends AgentVersionSummary {
+  definition: Record<string, unknown> | null;
+  redacted_fields: string[];
+}
+
 export interface CreateAgentVersionRequest {
   version: string;
   change_summary?: string;
@@ -183,6 +188,12 @@ export class ControlPlaneClient {
 
   async listAgentVersions(agentId: string): Promise<AgentVersionSummary[]> {
     return this.request<AgentVersionSummary[]>(`${this.agentPath(agentId)}/versions`);
+  }
+
+  async getAgentVersion(agentId: string, versionId: string): Promise<AgentVersionDetail> {
+    return this.request<AgentVersionDetail>(
+      `${this.agentPath(agentId)}/versions/${encodeURIComponent(versionId)}`,
+    );
   }
 
   async createAgentVersion(agentId: string, request: CreateAgentVersionRequest): Promise<AgentSummary> {

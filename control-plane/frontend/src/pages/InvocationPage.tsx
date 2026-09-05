@@ -114,8 +114,9 @@ export function InvocationPage() {
       {!loading && !error && agents.length > 0 ? (
         <div className="table-wrap">
           <table>
+            <caption className="sr-only">Registered external A2A agents</caption>
             <thead>
-              <tr><th>Agent</th><th>URL</th><th>Status</th><th>Skills</th><th>Actions</th></tr>
+              <tr><th scope="col">Agent</th><th scope="col">URL</th><th scope="col">Status</th><th scope="col">Skills</th><th scope="col">Actions</th></tr>
             </thead>
             <tbody>
               {agents.map((agent) => (
@@ -154,7 +155,7 @@ export function InvocationPage() {
             <h3 id="a2a-console-title">Send a message</h3>
           </div>
         </div>
-        <form className="detail-card create-panel" onSubmit={(event) => void submitInvocation(event)}>
+        <form className="detail-card create-panel" onSubmit={(event) => void submitInvocation(event)} noValidate>
           <div className="filter-bar">
             <label htmlFor="invoke-agent">Agent
               <select
@@ -187,7 +188,7 @@ export function InvocationPage() {
           <label htmlFor="invoke-message">Message
             <textarea
               id="invoke-message"
-              className="definition-editor"
+              className="definition-editor resize-none"
               value={message}
               onChange={(event) => setMessage(event.target.value)}
               rows={4}

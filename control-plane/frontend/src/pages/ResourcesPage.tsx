@@ -92,7 +92,7 @@ export function ResourcesPage() {
         ))}
       </div>
 
-      <form className="filter-bar" onSubmit={(event) => void submitSearch(event)}>
+      <form className="filter-bar" onSubmit={(event) => void submitSearch(event)} noValidate>
         <label>
           Search {kind} names
           <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Resource name" />

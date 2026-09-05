@@ -1,7 +1,7 @@
 import { type FormEvent, useCallback, useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
-import { ApiError, type AgentSummary, type AgentVersionSummary } from "../api/client";
+import { ApiError, type AgentSummary, type AgentVersionDetail, type AgentVersionSummary } from "../api/client";
 import { useControlPlaneClient } from "../api/useControlPlaneClient";
 import { formatTimestamp } from "../lib/format";
 
@@ -36,6 +36,9 @@ export function AgentDetailPage() {
   const [changeSummary, setChangeSummary] = useState("");
   const [versionError, setVersionError] = useState<string | null>(null);
   const [creatingVersion, setCreatingVersion] = useState(false);
+  const [snapshot, setSnapshot] = useState<AgentVersionDetail | null>(null);
+  const [snapshotLoading, setSnapshotLoading] = useState<string | null>(null);
+  const [snapshotError, setSnapshotError] = useState<string | null>(null);
 
   const loadAgent = useCallback(async () => {
     if (!agentId) {
@@ -45,6 +48,8 @@ export function AgentDetailPage() {
     }
     setLoading(true);
     setError(null);
+    setSnapshot(null);
+    setSnapshotError(null);
     try {
       const [nextAgent, nextVersions] = await Promise.all([
         client.getAgent(agentId),
@@ -112,6 +117,25 @@ export function AgentDetailPage() {
       setVersionError(errorMessage(caught, "Unable to create version"));
     } finally {
       setCreatingVersion(false);
+    }
+  }
+
+  async function inspectSnapshot(entry: AgentVersionSummary) {
+    if (!agentId || !entry.has_definition) return;
+    if (snapshot?.version_id === entry.version_id) {
+      setSnapshot(null);
+      setSnapshotError(null);
+      return;
+    }
+    setSnapshotLoading(entry.version_id);
+    setSnapshotError(null);
+    try {
+      setSnapshot(await client.getAgentVersion(agentId, entry.version_id));
+    } catch (caught) {
+      setSnapshot(null);
+      setSnapshotError(errorMessage(caught, "Unable to load the version snapshot"));
+    } finally {
+      setSnapshotLoading(null);
     }
   }
 
@@ -185,7 +209,7 @@ export function AgentDetailPage() {
 
           <section className="detail-section" aria-labelledby="versions-title">
             <div className="section-heading"><div><span className="eyebrow">Immutable snapshots</span><h3 id="versions-title">Version history</h3></div><span className="count-badge" aria-label={`${versions.length} versions`}>{versions.length}</span></div>
-            <form className="filter-bar version-form" onSubmit={(event) => void submitVersion(event)}>
+            <form className="filter-bar version-form" onSubmit={(event) => void submitVersion(event)} noValidate>
               <label htmlFor="agent-version">Version
                 <input id="agent-version" value={version} onChange={(event) => setVersion(event.target.value)} placeholder="e.g. 2.0.0" disabled={creatingVersion} />
               </label>
@@ -207,10 +231,40 @@ export function AgentDetailPage() {
                       <div><dt>Created by</dt><dd>{entry.created_by || "Control Plane"}</dd></div>
                       <div><dt>Snapshot</dt><dd>{entry.has_definition ? "Definition available" : "No definition"}</dd></div>
                     </dl>
+                    {entry.has_definition ? (
+                      <button
+                        type="button"
+                        className="secondary-button snapshot-button"
+                        aria-expanded={snapshot?.version_id === entry.version_id}
+                        onClick={() => void inspectSnapshot(entry)}
+                        disabled={snapshotLoading !== null}
+                      >
+                        {snapshotLoading === entry.version_id
+                          ? "Loading snapshot…"
+                          : snapshot?.version_id === entry.version_id
+                            ? "Hide safe snapshot"
+                            : "View safe snapshot"}
+                      </button>
+                    ) : null}
+                    {snapshot?.version_id === entry.version_id ? (
+                      <div className="definition-details snapshot-details">
+                        <p>
+                          This immutable definition is safe for inspection. Secret-like values are redacted before
+                          leaving the Control Plane.
+                        </p>
+                        {snapshot.redacted_fields.length > 0 ? (
+                          <small>Redacted fields: {snapshot.redacted_fields.join(", ")}</small>
+                        ) : null}
+                        <pre aria-label={`Safe definition for version ${entry.version}`}>
+                          {JSON.stringify(snapshot.definition, null, 2)}
+                        </pre>
+                      </div>
+                    ) : null}
                   </article>
                 ))}
               </div>
             ) : null}
+            {snapshotError ? <div className="state-card error-card inline-state" role="alert"><strong>Snapshot unavailable</strong><span>{snapshotError}</span></div> : null}
           </section>
         </>
       ) : null}

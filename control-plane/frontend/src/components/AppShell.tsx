@@ -59,7 +59,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           )}
         </div>
         {showTokenForm ? (
-          <form className="token-form" onSubmit={submitToken}>
+          <form className="token-form" onSubmit={submitToken} noValidate>
             <label htmlFor="access-token">Bearer access token</label>
             <div className="token-row">
               <input

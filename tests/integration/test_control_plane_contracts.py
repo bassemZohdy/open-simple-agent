@@ -216,6 +216,39 @@ class TestVersions:
             assert versions[0]["has_definition"] is True
             assert "definition" not in versions[0]
 
+    async def test_version_detail_returns_safe_snapshot(self) -> None:
+        async with await client() as c:
+            created = await _create(
+                c,
+                "safe-snapshot",
+                definition=_definition(
+                    "safe-snapshot",
+                    model={
+                        "ref": "default",
+                        "parameters": {"region": "test", "api_key": "must-not-leak"},
+                    },
+                ),
+            )
+            agent_id = str(created["agent_id"])
+            assert (await c.post(f"/agents/{agent_id}/versions", json={"version": "1.0.0"})).status_code == 201
+
+            summary = (await c.get(f"/agents/{agent_id}/versions")).json()[0]
+            response = await c.get(f"/agents/{agent_id}/versions/{summary['version_id']}")
+
+            assert response.status_code == 200
+            body = response.json()
+            assert body["definition"]["metadata"]["name"] == "safe-snapshot"
+            assert body["definition"]["spec"]["model"]["parameters"]["region"] == "test"
+            assert body["definition"]["spec"]["model"]["parameters"]["api_key"] == "<redacted>"
+            assert body["redacted_fields"] == ["spec.model.parameters.api_key"]
+            assert "must-not-leak" not in response.text
+
+    async def test_unknown_version_detail_is_404(self) -> None:
+        async with await client() as c:
+            created = await _create(c, "missing-version", definition=_definition("missing-version"))
+            response = await c.get(f"/agents/{created['agent_id']}/versions/missing")
+            assert response.status_code == 404
+
     async def test_version_is_immutable_snapshot(self) -> None:
         async with await client() as c:
             created = await _create(c, "a", definition=_definition("a"))

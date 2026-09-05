@@ -28,6 +28,7 @@ running.
 | `GET` | `/agents` | List records; filters (`q`, `status`, `skill`, `runtime`) combine with AND; results are sorted and paginated |
 | `GET` | `/agents/{agent_id}` | Get one record |
 | `GET` | `/agents/{agent_id}/versions` | List immutable version metadata without returning definitions |
+| `GET` | `/agents/{agent_id}/versions/{version_id}` | Return one immutable version with secret-like values redacted |
 | `PATCH` | `/agents/{agent_id}` | Replace selected record fields; optional `expected_version` for optimistic concurrency |
 | `POST` | `/agents/{agent_id}/versions` | Snapshot the current definition as a new immutable version |
 | `POST` | `/agents/{agent_id}/activate` | Transition to `active` after validating the definition and its resource references |
@@ -90,6 +91,13 @@ in creation order. Each entry includes its identifier, version label, creation
 metadata, change summary, and whether a definition snapshot exists. Definition
 contents are never returned by this endpoint because they may contain
 credentials or other deployment-only configuration.
+
+`GET /agents/{agent_id}/versions/{version_id}` returns the selected immutable
+snapshot for authorized inspection. It includes the same metadata plus a
+`definition` object and `redacted_fields`. Secret-like keys in arbitrary model
+parameters are replaced with `"<redacted>"`; safe secret-reference metadata
+such as `credential_ref` and `secret_ref` remains available. The endpoint never
+resolves secrets and does not return resolved credentials.
 
 `POST /agents/{agent_id}/versions` takes a JSON body:
 

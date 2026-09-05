@@ -95,7 +95,7 @@ disablement through RFC 7662 introspection.
   browser `sessionStorage`; deployment-specific OIDC login/refresh orchestration
   remains an integration concern until issuer/client/redirect semantics are
   defined.
-- [ ] Add agents, versions, templates, resources, deployments, health, and audit
+- [x] Add agents, versions, templates, resources, deployments, health, and audit
   views.
   - [x] Read-only Agents list/search/status filtering.
   - [x] Control Plane readiness view.
@@ -128,11 +128,14 @@ disablement through RFC 7662 introspection.
   deployment service forwards configured origins to launched runtimes, and
   the Control Panel exposes a direct test-message form on deployments that
   publish an invoke URL (ADR-008).
-- [ ] Complete accessibility, localization, and responsive behavior coverage.
-  Responsive layout plus loading/empty/error states are implemented in the
-  foundation slice, and keyboard accessibility now includes a skip-to-content
-  link plus route-change focus management (tested). Broader
-  accessibility/localization acceptance remains open.
+- [x] Complete accessibility and responsive behavior coverage for the current
+  English locale. The panel now has shared visible focus rings, semantic table
+  captions/column scopes, app-owned form validation, reduced-motion handling,
+  responsive table containment, skip-to-content, route-change focus, and
+  loading/empty/error recovery states; the 320px contract is documented and
+  covered by the shared stylesheet/runtime smoke checks.
+- [ ] Add translated-locale coverage while preserving the same accessible
+  names, validation meaning, and browser-locale timestamp behavior.
 
 ## P3.3 Packaging, CI/CD, and release
 
@@ -280,14 +283,18 @@ record resolutions in the Review Log.
   global match count over the unloaded window.
 - [x] I4 Health page: render the full readiness payload and add a refresh
   control.
-- [ ] I5 Production serving story for the Panel: SPA fallback so deep links
-  like `/agents/<id>` do not 404 on plain static hosts, plus the UI
-  container image already marked as future work in PROJECT_DEFINITION.
+- [x] I5 Production serving story for the Panel: `control-plane/frontend`
+  now ships a non-root Nginx image with `/health/live`, immutable asset
+  caching, and SPA fallback so deep links like `/agents/<id>` do not 404;
+  the image health/deep-link/clean-shutdown smoke test runs in CI.
 - [x] I6 Scope the Deployments busy state per row/action instead of locking
   every button on the page during any single request.
-- [ ] I7 Surface immutable version snapshot content when the API exposes it
-  (definitions are write-only today, so clone/edit cannot show the source
-  definition).
+- [x] I7 Surface immutable version snapshot content through a dedicated
+  authorized detail endpoint and the Agent detail page. The response keeps
+  immutable metadata, recursively redacts secret-like values, reports the
+  redacted paths, and is covered by backend/API/UI tests; clone/edit still
+  requires an explicitly supplied definition because the source remains
+  write-only.
 
 ## Backend, Runtime & Release Tooling (control-plane/backend, generic-agent,
 runtimes/adk, scripts, docs) — 2026-09-04
@@ -424,6 +431,14 @@ Every item below was independently confirmed by reading the current source
 
 ## Review Log
 
+- 2026-09-05 — Control Panel remaining review items I5/I7 resolved. Added the
+  non-root Nginx production image with SPA fallback and CI image smoke checks;
+  added authorized, recursively redacted immutable version-detail snapshots
+  with API/UI coverage; and completed current English-locale accessibility and
+  responsive behavior coverage (focus, tables, forms, reduced motion, narrow
+  viewport). Broader translated-locale support remains a separate backlog
+  decision.
+
 - 2026-09-05 — Control Panel improvements I1–I4, I6: deployments in
   `starting` state poll every 3s until they converge (I1); version history and
   the audit table render locale-formatted timestamps instead of raw ISO
@@ -432,9 +447,10 @@ Every item below was independently confirmed by reading the current source
   renders the full readiness payload — scalar fields plus the raw JSON — with
   a refresh control (I4); the Deployments busy state is scoped per deployment
   (a running action locks only that deployment's controls; table Manage
-  buttons stay live and only a deploy locks the section) (I6). I5 (production
-  SPA-fallback serving) and I7 (exposing immutable version snapshot content)
-  remain open: both are backend/hosting product decisions, not UI fixes.
+  buttons stay live and only a deploy locks the section) (I6). At that review
+  point I5 (production SPA-fallback serving) and I7 (exposing immutable version
+  snapshot content) were still open; both are now resolved in the review entry
+  above.
 - 2026-09-05 — BF1 resolved: `GenericAdkAgent._invocation_runner()` builds a
   fresh `LlmAgent` + `Runner` per invocation with the effective instruction
   (base + this caller's policy-loaded memory context) baked in; `invoke`,

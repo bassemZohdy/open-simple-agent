@@ -79,6 +79,28 @@ jobs:
         run: npm run test
       - name: Build Control Panel
         run: npm run build
+      - name: Build Control Panel image
+        run: docker build -t osa-control-panel:ci .
+      - name: Control Panel image smoke test (health and SPA fallback)
+        run: |
+          cleanup() { docker rm -f osa-panel-smoke >/dev/null 2>&1 || true; }
+          trap cleanup EXIT
+          docker run -d --name osa-panel-smoke -p 8081:8080 osa-control-panel:ci
+          ready=0
+          for i in $(seq 1 30); do
+            if curl -fsS http://localhost:8081/health/live >/dev/null 2>&1; then ready=1; break; fi
+            sleep 1
+          done
+          if [ "$ready" != "1" ]; then
+            echo "::error::control panel never became healthy"; docker logs osa-panel-smoke; exit 1
+          fi
+          curl -fsS http://localhost:8081/agents/smoke | grep -q 'id="root"'
+          docker stop --timeout 10 osa-panel-smoke >/dev/null
+          exit_code=$(docker inspect osa-panel-smoke --format '{{.State.ExitCode}}')
+          if [ "$exit_code" != "0" ]; then
+            echo "::error::control panel exited with $exit_code on SIGTERM"; docker logs osa-panel-smoke; exit 1
+          fi
+          echo "Control Panel image smoke test passed."
 
   security:
     runs-on: ubuntu-latest

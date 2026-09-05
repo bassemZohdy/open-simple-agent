@@ -237,14 +237,14 @@ paused. OpenShift-specific behavior remains separately deferred.
 
 ### Control Panel
 
-The administrative UI is TypeScript/React. Its first implementation slice is
-present under `control-plane/frontend`: a responsive shell, optional
-session-scoped Bearer-token handling, a typed Control Plane client, real Agents
-list/filtering, readiness status, and frontend CI checks. Remaining P3.1 work
-adds the rest of the management views, authoring/lifecycle flows, invocation
-console, and broader accessibility/localization acceptance. Deployment-specific
-OIDC browser login semantics are not invented until issuer/client/redirect
-requirements are explicit.
+The administrative UI is TypeScript/React under `control-plane/frontend`: a
+responsive shell, optional session-scoped Bearer-token handling, a typed
+Control Plane client, management views, authoring/lifecycle flows, A2A and
+managed-runtime invocation consoles, safe immutable version inspection, and
+frontend CI checks including a non-root production image with SPA fallback.
+The current UI locale is English; broader translated-locale acceptance and
+deployment-specific OIDC browser login semantics remain deployment/product
+decisions until issuer/client/redirect requirements are explicit.
 
 ## Control plane vs data plane
 
@@ -345,11 +345,11 @@ and UI. Images run non-root, support arbitrary OpenShift UIDs where practical,
 contain no development dependencies, install nothing at startup, externalize
 configuration, expose health probes, and handle graceful shutdown.
 
-Runtime and Control Plane images are built and smoke-tested in CI. Release
-automation publishes versioned GHCR images with SBOM/provenance attestations and
-keyless signatures, plus validated Python distributions on GitHub Releases. A
-separate production UI image is still future work because the Control Panel is
-currently a source/build artifact only.
+Runtime, Control Plane, and UI images are built and smoke-tested in CI. The UI
+image serves React Router deep links through an Nginx SPA fallback and exposes
+`/health/live`. Release automation publishes versioned GHCR runtime and
+Control Plane images with SBOM/provenance attestations and keyless signatures,
+plus validated Python distributions on GitHub Releases.
 
 ## Completion rule
 

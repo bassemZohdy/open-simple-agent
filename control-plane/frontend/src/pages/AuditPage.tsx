@@ -112,7 +112,7 @@ export function AuditPage() {
         <span className="count-badge" aria-label={`${visibleEvents.length} shown of the ${events.length} most recent events loaded`}>{visibleEvents.length}<small>/{events.length} loaded</small></span>
       </div>
 
-      <form className="filter-bar" onSubmit={submitFilters}>
+      <form className="filter-bar" onSubmit={submitFilters} noValidate>
         <label htmlFor="audit-action">Action
           <input
             id="audit-action"
@@ -156,8 +156,9 @@ export function AuditPage() {
       {visibleEvents.length > 0 ? (
         <div className="table-wrap">
           <table>
+            <caption className="sr-only">Recent audit events</caption>
             <thead>
-              <tr><th>Time</th><th>Actor</th><th>Action</th><th>Target</th><th>Tenant</th><th>Detail</th></tr>
+              <tr><th scope="col">Time</th><th scope="col">Actor</th><th scope="col">Action</th><th scope="col">Target</th><th scope="col">Tenant</th><th scope="col">Detail</th></tr>
             </thead>
             <tbody>
               {visibleEvents.map((entry) => (
@@ -203,8 +204,9 @@ export function AuditPage() {
           <>
             <div className="table-wrap">
               <table>
+                <caption className="sr-only">Prometheus metric samples</caption>
                 <thead>
-                  <tr><th>Metric</th><th>Labels</th><th>Value</th></tr>
+                  <tr><th scope="col">Metric</th><th scope="col">Labels</th><th scope="col">Value</th></tr>
                 </thead>
                 <tbody>
                   {samples.map((sample) => (

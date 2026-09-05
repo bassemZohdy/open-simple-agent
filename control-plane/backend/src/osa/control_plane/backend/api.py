@@ -19,6 +19,7 @@ for PostgreSQL-backed persistence; the module-level app below is in-memory.
 from __future__ import annotations
 
 import logging
+import re
 from importlib import metadata
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
@@ -153,6 +154,13 @@ class AgentVersionResponse(BaseModel):
     has_definition: bool
 
 
+class AgentVersionDetailResponse(AgentVersionResponse):
+    """A safe immutable version snapshot for authorized inspection."""
+
+    definition: dict[str, Any] | None
+    redacted_fields: list[str] = Field(default_factory=list)
+
+
 class AgentListResponse(BaseModel):
     """Paginated response containing agents."""
 
@@ -258,6 +266,62 @@ def _version_to_response(version: AgentVersion) -> AgentVersionResponse:
         created_by=version.created_by,
         change_summary=version.change_summary,
         has_definition=version.definition is not None,
+    )
+
+
+_SENSITIVE_SNAPSHOT_KEY = re.compile(
+    r"(?:password|secret|token|api[_-]?key|private[_-]?key|authorization|bearer|access[_-]?key)",
+    re.IGNORECASE,
+)
+
+
+def _is_sensitive_snapshot_key(key: str) -> bool:
+    """Recognize likely secret material without hiding safe ``*_ref`` metadata."""
+    normalized = key.replace("-", "_").lower()
+    if normalized.endswith("_ref") or normalized in {"token_url", "token_type"}:
+        return False
+    return _SENSITIVE_SNAPSHOT_KEY.search(normalized) is not None
+
+
+def _redact_snapshot_value(value: Any, path: str = "") -> tuple[Any, list[str]]:
+    """Redact secret-like values before returning a definition to the UI."""
+    if isinstance(value, dict):
+        redacted: dict[str, Any] = {}
+        fields: list[str] = []
+        for key, item in value.items():
+            key_text = str(key)
+            item_path = f"{path}.{key_text}" if path else key_text
+            if _is_sensitive_snapshot_key(key_text):
+                redacted[key_text] = "<redacted>"
+                fields.append(item_path)
+                continue
+            safe_item, nested_fields = _redact_snapshot_value(item, item_path)
+            redacted[key_text] = safe_item
+            fields.extend(nested_fields)
+        return redacted, fields
+    if isinstance(value, list):
+        redacted_items: list[Any] = []
+        fields = []
+        for index, item in enumerate(value):
+            safe_item, nested_fields = _redact_snapshot_value(item, f"{path}[{index}]")
+            redacted_items.append(safe_item)
+            fields.extend(nested_fields)
+        return redacted_items, fields
+    return value, []
+
+
+def _version_detail_to_response(version: AgentVersion) -> AgentVersionDetailResponse:
+    definition = version.definition.model_dump(mode="json", by_alias=True) if version.definition is not None else None
+    safe_definition, redacted_fields = _redact_snapshot_value(definition)
+    return AgentVersionDetailResponse(
+        version_id=version.version_id,
+        version=version.version,
+        created_at=version.created_at.isoformat(),
+        created_by=version.created_by,
+        change_summary=version.change_summary,
+        has_definition=version.definition is not None,
+        definition=safe_definition,
+        redacted_fields=redacted_fields,
     )
 
 
@@ -576,6 +640,18 @@ def configure_control_plane_app(
             raise HTTPException(status_code=404, detail=f"Agent not found: {agent_id}")
         _owned_record(record, http_request)
         return [_version_to_response(version) for version in record.versions]
+
+    @app.get("/agents/{agent_id}/versions/{version_id}", response_model=AgentVersionDetailResponse)
+    async def get_agent_version(http_request: Request, agent_id: str, version_id: str) -> AgentVersionDetailResponse:
+        """Return one immutable version with secret-like values redacted."""
+        record = await agent_repository.get(agent_id)
+        if record is None:
+            raise HTTPException(status_code=404, detail=f"Agent not found: {agent_id}")
+        _owned_record(record, http_request)
+        version = next((entry for entry in record.versions if entry.version_id == version_id), None)
+        if version is None:
+            raise HTTPException(status_code=404, detail=f"Agent version not found: {version_id}")
+        return _version_detail_to_response(version)
 
     @app.patch("/agents/{agent_id}", response_model=AgentResponse)
     async def update_agent(http_request: Request, agent_id: str, request: UpdateAgentRequest) -> AgentResponse:
