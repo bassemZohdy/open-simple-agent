@@ -94,8 +94,8 @@ a separate step, then roll replicas.
 Launch commands are synthesized from the server-owned template — the API
 never accepts process commands.
 
-## What is not implemented yet
+## Remaining deployment work
 
-- Kubernetes/OpenShift deployment provider
-- Image signing and registry publishing
-- Distributed A2A task stores
+- Packaged Kubernetes provider selection and real Kind acceptance (see
+  `TODO.md`; the first generic provider slice exists but follow-up is paused)
+- Distributed A2A task stores (A2A task state is in-memory per runtime)

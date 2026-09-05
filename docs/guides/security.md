@@ -111,8 +111,8 @@ authorization-surface decision, not a convenience flag: list only origins that
 must call the runtime directly, and keep the runtime's authentication
 enforcement on (`OSA_AUTH_MODE=required`) whenever any origin is allowed.
 
-## Not implemented yet
+## Provider-dependent verification still open
 
-- Image signing and registry provenance
+- Live-provider acceptance (requires an explicitly configured CI secret)
 - Live identity-provider certification (requires provider credentials)
-- Enterprise identity lifecycle beyond the built-in baseline
+- Integration tests against a concrete enterprise identity source

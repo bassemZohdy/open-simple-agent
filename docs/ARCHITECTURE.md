@@ -236,9 +236,9 @@ never accepted from API input. Intent and observed state persist through the
 `DeploymentRecordRepository` (in-memory, or PostgreSQL when the Control
 Plane uses a database); rollback relaunches an earlier immutable version
 snapshot. Deployed runtimes are external processes: no ADK internals are
-imported. The Kubernetes provider remains open in `TODO.md` and may be
-validated with Kind. OpenShift-specific provider work is intentionally
-deferred.
+imported. The first generic Kubernetes provider slice exists; packaged
+provider selection and real Kind validation remain open in `TODO.md`.
+OpenShift-specific provider work is intentionally deferred.
 
 Deployment records expose an optional public runtime invoke URL synthesized
 from `OSA_DEPLOY_INVOKE_URL_TEMPLATE` (ADR-008, migration 0007). The Control
@@ -277,8 +277,9 @@ attributes.
 
 ## Tests and CI
 
-The current baseline is 466 collected tests: 445 pass locally and 21
-PostgreSQL tests are skipped when `OSA_TEST_DATABASE_URL` is unset. CI runs:
+The current baseline is 559 collected tests: 536 pass locally and 23
+PostgreSQL/A2A tests are skipped when their optional dependencies or
+`OSA_TEST_DATABASE_URL` are unavailable. CI runs:
 
 - `ruff format --check .`;
 - `ruff check .`;
@@ -296,8 +297,11 @@ memory and Control Plane persistence tests run against a real PostgreSQL 16
 service in CI (`OSA_TEST_DATABASE_URL`) and skip locally when unset.
 Streaming tests cover the SSE contract, disconnect-triggered cancellation,
 timeouts, concurrent load, and cross-replica session consistency over a
-shared provider. There is no live-model, Kubernetes, live-identity-provider,
-or multi-process deployment test yet. There is no coverage threshold.
+shared provider. Live-model acceptance is covered by an opt-in test that uses
+the LiteLLM adapter and can run only when its repository secret is enabled;
+there is no Kubernetes, live-identity-provider, or multi-process deployment
+test yet. CI enforces an 84% coverage threshold; identity-provider and
+Kubernetes tests remain backlog work.
 
 ## Dependency risks
 
@@ -307,8 +311,9 @@ or multi-process deployment test yet. There is no coverage threshold.
 - `litellm>=1.84` is optional (`osa-adk-runtime[litellm]`); configuring a
   litellm model without the extra fails fast (ADR-001).
 - Package manifests share one lockstep release version, enforced by
-  `tests/unit/test_versioning.py`; automated publishing is still pending
-  (P3.3).
+  `tests/unit/test_versioning.py`; release automation publishes GitHub Release
+  assets and signed/attested GHCR images, while the first public release and
+  optional package-registry publication remain pending (P3.3).
 
 ## Architectural invariants
 

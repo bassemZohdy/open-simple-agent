@@ -159,8 +159,12 @@ Completed release-supply-chain automation:
 
 Remaining release work:
 
-- [ ] Add a live-provider acceptance job using an opt-in secret and the P0.2
-  real-model acceptance path.
+- [x] Add a live-provider acceptance job using the opt-in
+  `OSA_LIVE_PROVIDER_API_KEY` repository secret and the P0.2 real-model
+  acceptance path. The job runs on `main` pushes or manual dispatch, installs
+  the optional LiteLLM dependency, and remains a no-op with a notice when the
+  secret is not configured; `OSA_LIVE_PROVIDER_MODEL` optionally selects the
+  model (default `openai/gpt-4o-mini`).
 - [ ] Decide whether Python distributions also need publication to PyPI or
   another package registry; GitHub Release assets are the implemented
   distribution path today.
@@ -195,8 +199,8 @@ Remaining release work:
 1. ~~Enable managed-agent invocation from the Panel on top of ADR-008's
    recorded runtime endpoints (runtime CORS or a proxy route), bringing
    sessions, streaming, and tool traces to the console.~~ **Done.**
-2. Implement the opt-in live-provider acceptance path when a suitable CI secret
-   is available.
+2. Use the opt-in live-provider acceptance job when a suitable CI secret and
+   provider budget are available.
 3. Complete the remaining P3.3 registry/rollback/first-release decisions when a
    release is intentionally scheduled.
 4. P2.2 lifecycle semantics are defined (ADR-007); add integration/contract
@@ -438,6 +442,13 @@ Every item below was independently confirmed by reading the current source
   responsive behavior coverage (focus, tables, forms, reduced motion, narrow
   viewport). Broader translated-locale support remains a separate backlog
   decision.
+
+- 2026-09-05 — P3.3 live-provider acceptance resolved at the workflow level:
+  `tests/acceptance/test_live_provider.py` exercises the real LiteLLM/ADK
+  Runner/native-tool path when `OSA_LIVE_PROVIDER_API_KEY` is configured, and
+  CI runs it only on `main` pushes/manual dispatch with that dedicated secret;
+  offline runs skip with an explicit notice. Provider execution remains
+  intentionally opt-in because it consumes external model budget.
 
 - 2026-09-05 — Control Panel improvements I1–I4, I6: deployments in
   `starting` state poll every 3s until they converge (I1); version history and

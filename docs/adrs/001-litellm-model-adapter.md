@@ -91,7 +91,8 @@ production adapter, alongside the deterministic `fake` provider used in tests.
 
 ## Follow-up
 
-- [ ] Add a live-provider CI job (opt-in via repository secret) that runs the
-      acceptance test against one real model (P3.3).
+- [x] Add a live-provider CI job (opt-in via the `OSA_LIVE_PROVIDER_API_KEY`
+      repository secret) that runs the acceptance test against one real model
+      through the P0.2 ADK/native-tool path (P3.3).
 - [ ] Consider registering custom adapters through configuration once a
       second production adapter is needed.

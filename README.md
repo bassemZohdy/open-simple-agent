@@ -15,15 +15,16 @@ The first runtime targets [Google ADK](https://google.github.io/adk-docs/).
 > container images, release supply-chain automation, and a React/TypeScript
 > Control Panel application are implemented. JWT bearer authentication, opt-in
 > role/permission route enforcement, and runtime tenant binding are available;
-> enterprise identity lifecycle, translated-locale coverage, live-provider CI
-> acceptance, release decisions, and paused Kubernetes follow-up remain open.
+> enterprise identity lifecycle, translated-locale coverage, release decisions,
+> and paused Kubernetes follow-up remain open; live-provider CI acceptance is
+> available as an opt-in job.
 
 ## What works today
 
 | Area | Current implementation | Important limitation |
 |---|---|---|
 | Agent definition | Strict Pydantic schema; YAML loading; `OSA_*` overrides; versioned deployment bundles | Bundle import/export APIs pending |
-| Models | Catalog, provider contract, LiteLLM production adapter (ADR-001), deterministic fake bridge | Live-model CI job pending |
+| Models | Catalog, provider contract, LiteLLM production adapter (ADR-001), deterministic fake bridge | Live-model CI acceptance is opt-in via `OSA_LIVE_PROVIDER_API_KEY` |
 | Native tools | Catalog, declared parameter schemas, ADK-native function calling, timeout enforcement | Built-in implementations only (`calculator`); custom toolsets need code |
 | MCP | Runtime client (stdio + Streamable HTTP), lazy pooled connections, filtered namespaced tools bridged to ADK, bounded results, API-key/OAuth2/mTLS outbound credentials | Resources/prompts exposure and SSE pending |
 | Skills | Catalog, search, runtime metadata resolution, A2A Agent Card mapping | Definition policy can allow/deny referenced skills |
@@ -34,8 +35,8 @@ The first runtime targets [Google ADK](https://google.github.io/adk-docs/).
 | Control Panel | React/TypeScript/Vite shell; session-scoped Bearer token support; typed Control Plane client; agents, templates, tenant-scoped resources, readiness, agent detail/version history, safe immutable snapshot inspection, deployments, audit/metrics, authoring, A2A console, managed-runtime invocation, and responsive/loading/empty/error states | Broader translated-locale coverage and deployment-specific OIDC login remain deployment concerns |
 | Deployment | Local provider with bounded logs, health probing, and startup-failure capture; deploy/status/stop/restart/logs/rollback APIs through the Control Plane with persisted tenant-owned records; first generic Kubernetes provider slice retained | Further Kubernetes/Kind work is intentionally paused |
 | Runtime API | Invoke, capabilities, liveness, readiness, optional A2A Agent Card/JSON-RPC, shared JWT/OIDC bearer authentication including RFC 7662 opaque-token introspection, opt-in route permissions, tenant-claim binding, request IDs, Prometheus metrics, redaction-safe structured logs and runtime/A2A audit events; SSE streaming (`/v1/invoke/stream`) with stable OSA events; `osa-runtime` CLI with bundle bootstrap | - |
-| CI | Ruff format/lint, strict mypy, full Python suite with PostgreSQL + A2A services and an 84% coverage gate, Control Panel typecheck/test/build, both image smoke tests, dependency/license scanning, CycloneDX SBOMs | Live-provider acceptance remains opt-in/pending |
-| Release | Lockstep release validation; three Python distributions; GHCR runtime/Control Plane images; SBOM/provenance attestations; keyless Cosign image signing; GitHub Releases with checksums | First public release, optional package-registry publication, and mutable-channel rollback automation remain open |
+| CI | Ruff format/lint, strict mypy, full Python suite with PostgreSQL + A2A services and an 84% coverage gate, Control Panel typecheck/test/build, both image smoke tests, dependency/license scanning, CycloneDX SBOMs, and a gated live-provider acceptance job | Live-provider execution requires the opt-in repository secret |
+| Release | Lockstep release validation; three Python distributions; GHCR runtime/Control Plane images; SBOM/provenance attestations; keyless Cosign image signing; GitHub Releases with checksums; immutable-digest channel rollback | First public release and optional package-registry publication remain open |
 
 ## Architecture
 
@@ -315,10 +316,11 @@ open-simple-agent/
 The P0 runnable-agent gate, managed-platform foundation, and first production
 Control Panel image are implemented. Release supply-chain automation can build
 validated Python artifacts and signed/attested GHCR images from an intentional
-version/tag. Remaining work is tracked in [TODO.md](TODO.md), led by opt-in
-live-provider acceptance, concrete enterprise identity-source tests, release
-registry/first-release decisions, and deliberately paused Kubernetes/Kind/
-OpenShift follow-up.
+version/tag. Remaining work is tracked in [TODO.md](TODO.md), led by concrete
+enterprise identity-source tests, release registry/first-release decisions,
+translated-locale coverage, and deliberately paused Kubernetes/Kind/OpenShift
+follow-up; live-provider acceptance is available when its repository secret is
+intentionally enabled.
 
 ## License
 

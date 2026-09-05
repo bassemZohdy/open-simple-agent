@@ -38,7 +38,8 @@ uv run pytest
 ```text
 open-simple-agent/
 ├── control-plane/
-│   └── backend/      # Control Plane API (FastAPI)
+│   ├── backend/      # Control Plane API (FastAPI)
+│   └── frontend/     # React/TypeScript Control Panel
 ├── generic-agent/    # Domain model and contracts
 ├── runtimes/
 │   └── adk/          # Google ADK runtime
@@ -46,7 +47,9 @@ open-simple-agent/
 └── docs/             # Documentation
 ```
 
-The React Control Panel is planned but is not present in the repository.
+The React Control Panel lives in `control-plane/frontend`. Run its checks with
+`npm ci`, `npm run typecheck`, `npm run test`, and `npm run build` from that
+directory; CI also builds and smoke-tests its production image.
 
 ## Architecture Decision Records
 
@@ -159,5 +162,5 @@ The workflow publishes:
 
 Release tags are immutable. To roll back a deployment, select a previously
 published immutable version/digest rather than rebuilding or replacing an old
-release. Automation for moving deployment/channel pointers back to a prior
-release remains backlog work.
+release. The `Rollback image channel` workflow can move the mutable `latest`
+channel back to a previously published immutable digest without rebuilding it.

@@ -58,6 +58,6 @@ provider.
 - Operators who set the template take responsibility for making the URL
   reachable and for the runtime's auth/CORS posture; OSA does not probe or
   publish health of the public endpoint.
-- Enabling Panel-invoked managed agents later is an additive change: the
-  recorded URL plus runtime CORS, or a proxy route behind the existing auth
-  boundary, can be decided without another data-model change.
+- The Control Panel now uses the recorded URL plus runtime CORS for its direct
+  managed-agent test-message flow. A future proxy route, if ever required,
+  remains an additive deployment decision and does not change the data model.

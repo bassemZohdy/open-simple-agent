@@ -150,6 +150,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added — Opt-in live-provider acceptance
+- Added a real-provider acceptance test that exercises the LiteLLM adapter,
+  ADK Runner, and native calculator tool path when
+  `OSA_LIVE_PROVIDER_API_KEY` is intentionally configured.
+- Added a push/manual-dispatch CI job that installs the optional LiteLLM
+  dependency only when the dedicated repository secret is present; otherwise
+  it exits successfully with an explicit notice and remains offline-safe.
+
 ### Added — Control Panel production serving and version inspection
 - Added a non-root Nginx UI image with `/health/live`, immutable static-asset
   caching, and React Router SPA fallback for deep links.

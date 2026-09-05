@@ -5,6 +5,7 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  workflow_dispatch:
 
 jobs:
   lint:
@@ -101,6 +102,42 @@ jobs:
             echo "::error::control panel exited with $exit_code on SIGTERM"; docker logs osa-panel-smoke; exit 1
           fi
           echo "Control Panel image smoke test passed."
+
+  live-provider:
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+      - name: Detect live-provider opt-in
+        id: opt_in
+        shell: bash
+        env:
+          OSA_LIVE_PROVIDER_API_KEY: ${{ secrets.OSA_LIVE_PROVIDER_API_KEY }}
+        run: |
+          set -euo pipefail
+          if [[ -n "$OSA_LIVE_PROVIDER_API_KEY" ]]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Live-provider acceptance is disabled; set the OSA_LIVE_PROVIDER_API_KEY repository secret to opt in."
+          fi
+      - uses: astral-sh/setup-uv@v10.0.1
+        if: steps.opt_in.outputs.enabled == 'true'
+      - uses: actions/setup-python@v7
+        if: steps.opt_in.outputs.enabled == 'true'
+        with:
+          python-version: "3.12"
+      - name: Install live-provider dependencies
+        if: steps.opt_in.outputs.enabled == 'true'
+        run: uv sync --all-packages --extra litellm
+      - name: Run live-provider acceptance
+        if: steps.opt_in.outputs.enabled == 'true'
+        env:
+          OSA_LIVE_PROVIDER_API_KEY: ${{ secrets.OSA_LIVE_PROVIDER_API_KEY }}
+          OSA_LIVE_PROVIDER_MODEL: ${{ vars.OSA_LIVE_PROVIDER_MODEL || 'openai/gpt-4o-mini' }}
+        run: uv run pytest -q tests/acceptance/test_live_provider.py
 
   security:
     runs-on: ubuntu-latest

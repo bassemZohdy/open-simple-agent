@@ -70,8 +70,8 @@ health probe; startup failures carry the captured logs in the record detail.
    `SessionProvider` (shared persistent provider required for cross-replica
    continuity), and deployments can be rolled back via the rollback API.
 
-## What is not implemented yet
+## Remaining operational work
 
-- Kubernetes/OpenShift deployment provider (see `TODO.md`)
-- Image signing and registry publishing automation
+- Packaged Kubernetes provider selection and real Kind acceptance (see
+  `TODO.md`; the first generic provider slice exists but follow-up is paused)
 - Distributed A2A task stores (A2A task state is in-memory per runtime)

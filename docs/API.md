@@ -413,4 +413,5 @@ the `model_invocation_failed` code when raised to the HTTP layer.
 - `/metrics` exposes bounded Prometheus counters/duration summaries. Set
   `OSA_LOG_FORMAT=json` for redaction-safe structured logs; OpenTelemetry API
   spans are emitted when an SDK provider/exporter is configured.
-- Streaming is not implemented.
+- Streaming is available at `POST /v1/invoke/stream`; token-level deltas
+  depend on the configured model's streaming support.
