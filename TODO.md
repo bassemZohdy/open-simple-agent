@@ -212,60 +212,60 @@ record resolutions in the Review Log.
 
 ### Fixes
 
-- [ ] F1 Dark mode leaves light-theme grays on dark surfaces: `.state-card`,
+- [x] F1 Dark mode leaves light-theme grays on dark surfaces: `.state-card`,
   `.filter-bar label`, `td small`, `.muted-text`, card/body `p`, `.eyebrow`,
   and `th` keep `#475467`/`#667085` (~2.2–3.4:1, below WCAG AA 4.5:1);
   `.count-badge` and the anonymous `.connection-pill` render near-white text
   on a `#eef2f6` pill; `.confirmation` renders dark red on `#291b1c`.
   Failure: with OS dark mode, loading/empty states, count badges, form
   labels, and the archive confirmation are unreadable.
-- [ ] F2 No scroll reset on route change: `AppShell` focuses `#main-content`
+- [x] F2 No scroll reset on route change: `AppShell` focuses `#main-content`
   with `preventScroll: true` and `BrowserRouter` does no scroll management.
   Failure: opening an agent from the bottom of a long list renders the
   detail page scrolled to the old offset with the top content off-screen.
-- [ ] F3 AgentsPage and the DeploymentsPage agent picker hardcode
+- [x] F3 AgentsPage and the DeploymentsPage agent picker hardcode
   `limit: 100` and never send `offset`, though `/agents` supports
   limit/offset. Failure: with >100 agents the rest are unreachable in the UI
   and the total badge disagrees with the rows shown.
-- [ ] F4 Create-agent "Built-in template" source with no template selected
+- [x] F4 Create-agent "Built-in template" source with no template selected
   silently omits `template` and creates an empty draft. Failure: the user
   picks the template source, misses the dropdown, and gets a blank draft
   instead of a template-based agent.
-- [ ] F5 `closeCreate()` never clears `?create=1&cloneOf=…` from the URL.
+- [x] F5 `closeCreate()` never clears `?create=1&cloneOf=…` from the URL.
   Failure: closing the clone panel and clicking "Create agent" in the same
   visit re-enters clone mode with stale pre-filled metadata.
-- [ ] F6 Disabled buttons keep `cursor: pointer` and full styling (no
+- [x] F6 Disabled buttons keep `cursor: pointer` and full styling (no
   `:disabled` rules). Failure: during busy states (e.g. "Creating…") other
   buttons look clickable and clicks silently no-op.
-- [ ] F7 Console timeout input is not clamped: clearing it sends
+- [x] F7 Console timeout input is not clamped: clearing it sends
   `timeout_seconds=0` (`Number("")`) and out-of-range values pass through
   despite `min`/`max`. Failure: invoke with a cleared timeout fails with a
   confusing server-side error.
-- [ ] F8 ResourcesPage and TemplatesPage error states have no retry path
+- [x] F8 ResourcesPage and TemplatesPage error states have no retry path
   (every other page has one). Failure: a transient API error requires a full
   page reload or kind switch to recover.
-- [ ] F9 Stale copy on `/console`: the footer still claims managed-agent
+- [x] F9 Stale copy on `/console`: the footer still claims managed-agent
   invocation "require[s] runtime access design (pending)" although ADR-008
   managed invocation shipped on the Deployments page. Failure: operators
   conclude the feature does not exist.
-- [ ] F10 No React error boundary. Failure: any render exception (e.g. an
+- [x] F10 No React error boundary. Failure: any render exception (e.g. an
   unexpected API payload shape such as `labels: null`) unmounts the whole
   app to a blank page with no recovery.
-- [ ] F11 No 401/403 handling: an expired token surfaces only as per-page
+- [x] F11 No 401/403 handling: an expired token surfaces only as per-page
   errors and Retry loops with the dead token. Failure: mid-session token
   expiry leaves every view failing with no prompt to reconnect.
-- [ ] F12 `AuthContext` guards the initial `sessionStorage` read but not the
+- [x] F12 `AuthContext` guards the initial `sessionStorage` read but not the
   `setItem`/`removeItem` writes. Failure: where storage is unavailable
   (private mode, storage disabled), submitting a token throws and the form
   dies silently.
-- [ ] F13 No fetch carries a timeout or `AbortController`;
+- [x] F13 No fetch carries a timeout or `AbortController`;
   `invokeRuntimeEndpoint` waits forever. Failure: a hung runtime leaves
   "Invoking…" spinning indefinitely; only a page reload escapes.
-- [ ] F14 Rollback has no confirmation (archive has one) and the rollback
+- [x] F14 Rollback has no confirmation (archive has one) and the rollback
   version input's form swallows Enter (`onSubmit` is only `preventDefault`).
   Failure: one stray click immediately relaunches an older version, and
   pressing Enter in the version field silently does nothing.
-- [ ] F15 `.detail-grid { minmax(300px, 1fr) }` exceeds the ~282px content
+- [x] F15 `.detail-grid { minmax(300px, 1fr) }` exceeds the ~282px content
   width of a 320px viewport. Failure: horizontal page scroll on small
   phones; use `minmax(min(300px, 100%), 1fr)`.
 
@@ -424,6 +424,23 @@ Every item below was independently confirmed by reading the current source
 
 ## Review Log
 
+- 2026-09-05 — Control Panel fixes F1–F15: dark-mode now restyles every
+  muted surface and pill (F1); route changes reset scroll (F2); agent lists
+  page past the first 100 records on the Agents list and the Deployments
+  picker (F3); template-source creation requires a selected template (F4);
+  closing the create panel clears `?create=1`/`?cloneOf` (F5); disabled
+  buttons render and read as disabled (F6); the console timeout input is
+  clamped to 1–300s with the effective value shown (F7); Resources and
+  Templates error states gained Retry paths (F8); the `/console` footer no
+  longer claims managed invocation is pending (F9); an error boundary keeps
+  render exceptions from blanking the app (F10); an `osa:unauthorized` event
+  from the API client clears rejected tokens so the panel falls back to
+  anonymous mode (F11); sessionStorage writes are guarded for private-mode
+  storage (F12); every fetch carries an abort deadline — runtime/external
+  invokes get margins beyond their server-side timeouts (F13); rollback now
+  requires an explicit confirmation and Enter in the version field drives the
+  same flow (F14); `.detail-grid` no longer overflows 320px viewports (F15).
+  Gates: tsc clean, 32 vitest tests passing, production build clean.
 - 2026-09-05 — Backend finding resolutions (BF1 remains open, in progress):
   BF2 tenant-scoped `ExternalAgentCatalog` (`for_tenant` namespaces mirroring
   `ResourceCatalogs`; records carry `tenant_id`; cross-tenant list/get/invoke/

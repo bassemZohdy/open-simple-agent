@@ -29,6 +29,7 @@ export function ResourcesPage() {
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [reloadTick, setReloadTick] = useState(0);
 
   useEffect(() => {
     let active = true;
@@ -54,7 +55,7 @@ export function ResourcesPage() {
     return () => {
       active = false;
     };
-  }, [client, kind]);
+  }, [client, kind, reloadTick]);
 
   async function submitSearch(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -100,7 +101,13 @@ export function ResourcesPage() {
       </form>
 
       {loading ? <div className="state-card" role="status">Loading {kind} resources…</div> : null}
-      {!loading && error ? <div className="state-card error-card" role="alert"><strong>{kind} resources unavailable</strong><span>{error}</span></div> : null}
+      {!loading && error ? (
+        <div className="state-card error-card" role="alert">
+          <strong>{kind} resources unavailable</strong>
+          <span>{error}</span>
+          <button type="button" className="secondary-button" onClick={() => setReloadTick((tick) => tick + 1)}>Retry</button>
+        </div>
+      ) : null}
       {!loading && !error && resources.length === 0 ? <div className="state-card"><strong>No {kind} resources found</strong><span>Adjust the search or register resources through the Control Plane API.</span></div> : null}
       {!loading && !error && resources.length > 0 ? (
         <div className="card-grid">

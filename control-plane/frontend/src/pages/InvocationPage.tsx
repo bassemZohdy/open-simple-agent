@@ -13,6 +13,13 @@ function statusClass(status: string): string {
   return "status status-disabled";
 }
 
+function clampTimeoutSeconds(raw: number): number {
+  // F7: clearing the field (Number("") === 0) or typing out-of-range values
+  // must not send an invalid server-side timeout.
+  if (!Number.isFinite(raw) || raw < 1) return 1;
+  return Math.min(300, Math.round(raw));
+}
+
 function skillNames(skills: ExternalAgentSummary["skills"]): string {
   const names = skills
     .map((skill) => (typeof skill.name === "string" ? skill.name : null))
@@ -28,7 +35,8 @@ export function InvocationPage() {
 
   const [selectedId, setSelectedId] = useState("");
   const [message, setMessage] = useState("");
-  const [timeoutSeconds, setTimeoutSeconds] = useState(30);
+  const [timeoutDraft, setTimeoutDraft] = useState("30");
+  const timeoutSeconds = clampTimeoutSeconds(Number(timeoutDraft));
   const [invoking, setInvoking] = useState(false);
   const [output, setOutput] = useState<string | null>(null);
   const [invokeError, setInvokeError] = useState<string | null>(null);
@@ -166,12 +174,16 @@ export function InvocationPage() {
                 type="number"
                 min={1}
                 max={300}
-                value={timeoutSeconds}
-                onChange={(event) => setTimeoutSeconds(Number(event.target.value))}
+                value={timeoutDraft}
+                onChange={(event) => setTimeoutDraft(event.target.value)}
                 disabled={invoking}
+                aria-describedby="invoke-timeout-hint"
               />
             </label>
           </div>
+          <small id="invoke-timeout-hint" className="muted-text" style={{ marginTop: 0 }}>
+            Clamped to 1–300 seconds; effective timeout: {timeoutSeconds}s.
+          </small>
           <label htmlFor="invoke-message">Message
             <textarea
               id="invoke-message"
@@ -196,8 +208,8 @@ export function InvocationPage() {
             </div>
           ) : null}
           <p className="muted-text">
-            External agents are invoked through the A2A protocol via the Control Plane. Managed-agent invocations
-            with sessions, streaming, and tool traces require runtime access design (pending).
+            External agents are invoked through the A2A protocol via the Control Plane. Managed agents are invoked
+            from the Deployments page on deployments that publish a runtime invoke URL (ADR-008).
           </p>
         </form>
       </section>

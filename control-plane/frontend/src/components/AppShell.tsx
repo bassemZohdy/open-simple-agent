@@ -2,6 +2,7 @@ import { type FormEvent, type ReactNode, useEffect, useRef, useState } from "rea
 import { NavLink, useLocation } from "react-router-dom";
 
 import { useAuth } from "../auth/AuthContext";
+import { ErrorBoundary } from "./ErrorBoundary";
 
 const navigation = [
   ["Agents", "/agents"],
@@ -21,6 +22,9 @@ export function AppShell({ children }: { children: ReactNode }) {
   const { pathname } = useLocation();
 
   useEffect(() => {
+    // F2: a route change must start at the top, even when navigation came
+    // from the bottom of a long list.
+    window.scrollTo({ top: 0 });
     mainRef.current?.focus({ preventScroll: true });
   }, [pathname]);
 
@@ -81,7 +85,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           ))}
         </nav>
         <main ref={mainRef} className="content" id="main-content" tabIndex={-1}>
-          {children}
+          <ErrorBoundary>{children}</ErrorBoundary>
         </main>
       </div>
     </div>

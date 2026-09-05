@@ -10,6 +10,7 @@
 body { margin: 0; min-width: 320px; min-height: 100vh; }
 button, input, select { font: inherit; }
 button { cursor: pointer; }
+button:disabled { cursor: not-allowed; opacity: .55; }
 
 .app-shell { min-height: 100vh; }
 .topbar { position: sticky; top: 0; z-index: 10; display: grid; grid-template-columns: 1fr auto; gap: 1rem; align-items: center; padding: 1rem 1.5rem; background: rgba(255,255,255,.96); border-bottom: 1px solid #d8dee4; backdrop-filter: blur(12px); }
@@ -72,7 +73,7 @@ td small { display: block; margin-top: .2rem; color: #667085; }
 .definition-details { margin-top: 1rem; border-top: 1px solid #edf0f2; padding-top: .8rem; }
 .definition-details summary { cursor: pointer; color: #174ea6; font-weight: 700; }
 .definition-details pre { max-height: 22rem; overflow: auto; padding: .8rem; border-radius: .55rem; background: #f6f8fa; font-size: .78rem; white-space: pre-wrap; overflow-wrap: anywhere; }
-.detail-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1rem; }
+.detail-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr)); gap: 1rem; }
 .detail-card { min-width: 0; padding: 1.1rem; background: #fff; border: 1px solid #d8dee4; border-radius: .8rem; }
 .detail-card h3, .detail-section h3 { margin: .2rem 0 0; font-size: 1.25rem; }
 .detail-card p { color: #667085; }
@@ -115,7 +116,13 @@ td small { display: block; margin-top: .2rem; color: #667085; }
   .nav-link:hover, .nav-link.active, .segment.active { background: #203a63; color: #fff; }
   input, select, .secondary-button, .segment { color: #eef2f6; background: #11161c; border-color: #46515e; }
   th, td, .definition-details { border-color: #29313b; }
-  .definition-details pre { background: #11161c; }
+  .definition-details pre { background: #11161c; color: #d0d5dd; }
   .agent-link, .back-link { color: #9fc1ff; }
-  .confirmation { border-color: #6f2f2a; background: #291b1c; }
+  /* F1: muted text that kept light-theme grays on dark surfaces. */
+  .eyebrow, .page-heading p, .filter-bar label, .state-card, th, td small,
+  .muted-text, .catalog-card p, .detail-card p, .version-card p,
+  .metadata-list dt, .api-version, .nav-link { color: #a8b6c5; }
+  .connection-pill, .count-badge { background: #232c37; color: #c8d1dc; }
+  .status { color: #17202a; }
+  .confirmation { border-color: #6f2f2a; background: #291b1c; color: #ffb4ab; }
 }

@@ -146,6 +146,18 @@ function normalizedBaseUrl(baseUrl: string): string {
   return baseUrl.replace(/\/$/, "");
 }
 
+// F13: no fetch may hang forever; each call carries an abort deadline.
+const DEFAULT_TIMEOUT_MS = 15_000;
+
+interface RequestOptions {
+  authenticated?: boolean;
+  timeoutMs?: number;
+}
+
+function timeoutSignal(timeoutMs: number): AbortSignal | undefined {
+  return typeof AbortSignal.timeout === "function" ? AbortSignal.timeout(timeoutMs) : undefined;
+}
+
 export class ControlPlaneClient {
   private readonly baseUrl: string;
   private readonly getToken: () => string | null;
@@ -244,7 +256,7 @@ export class ControlPlaneClient {
     const response = await this.sendUrl(
       url,
       { method: "POST", body: JSON.stringify({ input }) },
-      { authenticated: false },
+      { authenticated: false, timeoutMs: 35_000 },
     );
     return (await response.json()) as RuntimeInvocation;
   }
@@ -271,6 +283,9 @@ export class ControlPlaneClient {
     return this.request<ExternalAgentInvocation>(
       `/external-agents/${encodeURIComponent(externalId)}/invoke?${params.toString()}`,
       { method: "POST" },
+      // The server-side timeout is the caller's choice; give the fetch a
+      // small margin beyond it.
+      { timeoutMs: (timeoutSeconds + 5) * 1000 },
     );
   }
 
@@ -301,20 +316,20 @@ export class ControlPlaneClient {
     return this.request<AgentSummary>(`${this.agentPath(agentId)}/${action}`, { method: "POST" });
   }
 
-  private async request<T>(path: string, init: RequestInit = {}): Promise<T> {
-    const response = await this.sendUrl(`${this.baseUrl}${path}`, init);
+  private async request<T>(path: string, init: RequestInit = {}, options: RequestOptions = {}): Promise<T> {
+    const response = await this.sendUrl(`${this.baseUrl}${path}`, init, options);
     return (await response.json()) as T;
   }
 
-  private async requestText(path: string, init: RequestInit = {}): Promise<string> {
-    const response = await this.sendUrl(`${this.baseUrl}${path}`, init);
+  private async requestText(path: string, init: RequestInit = {}, options: RequestOptions = {}): Promise<string> {
+    const response = await this.sendUrl(`${this.baseUrl}${path}`, init, options);
     return response.text();
   }
 
   private async sendUrl(
     url: string,
     init: RequestInit,
-    options: { authenticated?: boolean } = {},
+    options: RequestOptions = {},
   ): Promise<Response> {
     const headers = new Headers(init.headers);
     headers.set("Accept", "application/json");
@@ -328,7 +343,19 @@ export class ControlPlaneClient {
       }
     }
 
-    const response = await fetch(url, { ...init, headers });
+    const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+    const response = await fetch(url, { ...init, headers, signal: timeoutSignal(timeoutMs) }).catch(
+      (caught: unknown) => {
+        if (caught instanceof DOMException && caught.name === "TimeoutError") {
+          throw new ApiError(0, "request_timeout", `Request timed out after ${Math.round(timeoutMs / 1000)}s`);
+        }
+        throw caught;
+      },
+    );
+    if (response.status === 401) {
+      // F11: a rejected token must not keep retrying; AuthContext clears it.
+      window.dispatchEvent(new CustomEvent("osa:unauthorized"));
+    }
     if (!response.ok) {
       let body: ApiErrorBody = {};
       try {

@@ -1,4 +1,4 @@
-import { createContext, type ReactNode, useContext, useMemo, useState } from "react";
+import { createContext, type ReactNode, useContext, useEffect, useMemo, useState } from "react";
 
 const STORAGE_KEY = "osa.control-panel.access-token";
 
@@ -18,8 +18,37 @@ function readInitialToken(): string | null {
   }
 }
 
+function writeStoredToken(token: string): void {
+  // F12: sessionStorage can throw (private mode, storage disabled); the token
+  // then stays valid in memory for this session only.
+  try {
+    sessionStorage.setItem(STORAGE_KEY, token);
+  } catch {
+    // ignore
+  }
+}
+
+function removeStoredToken(): void {
+  try {
+    sessionStorage.removeItem(STORAGE_KEY);
+  } catch {
+    // ignore
+  }
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [token, setTokenState] = useState<string | null>(readInitialToken);
+
+  // F11: an expired token surfaces as HTTP 401 from the API client; drop the
+  // dead token so callers fall back to anonymous mode instead of retrying it.
+  useEffect(() => {
+    function onUnauthorized() {
+      removeStoredToken();
+      setTokenState(null);
+    }
+    window.addEventListener("osa:unauthorized", onUnauthorized);
+    return () => window.removeEventListener("osa:unauthorized", onUnauthorized);
+  }, []);
 
   const value = useMemo<AuthContextValue>(
     () => ({
@@ -27,11 +56,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setToken: (nextToken: string) => {
         const normalized = nextToken.trim();
         if (!normalized) return;
-        sessionStorage.setItem(STORAGE_KEY, normalized);
+        writeStoredToken(normalized);
         setTokenState(normalized);
       },
       clearToken: () => {
-        sessionStorage.removeItem(STORAGE_KEY);
+        removeStoredToken();
         setTokenState(null);
       },
     }),

@@ -22,7 +22,7 @@ function errorMessage(caught: unknown, fallback: string): string {
 export function AgentsPage() {
   const client = useControlPlaneClient();
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [agents, setAgents] = useState<AgentSummary[]>([]);
   const [total, setTotal] = useState(0);
   const [query, setQuery] = useState("");
@@ -47,9 +47,28 @@ export function AgentsPage() {
       setLoading(true);
       setError(null);
       try {
-        const response = await client.listAgents({ q: nextQuery || undefined, status: nextStatus || undefined, limit: 100 });
-        setAgents(response.agents);
-        setTotal(response.total);
+        // F3: /agents pages with limit/offset; a single capped request made
+        // agents beyond the first page unreachable. Bound the loop so a
+        // huge catalog cannot pin the page.
+        const collected: AgentSummary[] = [];
+        const pageSize = 100;
+        const maxPages = 10;
+        let offset = 0;
+        let totalCount = 0;
+        for (let page = 0; page < maxPages; page += 1) {
+          const response = await client.listAgents({
+            q: nextQuery || undefined,
+            status: nextStatus || undefined,
+            limit: pageSize,
+            offset,
+          });
+          collected.push(...response.agents);
+          totalCount = response.total;
+          offset += response.agents.length;
+          if (response.agents.length < pageSize || collected.length >= response.total) break;
+        }
+        setAgents(collected);
+        setTotal(totalCount);
       } catch (caught) {
         setError(errorMessage(caught, "Unable to load agents"));
         setAgents([]);
@@ -114,6 +133,11 @@ export function AgentsPage() {
     setSource("draft");
     setTemplateName("");
     setDefinitionText("");
+    // F5: stale ?create=1 / ?cloneOf would re-enter create/clone mode on the
+    // next "Create agent" click in the same visit.
+    if (searchParams.get("create") === "1" || searchParams.get("cloneOf")) {
+      setSearchParams({}, { replace: true });
+    }
   }
 
   function parseDefinition(): Record<string, unknown> | undefined {
@@ -151,6 +175,10 @@ export function AgentsPage() {
     const trimmedName = name.trim();
     if (!trimmedName) {
       setCreateError("Agent name is required");
+      return;
+    }
+    if (source === "template" && !templateName) {
+      setCreateError("Select a template or switch the configuration source to draft");
       return;
     }
     const definition = parseDefinition();

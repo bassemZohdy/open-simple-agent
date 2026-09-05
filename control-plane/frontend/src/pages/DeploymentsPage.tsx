@@ -45,6 +45,7 @@ export function DeploymentsPage() {
   const [logs, setLogs] = useState<string[] | null>(null);
   const [logTail, setLogTail] = useState<number>(200);
   const [rollbackVersion, setRollbackVersion] = useState("");
+  const [rollbackConfirm, setRollbackConfirm] = useState(false);
   const [managedMessage, setManagedMessage] = useState("");
   const [managedOutput, setManagedOutput] = useState<string | null>(null);
   const [busyAction, setBusyAction] = useState<LifecycleAction | null>(null);
@@ -55,8 +56,16 @@ export function DeploymentsPage() {
     setAgentsLoading(true);
     setAgentsError(null);
     try {
-      const response = await client.listAgents({ limit: 100 });
-      setAgents(response.agents);
+      const collected: AgentSummary[] = [];
+      const pageSize = 100;
+      let offset = 0;
+      for (let page = 0; page < 10; page += 1) {
+        const response = await client.listAgents({ limit: pageSize, offset });
+        collected.push(...response.agents);
+        offset += response.agents.length;
+        if (response.agents.length < pageSize) break;
+      }
+      setAgents(collected);
     } catch (caught) {
       setAgentsError(errorMessage(caught, "Unable to load agents"));
       setAgents([]);
@@ -92,6 +101,7 @@ export function DeploymentsPage() {
     setManagedOutput(null);
     setMessage(null);
     setActionError(null);
+    setRollbackConfirm(false);
     if (selectedAgentId) {
       void loadHistory(selectedAgentId);
     } else {
@@ -108,6 +118,18 @@ export function DeploymentsPage() {
   function replaceDeployment(updated: DeploymentSummary) {
     setDeployments((current) => current.map((entry) => (entry.deployment_id === updated.deployment_id ? updated : entry)));
     setSelected((current) => (current && current.deployment_id === updated.deployment_id ? updated : current));
+  }
+
+  // F14: rollback is destructive, so the first click/Enter arms an explicit
+  // confirmation instead of relaunching an older version immediately.
+  async function requestRollback() {
+    if (!selected) return;
+    if (!rollbackConfirm) {
+      setRollbackConfirm(true);
+      return;
+    }
+    setRollbackConfirm(false);
+    await runLifecycle("rollback", selected.deployment_id);
   }
 
   async function runLifecycle(action: Exclude<LifecycleAction, "logs">, deploymentId?: string) {
@@ -287,6 +309,7 @@ export function DeploymentsPage() {
                               setManagedOutput(null);
                               setMessage(null);
                               setActionError(null);
+                              setRollbackConfirm(false);
                             }}
                           >
                             Manage
@@ -329,20 +352,46 @@ export function DeploymentsPage() {
                   <button type="button" disabled={busyAction !== null} onClick={() => void runLifecycle("restart", selected.deployment_id)}>
                     {busyAction === "restart" ? "Restarting…" : "Restart"}
                   </button>
-                  <button type="button" className="danger-button" disabled={busyAction !== null} onClick={() => void runLifecycle("rollback", selected.deployment_id)}>
-                    {busyAction === "rollback" ? "Rolling back…" : "Rollback"}
+                  <button type="button" className="danger-button" disabled={busyAction !== null} onClick={() => void requestRollback()}>
+                    {busyAction === "rollback" ? "Rolling back…" : rollbackConfirm ? "Confirm rollback" : "Rollback"}
                   </button>
                 </div>
-                <form className="filter-bar version-form" onSubmit={(event) => event.preventDefault()}>
+                {rollbackConfirm ? (
+                  <div className="confirmation" role="alert">
+                    <span>
+                      Roll back to version {rollbackVersion.trim() || "(previous version)"}? This relaunches the
+                      deployment from an earlier immutable snapshot.
+                    </span>
+                    <button type="button" className="danger-button" disabled={busyAction !== null} onClick={() => void requestRollback()}>
+                      Confirm rollback
+                    </button>
+                    <button type="button" className="secondary-button" disabled={busyAction !== null} onClick={() => setRollbackConfirm(false)}>
+                      Cancel
+                    </button>
+                  </div>
+                ) : null}
+                <form
+                  className="filter-bar version-form"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    void requestRollback();
+                  }}
+                >
                   <label htmlFor="rollback-version">Rollback version
                     <input
                       id="rollback-version"
                       value={rollbackVersion}
-                      onChange={(event) => setRollbackVersion(event.target.value)}
+                      onChange={(event) => {
+                        setRollbackVersion(event.target.value);
+                        setRollbackConfirm(false);
+                      }}
                       placeholder="Leave empty for the previous version"
                       disabled={busyAction !== null}
                     />
                   </label>
+                  <button type="submit" className="secondary-button" disabled={busyAction !== null}>
+                    Roll back to this version
+                  </button>
                 </form>
                 <p className="muted-text">Rollback relaunches this deployment from an earlier immutable version snapshot.</p>
                 {selected.invoke_url ? (

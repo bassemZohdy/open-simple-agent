@@ -8,6 +8,7 @@ export function TemplatesPage() {
   const [templates, setTemplates] = useState<TemplateSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [reloadTick, setReloadTick] = useState(0);
 
   useEffect(() => {
     let active = true;
@@ -30,7 +31,7 @@ export function TemplatesPage() {
     return () => {
       active = false;
     };
-  }, [client]);
+  }, [client, reloadTick]);
 
   return (
     <section aria-labelledby="templates-title">
@@ -44,7 +45,13 @@ export function TemplatesPage() {
       </div>
 
       {loading ? <div className="state-card" role="status">Loading templates…</div> : null}
-      {!loading && error ? <div className="state-card error-card" role="alert"><strong>Templates unavailable</strong><span>{error}</span></div> : null}
+      {!loading && error ? (
+        <div className="state-card error-card" role="alert">
+          <strong>Templates unavailable</strong>
+          <span>{error}</span>
+          <button type="button" className="secondary-button" onClick={() => setReloadTick((tick) => tick + 1)}>Retry</button>
+        </div>
+      ) : null}
       {!loading && !error && templates.length === 0 ? <div className="state-card"><strong>No templates available</strong><span>The Control Plane returned an empty template catalog.</span></div> : null}
       {!loading && !error && templates.length > 0 ? (
         <div className="card-grid">
