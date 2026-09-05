@@ -407,6 +407,21 @@ Every item below was independently confirmed by reading the current source
   a GitHub Release whose linked changelog section is stale, unrelated
   content.
 
+- [ ] BF8 `TestStdioProtocol::test_timeout_is_deterministic` is
+  load-sensitive. Under machine load, the mcp library's read-timeout race can
+  surface a raw `CancelledError` out of `McpToolConnection.call_tool`
+  (`runtimes/adk/src/osa/runtimes/adk/mcp_client.py`) instead of the expected
+  `McpToolExecutionError` — on Python ≥3.8 `CancelledError` derives from
+  `BaseException`, so the retry loop's `except Exception` neither converts
+  nor retries it. Reproduced twice during the 2026-09-04 merge-verification
+  run (full suite failed once under post-sync load; quiet re-run green: 525
+  passed / 21 skipped). Failure: a CI run under load goes red on an unrelated
+  change and masks real failures. Fix direction: bound
+  `session.call_tool` with our own `asyncio.wait_for(..., timeout_seconds)`
+  inside `call_tool` so timeout → `TimeoutError` conversion is deterministic
+  at the OSA boundary; implement together with BF6, which reworks the same
+  retry/timeout block.
+
 ## Review Log
 
 - 2026-09-04 — Control Panel UI presentation review of
