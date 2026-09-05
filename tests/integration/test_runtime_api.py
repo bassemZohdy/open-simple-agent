@@ -127,6 +127,7 @@ async def test_get_capabilities() -> None:
         data = response.json()
         assert data["agent_name"] == "test-agent"
         assert data["version"] == "1.0.0"
+        assert data["streaming"] is True
         assert data["session_support"] is True
 
 

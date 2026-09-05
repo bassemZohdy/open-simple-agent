@@ -108,7 +108,7 @@ class CapabilitiesResponse(BaseModel):
 
     agent_name: str
     version: str
-    streaming: bool = False
+    streaming: bool = True
     session_support: bool = True
     tools: list[str] = Field(default_factory=list)
     skills: list[str] = Field(default_factory=list)
@@ -618,7 +618,7 @@ def configure_runtime_app(
         return CapabilitiesResponse(
             agent_name=_agent.metadata.name,
             version=_agent.metadata.version,
-            streaming=False,
+            streaming=True,
             session_support=True,
             tools=[t.name for t in (_runtime.tool_catalog.list_tools() if _runtime else [])],
             skills=[s.ref for s in _agent.definition.spec.skills],

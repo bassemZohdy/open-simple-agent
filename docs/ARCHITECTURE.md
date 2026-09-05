@@ -149,8 +149,10 @@ IDs.
 
 Persistence is externalized: `OSA_MEMORY_DATABASE_URL` selects
 `PostgresMemoryProvider` (SQLAlchemy async over asyncpg, ILIKE search,
-SQL-enforced limits/retention, schema ensured at startup); without it memory
-is in-memory and single-process.
+SQL-enforced limits/retention). The provider currently bootstraps its table
+with `CREATE TABLE IF NOT EXISTS`; explicit versioned migration ownership and
+upgrade ordering remain pending in `TODO.md`. Without the DSN, memory is
+in-memory and single-process.
 
 ## HTTP applications
 

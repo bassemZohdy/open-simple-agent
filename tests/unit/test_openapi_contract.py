@@ -106,3 +106,18 @@ class TestSchemaRoutesAreDocumented:
             "schema routes missing from docs/API.md (document them or mark "
             f"them public infrastructure): {sorted(undocumented)}"
         )
+
+    def test_no_undocumented_runtime_routes(self) -> None:
+        document = DOCS.read_text(encoding="utf-8")
+        runtime_section = "## Runtime API" + document.split("## Runtime API", 1)[1]
+        documented = _documented_routes(runtime_section)
+        schema_routes = _schema_routes(runtime_app)
+        undocumented = {
+            (method, path)
+            for method, path in schema_routes
+            if path not in {"/health/live", "/health/ready"} and (method, path) not in documented
+        }
+        assert not undocumented, (
+            "runtime schema routes missing from docs/API.md (document them or mark "
+            f"them public infrastructure): {sorted(undocumented)}"
+        )

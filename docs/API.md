@@ -9,12 +9,22 @@ authentication boundary described below.
 
 ## Control Plane API
 
-Application: `osa.control_plane.backend.api:app`
+Development application: `osa.control_plane.backend.api:app` (always
+in-memory)
+
+Configured application: `osa.control_plane.backend.service:create_control_plane_app`
+(selects PostgreSQL repositories when `OSA_CONTROL_PLANE_DATABASE_URL` is set)
 
 Development command:
 
 ```bash
 uv run uvicorn osa.control_plane.backend.api:app --reload
+```
+
+For a configured or production Control Plane, use the application factory:
+
+```bash
+uv run uvicorn osa.control_plane.backend.service:create_control_plane_app --factory
 ```
 
 Interactive OpenAPI documentation is available at `/docs` while the service is
@@ -143,6 +153,9 @@ otherwise read `OSA_AUTH_*` environment variables. `disabled` is the default;
 `/health/ready`, `/docs`, `/redoc`, and `/openapi.json` remain public. Invalid
 or missing credentials return 401 with `WWW-Authenticate: Bearer`; a valid
 token lacking configured scopes or violating an identity check returns 403.
+Permission enforcement is only valid with `optional` or `required` auth;
+`OSA_AUTH_ENFORCE_PERMISSIONS=true` is rejected when authentication is
+`disabled`.
 
 The current validator accepts signed RS256/384/512 and ES256/384/512 JWTs,
 checks `exp`, `iss`, `sub`, issuer, audience, and configured scopes against an
@@ -300,32 +313,6 @@ bearer/OIDC enforcement as the runtime invoke route, and protected Agent
 Cards advertise the required `osa_oidc` scheme. Outbound remote-agent calls can
 attach the configured API-key, OAuth2, or mTLS credential.
 
-### Streaming (P2.4)
-
-`POST /v1/invoke/stream` streams one invocation as Server-Sent Events. The
-shared bearer/OIDC auth middleware applies identically to non-streaming
-invoke. Events carry JSON `data` payloads with stable fields (`type`,
-`invocation_id`, `session_id`, `text`, monotonic `seq`):
-
-| SSE `event:` | Meaning |
-|---|---|
-| `osa.started` | Invocation accepted; carries the server-issued session id |
-| `osa.message.delta` | Incremental model text (per runner round; token-level deltas require a streaming model) |
-| `osa.message` | Terminal success; `text` is exactly what `POST /v1/invoke` would return |
-| `osa.error` | Terminal deterministic failure (`invocation_timeout`, `iteration_limit_exceeded`, `model_invocation_failed`, ...) |
-
-`runtime.timeout_seconds` bounds the whole stream lifetime (a slow consumer
-counts against it); `max_iterations` is enforced mid-stream. Disconnecting
-the client cancels the underlying ADK run. Yields go directly to the
-consumer with no server-side buffering, so a slow consumer applies natural
-backpressure.
-
-**Replicas:** sessions and conversation context live in the
-`SessionProvider`. Replicas configured with the same shared provider
-(persistent provider; tracked in the backlog) share session state, keep
-ownership enforced identically, and stream without leaking another caller's
-events — verified by cross-replica tests over a shared provider.
-
 ## Runtime API
 
 Application: `osa.runtimes.adk.api:runtime_app`
@@ -352,9 +339,37 @@ Two ways to serve it:
 | Method | Path | Behavior |
 |---|---|---|
 | `POST` | `/v1/invoke` | Invoke the single initialized agent |
+| `POST` | `/v1/invoke/stream` | Stream one invocation as Server-Sent Events |
 | `GET` | `/v1/capabilities` | Return agent name, version, session flag, tools, and skills |
+| `GET` | `/metrics` | Prometheus counters and duration summaries |
 | `GET` | `/health/live` | Process liveness response |
 | `GET` | `/health/ready` | Ready only after successful bundle initialization |
+
+### Streaming (P2.4)
+
+`POST /v1/invoke/stream` streams one invocation as Server-Sent Events. The
+shared bearer/OIDC auth middleware applies identically to non-streaming
+invoke. Events carry JSON `data` payloads with stable fields (`type`,
+`invocation_id`, `session_id`, `text`, monotonic `seq`):
+
+| SSE `event:` | Meaning |
+|---|---|
+| `osa.started` | Invocation accepted; carries the server-issued session id |
+| `osa.message.delta` | Incremental model text (per runner round; token-level deltas require a streaming model) |
+| `osa.message` | Terminal success; `text` is exactly what `POST /v1/invoke` would return |
+| `osa.error` | Terminal deterministic failure (`invocation_timeout`, `iteration_limit_exceeded`, `model_invocation_failed`, ...) |
+
+`runtime.timeout_seconds` bounds the whole stream lifetime (a slow consumer
+counts against it); `max_iterations` is enforced mid-stream. Disconnecting
+the client cancels the underlying ADK run. Yields go directly to the
+consumer with no server-side buffering, so a slow consumer applies natural
+backpressure.
+
+**Replicas:** sessions and conversation context live in the
+`SessionProvider`. Replicas configured with the same shared provider
+(persistent provider; tracked in the backlog) share session state, keep
+ownership enforced identically, and stream without leaking another caller's
+events — verified by cross-replica tests over a shared provider.
 
 ### Invoke request
 
@@ -416,3 +431,6 @@ the `model_invocation_failed` code when raised to the HTTP layer.
   spans are emitted when an SDK provider/exporter is configured.
 - Streaming is available at `POST /v1/invoke/stream`; token-level deltas
   depend on the configured model's streaming support.
+- Neither HTTP application currently enforces rate limits or quotas; place a
+  gateway or service-mesh policy in front of these APIs until the planned
+  controls in `TODO.md` are implemented.

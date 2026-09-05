@@ -150,6 +150,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Fixed — Documentation and runtime contract alignment
+- Runtime capabilities now report the implemented SSE streaming endpoint, and
+  `/v1/invoke/stream` uses the same `agent:invoke` permission as `/v1/invoke`.
+- The runtime image installs the LiteLLM, PostgreSQL, and A2A extras together;
+  the Control Plane image now starts the PostgreSQL-aware application factory.
+- API, deployment, configuration, operations, upgrade, security, and frontend
+  documentation now match the current routes, environment variables, image
+  boundaries, and database backup semantics. The open launcher, rate-limit,
+  and memory-migration gaps are recorded in `TODO.md`.
+
 ### Added — Opt-in live-provider acceptance
 - Added a real-provider acceptance test that exercises the LiteLLM adapter,
   ADK Runner, and native calculator tool path when

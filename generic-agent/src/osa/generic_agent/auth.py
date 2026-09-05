@@ -230,7 +230,7 @@ class AuthorizationPolicy:
     def permission_for_request(path: str, method: str) -> str | None:
         """Return the permission required by a known OSA route."""
         normalized_method = method.upper()
-        if path == "/v1/invoke" and normalized_method == "POST":
+        if path in {"/v1/invoke", "/v1/invoke/stream"} and normalized_method == "POST":
             return AuthPermission.AGENT_INVOKE
         if path == "/v1/capabilities" and normalized_method == "GET":
             return AuthPermission.AGENT_READ

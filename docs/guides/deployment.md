@@ -62,6 +62,29 @@ docker run -d -p 8000:8000 \
 - With a DSN, agents/deployments/resources/audit events persist in
   PostgreSQL and are shared across replicas.
 
+### Deployment configuration
+
+The Control Plane image starts the PostgreSQL-aware application factory. Run
+`osa-cp-migrate` separately before rollout when
+`OSA_CONTROL_PLANE_DATABASE_URL` is configured; the application never
+auto-migrates. The local deployment provider uses these server-side settings:
+
+| Variable | Purpose | Default |
+|---|---|---|
+| `OSA_CONTROL_PLANE_DATABASE_URL` | PostgreSQL DSN for agents, resources, deployments, and audit events | unset (in-memory) |
+| `OSA_DEPLOY_COMMAND_TEMPLATE` | Server-owned runtime launch template; supports `{bundle_path}` and `{port}` | `osa-runtime --config {bundle_path} --port {port}` |
+| `OSA_DEPLOY_ROOT` | Root directory for exported deployment bundles | OS temporary directory plus `osa-deployments` |
+| `OSA_DEPLOY_INVOKE_URL_TEMPLATE` | Optional public runtime URL; supports `{deployment_id}`, `{agent_id}`, `{version}`, and `{port}` | unset |
+| `OSA_DEPLOY_RUNTIME_ALLOWED_ORIGINS` | Origins forwarded to launched runtimes as `OSA_RUNTIME_ALLOWED_ORIGINS` | unset |
+
+The command template is configuration owned by the server/operator, never API
+input. In a split deployment, the executable named by the template and its
+runtime dependencies must be available to the Control Plane process. The
+Control Plane image is management-only and does not package `osa-runtime`; use
+an operator-provided launcher/provider or a deployment topology that puts the
+local provider beside the runtime (see the open launcher-contract item in
+`TODO.md`).
+
 ### Migrations
 
 Apply Alembic migrations **before the first rollout of a new version** and
@@ -81,6 +104,8 @@ a separate step, then roll replicas.
 - Runtime replicas need a shared `SessionProvider` (persistent) for
   cross-replica session continuity; with the in-memory provider, sessions
   are per-process (documented limitation).
+- Neither service enforces HTTP rate limits or quotas yet. Apply those controls
+  at an API gateway or service mesh until the planned implementation lands.
 
 ## Deploying an agent through the Control Plane
 

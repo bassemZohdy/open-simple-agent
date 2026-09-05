@@ -90,6 +90,24 @@ reprioritized.
 - [ ] Keep OpenShift-specific behavior deferred separately; do not introduce
   OpenShift assumptions into the generic Kubernetes provider.
 
+## Packaged Control Plane deployment launcher contract — PENDING
+
+The Control Plane image is management-only and starts the configured
+application factory, but its default local deployment command invokes
+`osa-runtime`. That executable is not packaged in `Dockerfile.control-plane`.
+Failure: an operator deploys an active agent through an isolated Control Plane
+container, and bundle export succeeds but process launch fails with an
+executable-not-found error. The local provider therefore cannot be treated as
+a self-contained production deployment strategy yet.
+
+- [ ] Decide the supported production contract: package the runtime launcher,
+  require an operator-provided launcher/provider, or make provider selection
+  explicit rather than relying on the local default.
+- [ ] Add image-level integration coverage that proves the selected deployment
+  topology can launch, probe, stop, and observe a runtime.
+- [ ] Document the supported split-image and colocated-process topologies,
+  including the security boundary around `OSA_DEPLOY_COMMAND_TEMPLATE`.
+
 ---
 
 # P2 — Production controls follow-up
@@ -141,6 +159,19 @@ redaction-safe per-capability events for model, native-tool, or MCP activity.
   prompts, outputs, credentials, or unbounded tool payloads.
 - [ ] Add model/tool/MCP success, failure, timeout, and tenant-isolation tests
   plus operational documentation.
+
+## Rate limiting and quotas — PENDING
+
+Neither HTTP application currently enforces per-principal or per-tenant rate
+limits, concurrency quotas, or a `429`/`Retry-After` contract. Failure: a noisy
+or hung caller can consume model, MCP, A2A, streaming, or deployment API
+capacity even though operation timeouts are enforced.
+
+- [ ] Define per-route, principal, and tenant limits, burst behavior, retry
+  semantics, and stable `429` response headers.
+- [ ] Select a replica-safe enforcement and storage strategy that works for
+  streaming and long-running A2A/deployment operations.
+- [ ] Add isolation, burst, streaming, A2A, metrics, and documentation tests.
 
 ---
 
@@ -504,7 +535,59 @@ Every item below was independently confirmed by reading the current source
   at the OSA boundary; implement together with BF6, which reworks the same
   retry/timeout block.
 
+### Contract alignment review — 2026-09-05
+
+- [x] BF9 Runtime `GET /v1/capabilities` reported `streaming: false` even
+  though `POST /v1/invoke/stream` was implemented and documented. Failure:
+  clients disable a supported feature based on false capability metadata.
+  The response now reports streaming support and the integration test asserts
+  the contract.
+- [x] BF10 The stream route was absent from the shared `agent:invoke` route
+  permission mapping. Failure: with optional authentication and permission
+  enforcement, an anonymous caller could reach the stream route while the
+  non-streaming invoke route required `agent:invoke`. Both routes now share
+  the mapping and regression coverage.
+- [x] BF11 The production runtime image omitted the `a2a` extra although the
+  deployment guide and runtime contract promise optional A2A support. Failure:
+  an enabled A2A bundle starts in an image without the required SDK. The image
+  now installs `litellm`, `postgres`, and `a2a` extras together.
+- [x] BF12 The Control Plane image launched `api:app`, the always-in-memory
+  module app, so `OSA_CONTROL_PLANE_DATABASE_URL` was ignored by the container.
+  Failure: a supposedly PostgreSQL-backed image silently lost state on restart
+  or across replicas. The image now launches
+  `create_control_plane_app` with Uvicorn's `--factory` flag.
+- [x] BI3 `docs/API.md` placed runtime streaming under the Control Plane and
+  omitted the runtime stream and metrics route rows. Failure: generated-route
+  review could not detect runtime documentation drift. The section is now
+  under Runtime API, and the contract test checks that runtime routes are
+  documented.
+- [x] BI4 The deployment guide omitted `OSA_DEPLOY_COMMAND_TEMPLATE`,
+  `OSA_DEPLOY_ROOT`, `OSA_DEPLOY_INVOKE_URL_TEMPLATE`, and
+  `OSA_DEPLOY_RUNTIME_ALLOWED_ORIGINS`. Failure: operators could not configure
+  the documented deployment behavior from the deployment guide. The guide
+  now lists each variable, default, placeholder, and security boundary.
+- [x] BI5 Documentation now distinguishes the independent Control Plane and
+  memory PostgreSQL DSNs, their backup scopes, and transitional memory
+  bootstrap DDL. Failure: an operator could back up or migrate one database
+  while assuming it covered all OSA state.
+- [ ] BI6 The isolated Control Plane image still does not contain the default
+  `osa-runtime` launcher used by the local deployment provider. This is now a
+  documented production-topology decision rather than an implicit guarantee;
+  resolve it under the packaged launcher contract above.
+- [ ] BI7 Neither HTTP app provides rate limiting or quotas. Define and
+  implement a replica-safe capacity contract before treating the services as
+  internet-facing without an external gateway or mesh.
+
 ## Review Log
+
+- 2026-09-05 — Full documentation and project-contract review: fixed runtime
+  capability/permission drift, aligned both container entrypoints with their
+  documented extras and persistence behavior, moved and expanded the runtime
+  API reference, added runtime OpenAPI route coverage, documented all Control
+  Plane deployment variables, and clarified independent database backup and
+  memory-schema semantics. Added pending work for the isolated Control Plane
+  launcher boundary and HTTP rate limiting/quotas. Full Python, frontend, and
+  container validation was rerun successfully before commit.
 
 - 2026-09-05 — Control Panel remaining review items I5/I7 resolved. Added the
   non-root Nginx production image with SPA fallback and CI image smoke checks;

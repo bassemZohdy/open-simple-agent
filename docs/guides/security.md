@@ -111,6 +111,12 @@ authorization-surface decision, not a convenience flag: list only origins that
 must call the runtime directly, and keep the runtime's authentication
 enforcement on (`OSA_AUTH_MODE=required`) whenever any origin is allowed.
 
+Neither the Control Plane nor runtime currently enforces per-principal or
+per-tenant request rate limits, concurrency quotas, or `429` retry semantics.
+Until that contract is implemented, enforce capacity limits at the API
+gateway or service mesh; the planned OSA-side controls are tracked in
+`TODO.md`.
+
 ## Provider-dependent verification still open
 
 - Live-provider acceptance (requires an explicitly configured CI secret)

@@ -39,4 +39,4 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
 
 # In-memory by default; set OSA_CONTROL_PLANE_DATABASE_URL for shared
 # PostgreSQL state, and run `osa-cp-migrate` before first rollout (ADR-004).
-CMD ["uvicorn", "osa.control_plane.backend.api:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "osa.control_plane.backend.service:create_control_plane_app", "--factory", "--host", "0.0.0.0", "--port", "8000"]

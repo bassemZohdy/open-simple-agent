@@ -56,8 +56,11 @@ health probe; startup failures carry the captured logs in the record detail.
   `OSA_CONTROL_PLANE_DATABASE_URL`).
 - The application verifies connectivity at startup but never migrates —
   running migrations from several replicas simultaneously is a race.
-- PostgreSQL-backed services (Control Plane state, memory) share the
-  database; standard PostgreSQL backup/restore covers OSA state.
+- Control Plane state and runtime memory may each use PostgreSQL, but they are
+  configured by separate DSNs and may be different databases. Back up every
+  configured database; Control Plane schema is migration-owned, while memory
+  currently uses transitional startup bootstrap DDL (migration ownership is
+  tracked in `TODO.md`).
 
 ## Upgrades
 

@@ -6,10 +6,12 @@ schema is Alembic-owned, and migrations are an explicit operational step.
 
 ## Before you upgrade
 
-1. Read the [changelog](../CHANGELOG.md) section for the target version —
+1. Read the [changelog](../../CHANGELOG.md) section for the target version —
    breaking changes are listed there.
-2. Back up the PostgreSQL database (all OSA state: Control Plane records,
-   resource definitions, deployment records, audit events, memory entries).
+2. Back up every configured PostgreSQL database. Control Plane records,
+   resource definitions, deployment records, and audit events use
+   `OSA_CONTROL_PLANE_DATABASE_URL`; memory entries use the independent
+   `OSA_MEMORY_DATABASE_URL` database when configured.
 3. Confirm the new images build in CI (the container job smoke-tests both
    images on every commit, so a green main implies buildable images).
 
@@ -32,6 +34,9 @@ OSA_CONTROL_PLANE_DATABASE_URL=... uv run osa-cp-migrate
 - Migrations are additive-first: new columns/tables land with server
   defaults so the previous version keeps working against the migrated
   schema (enabling rolling rollbacks).
+- Runtime memory currently bootstraps its table with `CREATE TABLE IF NOT
+  EXISTS`; explicit versioned memory migrations and their upgrade/rollback
+  contract remain pending in `TODO.md`.
 
 ## Runtime replicas
 

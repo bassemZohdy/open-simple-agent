@@ -155,7 +155,9 @@ By default memory is in-memory (single process, lost on restart). Setting
 selects the PostgreSQL provider (ADR-003, `osa-adk-runtime[postgres]` extra):
 entries survive restarts, are shared across replicas, and the runtime
 verifies connectivity and its schema at startup — an unreachable database
-aborts boot before readiness.
+aborts boot before readiness. The current provider uses transitional
+`CREATE TABLE IF NOT EXISTS` bootstrap DDL; explicit versioned memory
+migrations and their operational ownership remain pending in `TODO.md`.
 
 Timeouts, TTLs, limits, and iterations carry positive/range validation
 (`timeout_seconds > 0`, `ttl_seconds > 0`, `max_iterations >= 1`,
@@ -226,6 +228,9 @@ is encountered.
 | `OSA_AUTH_CLOCK_SKEW_SECONDS` | JWT clock leeway, 0..300 seconds | `30` |
 | `OSA_AUTH_JWKS_TIMEOUT_SECONDS` | JWKS request timeout, >0 and <=30 seconds | `2.0` |
 | `OSA_AUTH_JWKS_CACHE_SECONDS` | JWKS cache lifetime, >0 and <=86400 seconds | `300` |
+
+Permission enforcement requires `OSA_AUTH_MODE=optional` or `required`; the
+configuration is rejected when authentication is `disabled`.
 
 ### Browser CORS (runtime)
 

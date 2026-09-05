@@ -405,6 +405,7 @@ def test_authorization_policy_expands_roles_and_explicit_permissions() -> None:
 def test_authorization_policy_routes_agent_scoped_deployments_to_deployment_permission() -> None:
     policy = AuthorizationPolicy(enabled=True)
 
+    assert policy.permission_for_request("/v1/invoke/stream", "POST") == AuthPermission.AGENT_INVOKE
     assert policy.permission_for_request("/agents/abc/deployments", "GET") == AuthPermission.DEPLOYMENT_READ
     assert policy.permission_for_request("/agents/abc/deployments", "POST") == AuthPermission.DEPLOYMENT_WRITE
     # Plain agent routes still resolve to agent permissions.
