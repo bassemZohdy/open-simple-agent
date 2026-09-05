@@ -1,6 +1,6 @@
 # Open Simple Agent — Active Backlog
 
-Updated 2026-09-03. This file tracks active, pending, and deliberately deferred
+Updated 2026-09-04. This file tracks active, pending, and deliberately deferred
 work only. Completed implementation history belongs in `CHANGELOG.md`, the
 architecture/API documentation, ADRs, and git history.
 
@@ -200,3 +200,240 @@ Remaining release work:
    tests when a concrete enterprise identity source is selected.
 5. Keep all Kubernetes/Kind/OpenShift follow-up pending until explicitly
    resumed.
+
+---
+
+# Review Findings
+
+Findings are filed with a concrete failure scenario. Resolve them in order and
+record resolutions in the Review Log.
+
+## Control Panel UI (control-plane/frontend) — 2026-09-04
+
+### Fixes
+
+- [ ] F1 Dark mode leaves light-theme grays on dark surfaces: `.state-card`,
+  `.filter-bar label`, `td small`, `.muted-text`, card/body `p`, `.eyebrow`,
+  and `th` keep `#475467`/`#667085` (~2.2–3.4:1, below WCAG AA 4.5:1);
+  `.count-badge` and the anonymous `.connection-pill` render near-white text
+  on a `#eef2f6` pill; `.confirmation` renders dark red on `#291b1c`.
+  Failure: with OS dark mode, loading/empty states, count badges, form
+  labels, and the archive confirmation are unreadable.
+- [ ] F2 No scroll reset on route change: `AppShell` focuses `#main-content`
+  with `preventScroll: true` and `BrowserRouter` does no scroll management.
+  Failure: opening an agent from the bottom of a long list renders the
+  detail page scrolled to the old offset with the top content off-screen.
+- [ ] F3 AgentsPage and the DeploymentsPage agent picker hardcode
+  `limit: 100` and never send `offset`, though `/agents` supports
+  limit/offset. Failure: with >100 agents the rest are unreachable in the UI
+  and the total badge disagrees with the rows shown.
+- [ ] F4 Create-agent "Built-in template" source with no template selected
+  silently omits `template` and creates an empty draft. Failure: the user
+  picks the template source, misses the dropdown, and gets a blank draft
+  instead of a template-based agent.
+- [ ] F5 `closeCreate()` never clears `?create=1&cloneOf=…` from the URL.
+  Failure: closing the clone panel and clicking "Create agent" in the same
+  visit re-enters clone mode with stale pre-filled metadata.
+- [ ] F6 Disabled buttons keep `cursor: pointer` and full styling (no
+  `:disabled` rules). Failure: during busy states (e.g. "Creating…") other
+  buttons look clickable and clicks silently no-op.
+- [ ] F7 Console timeout input is not clamped: clearing it sends
+  `timeout_seconds=0` (`Number("")`) and out-of-range values pass through
+  despite `min`/`max`. Failure: invoke with a cleared timeout fails with a
+  confusing server-side error.
+- [ ] F8 ResourcesPage and TemplatesPage error states have no retry path
+  (every other page has one). Failure: a transient API error requires a full
+  page reload or kind switch to recover.
+- [ ] F9 Stale copy on `/console`: the footer still claims managed-agent
+  invocation "require[s] runtime access design (pending)" although ADR-008
+  managed invocation shipped on the Deployments page. Failure: operators
+  conclude the feature does not exist.
+- [ ] F10 No React error boundary. Failure: any render exception (e.g. an
+  unexpected API payload shape such as `labels: null`) unmounts the whole
+  app to a blank page with no recovery.
+- [ ] F11 No 401/403 handling: an expired token surfaces only as per-page
+  errors and Retry loops with the dead token. Failure: mid-session token
+  expiry leaves every view failing with no prompt to reconnect.
+- [ ] F12 `AuthContext` guards the initial `sessionStorage` read but not the
+  `setItem`/`removeItem` writes. Failure: where storage is unavailable
+  (private mode, storage disabled), submitting a token throws and the form
+  dies silently.
+- [ ] F13 No fetch carries a timeout or `AbortController`;
+  `invokeRuntimeEndpoint` waits forever. Failure: a hung runtime leaves
+  "Invoking…" spinning indefinitely; only a page reload escapes.
+- [ ] F14 Rollback has no confirmation (archive has one) and the rollback
+  version input's form swallows Enter (`onSubmit` is only `preventDefault`).
+  Failure: one stray click immediately relaunches an older version, and
+  pressing Enter in the version field silently does nothing.
+- [ ] F15 `.detail-grid { minmax(300px, 1fr) }` exceeds the ~282px content
+  width of a 320px viewport. Failure: horizontal page scroll on small
+  phones; use `minmax(min(300px, 100%), 1fr)`.
+
+### Improvements
+
+- [ ] I1 Poll deployment status (or provide one "refresh all") so `starting`
+  deployments converge without manual "Refresh status" clicks.
+- [ ] I2 Render localized/relative timestamps in version history and the
+  audit table instead of raw ISO strings.
+- [ ] I3 Move the audit action filter server-side (the API only supports
+  `limit` today) or relabel the count badge so "N matching" does not imply a
+  global match count over the unloaded window.
+- [ ] I4 Health page: render the full readiness payload and add a refresh
+  control.
+- [ ] I5 Production serving story for the Panel: SPA fallback so deep links
+  like `/agents/<id>` do not 404 on plain static hosts, plus the UI
+  container image already marked as future work in PROJECT_DEFINITION.
+- [ ] I6 Scope the Deployments busy state per row/action instead of locking
+  every button on the page during any single request.
+- [ ] I7 Surface immutable version snapshot content when the API exposes it
+  (definitions are write-only today, so clone/edit cannot show the source
+  definition).
+
+## Backend, Runtime & Release Tooling (control-plane/backend, generic-agent,
+runtimes/adk, scripts, docs) — 2026-09-04
+
+Every item below was independently confirmed by reading the current source
+(not just reported by a review pass); two are empirically reproduced.
+
+### Fixes
+
+- [ ] BF1 Cross-user memory leakage via a shared, never-reset `LlmAgent`
+  instruction: `GenericAdkAgent._invoke`/`stream_invoke`
+  (`runtimes/adk/src/osa/runtimes/adk/runtime.py:487-488`, `:559-560`) run on
+  one process-wide `llm_agent` instance and only *set*
+  `self.llm_agent.instruction` when the current request's memory lookup
+  returns content — there is no `else` branch restoring the base
+  instruction when it doesn't. Failure: User A's request pulls their private
+  memory into the shared instruction; User B's very next request (new topic,
+  no memory hits, so the `if memory_context:` branch is skipped) is sent to
+  the model with A's memory content still attached, and the model can
+  reflect it back to B. Directly contradicts the "isolated sessions" P0
+  guarantee. Concurrent in-flight requests make the window worse (A's own
+  call can race and pick up B's just-written instruction).
+- [ ] BF2 External A2A agent records have no tenant isolation:
+  `ExternalAgentRecord`
+  (`control-plane/backend/src/osa/control_plane/backend/external_agents.py`)
+  has no `tenant_id` field, `ExternalAgentCatalog` is one process-global
+  dict, and none of `list_external_agents`/`get_external_agent`/
+  `refresh_external_agent`/`delete_external_agent`/`invoke_external_agent`
+  filter or check ownership by tenant — unlike every other resource type in
+  this package (`_owned_record`/`_request_tenant` for agents,
+  `scoped_catalogs` for resources). Failure: Tenant A registers an external
+  agent with an `OutboundCredential`; Tenant B (valid token, different
+  `tenant_id`, same `external-agent:*` permission) lists it, invokes it —
+  using A's stored credential against the remote service — or deletes it.
+- [ ] BF3 PostgreSQL-backed deployment records are never wired up despite a
+  configured DSN: in `create_control_plane_app`
+  (`control-plane/backend/src/osa/control_plane/backend/service.py:88-133`),
+  `deployment_records: Any = None` is declared before the `if dsn:` branch
+  and never assigned inside it — only `agents`/`resources`/
+  `audit_repository` get Postgres implementations. The `if deployment_records
+  is not None:` gate (line 124) that would build a `DeploymentService` around
+  it is therefore permanently dead, and `PostgresDeploymentRecordRepository`
+  (`repositories.py:698`) is never imported from `service.py`. Failure: an
+  operator sets `OSA_CONTROL_PLANE_DATABASE_URL` and runs two Control Plane
+  replicas per ADR-004's stated goal; a deploy routed to replica A is
+  invisible to `GET /deployments/{id}` on replica B, and all deployment
+  history is lost on restart.
+- [ ] BF4 `PATCH /agents/{id}` with a new `definition` leaves the Postgres
+  `skills` column stale: `update_agent`
+  (`control-plane/backend/src/osa/control_plane/backend/api.py:595-611`)
+  never puts `skills` into the `updates` dict passed to
+  `agent_repository.update()`, then calls `_sync_derived_fields(updated)`
+  (`api.py:233-236`) which mutates the returned Python object's `.skills`
+  in place. `PostgresAgentRepository.update()`
+  (`repositories.py:363-391`) returns a freshly re-queried record, so that
+  mutation is never written back — `_UPDATABLE_COLUMNS` even lists `skills`
+  as a valid column, it's just never populated by the caller. Failure (
+  Postgres backend only): the immediate PATCH response shows the correct new
+  skills (illusion of success), but the stored row — and every later
+  `GET /agents?skill=…` filter — keeps the pre-update skill list
+  indefinitely.
+- [ ] BF5 `GET /agents/{agent_id}/deployments` is authorized against
+  `agent:read` instead of `deployment:read`:
+  `permission_for_request`
+  (`generic-agent/src/osa/generic_agent/auth.py:230-257`) routes on
+  `path.startswith("/deployments/") or path.endswith("/deploy")` before
+  falling through to the generic `/agents/` clause; `/agents/{id}/deployments`
+  matches neither, so it resolves to `AGENT_READ` like any other
+  `/agents/...` route. Every sibling deployment-observing endpoint (
+  `GET /deployments/{id}`, `.../logs`) correctly requires `DEPLOYMENT_READ`.
+  Failure: an enterprise role mapped to `agent:read` but not
+  `deployment:read` can still read deployment ids, status, and `invoke_url`
+  through this one route, bypassing the permission boundary enforced
+  everywhere else.
+- [ ] BF6 MCP tool-call retries can duplicate non-idempotent tool
+  executions: `McpToolConnection.call_tool`
+  (`runtimes/adk/src/osa/runtimes/adk/mcp_client.py:301-334`) retries on a
+  bare `except Exception`, with no distinction between a transient
+  transport failure and a response that was simply lost after the server
+  already completed the call, and no idempotency key. Failure: a tool that
+  sends an email or creates a record times out waiting for its response,
+  OSA retries and the server runs it a second time.
+- [ ] BF7 The documented local quick-start (`README.md`, `CONTRIBUTING.md`,
+  `AGENTS.md`: `uv sync --all-packages` then `uv run pytest`) omits the
+  `--extra a2a` CI always adds, and `tests/integration/test_a2a.py` has no
+  `pytest.mark.skipif`/`importorskip` guard the way
+  `tests/integration/test_postgres_memory.py` does for the `postgres` extra.
+  Empirically reproduced: a venv synced exactly per the README's documented
+  commands fails 11 tests in `test_a2a.py` with
+  `A2aNotInstalledError` instead of skipping. Failure: a new contributor
+  follows the README verbatim and sees unexplained test failures that look
+  like a broken checkout.
+
+### Improvements
+
+- [ ] BI1 `docs/guides/security.md` — the doc that states "current security
+  behavior... is tested" — never mentions `OSA_RUNTIME_ALLOWED_ORIGINS` or
+  CORS, even though ADR-008 explicitly puts "the runtime's auth/CORS
+  posture" on the operator and the CHANGELOG notes the Control Panel's
+  runtime-invoke request never forwards the Panel's own bearer token.
+  Failure: an operator enables `OSA_RUNTIME_ALLOWED_ORIGINS` for the
+  Deployments-page "Send test message" feature, checks the security guide
+  for guidance, finds nothing, and doesn't realize the runtime's own
+  `OSA_AUTH_MODE` now gates a newly browser-reachable endpoint.
+- [ ] BI2 `scripts/release_validation.py`'s changelog check
+  (`release_heading = re.compile(rf"^## \[{{version}}\] - \d{{4}}-\d{{2}}-\d{{2}}$")`)
+  matches *any* heading anywhere in the file, regardless of position or
+  date, and `CHANGELOG.md` already carries pre-release dev-milestone
+  headings from `[0.0.1]` through `[0.14.0]` above the never-yet-tagged
+  `[Unreleased]` section (`git tag -l` is currently empty). Empirically
+  confirmed in `.sandbox/`: bumping all four manifests to a version that
+  collides with one of those existing headings (e.g. `0.2.0`) makes
+  `validate_release()` pass even though `## [Unreleased]` still has
+  unmigrated content and the matched heading's date/content predate the
+  actual release. Failure: whoever cuts the first real release picks a
+  version number that happens to match one of these old headings and ships
+  a GitHub Release whose linked changelog section is stale, unrelated
+  content.
+
+## Review Log
+
+- 2026-09-04 — Control Panel UI presentation review of
+  `control-plane/frontend` filed 15 fixes (F1–F15) and 7 improvements
+  (I1–I7). Read-only review; no source changes made.
+- 2026-09-04 — Full-project review and test pass. Ran the automated gates
+  (`uv run ruff check/format`, `uv run mypy .`, `uv run pytest --cov`
+  matching CI's exact `--extra postgres --extra a2a` sync, and
+  `npm run typecheck/test/build` for `control-plane/frontend`) — all clean:
+  0 lint/type errors, 525 passed/21 skipped at 85.78% coverage (≥84% floor),
+  9/9 frontend test files passing, clean frontend build. Used a gitignored
+  `.sandbox/` (see `.gitignore`) to reproduce the documented no-extras
+  quickstart in an isolated `UV_PROJECT_ENVIRONMENT` and to empirically
+  confirm the release-validation gap against copied manifests/changelog —
+  neither touched the real checkout. Two parallel focused reviews (backend
+  API/persistence/deployment providers; generic-agent + ADK runtime
+  auth/memory/session/MCP/A2A) plus a docs/release-tooling pass filed 7
+  fixes (BF1–BF7) and 2 improvements (BI1–BI2) above; every finding was
+  independently re-verified against current source before filing, so all
+  are marked confirmed rather than merely reported. Also checked and ruled
+  out (no genuine issue found): JWT/OIDC validation paths (expired/
+  malformed/audience/`active`-claim handling all fail closed, verified with
+  a real signed test token), session/memory scope ownership checks in
+  `session.py`/`session_service.py`, local and Kubernetes deployment
+  provider idempotent-redeploy/terminal-state guards, CORS env-var naming
+  agreement between the Control Plane and runtime, credential handling in
+  bundle export and generated Kubernetes manifests (`secretKeyRef` only,
+  never inline), and `scripts/rollback_release.py`'s channel/digest/tag
+  validation. Read-only against tracked files; only `TODO.md` and
+  `.gitignore` (adding `.sandbox/`) were changed.

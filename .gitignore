@@ -33,3 +33,6 @@ node_modules/
 # Generated SBOMs (CI artifacts)
 *.cdx.json
 requirements-audit.txt
+
+# Local scratch sandbox for validating review findings (never committed)
+.sandbox/
