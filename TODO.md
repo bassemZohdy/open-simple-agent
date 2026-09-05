@@ -1,6 +1,6 @@
 # Open Simple Agent — Active Backlog
 
-Updated 2026-09-04. This file tracks active, pending, and deliberately deferred
+Updated 2026-09-05. This file tracks active, pending, and deliberately deferred
 work only. Completed implementation history belongs in `CHANGELOG.md`, the
 architecture/API documentation, ADRs, and git history.
 
