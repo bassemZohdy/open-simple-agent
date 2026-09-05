@@ -8,18 +8,8 @@ import pytest
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 
-from osa.generic_agent import (
-    AgentDefinition,
-    AgentMetadataConfig,
-    AgentSpec,
-    InMemoryAuditEventSink,
-)
-from osa.runtimes.adk.api import _allowed_origins_from_env, configure_runtime_app, initialize_runtime
-
-
-@pytest.fixture
-def runtime_agent() -> Any:
-    return initialize_runtime(AgentDefinition(metadata=AgentMetadataConfig(name="cors-agent"), spec=AgentSpec()))
+from osa.generic_agent import InMemoryAuditEventSink
+from osa.runtimes.adk.api import _allowed_origins_from_env, configure_runtime_app
 
 
 def _app(**kwargs: Any) -> FastAPI:
@@ -35,7 +25,7 @@ def test_allowed_origins_parse_csv() -> None:
 
 
 @pytest.mark.asyncio
-async def test_preflight_allowed_when_origin_configured(runtime_agent: Any, monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_preflight_allowed_when_origin_configured(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("OSA_RUNTIME_ALLOWED_ORIGINS", "https://panel.example.test")
     app = _app()
     async with AsyncClient(transport=ASGITransport(app=app), base_url="https://runtime.test") as client:
@@ -53,7 +43,7 @@ async def test_preflight_allowed_when_origin_configured(runtime_agent: Any, monk
 
 @pytest.mark.asyncio
 async def test_actual_request_caries_cors_headers_but_still_authenticates(
-    runtime_agent: Any, monkeypatch: pytest.MonkeyPatch
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """CORS headers appear on real responses; the bearer boundary still runs."""
     monkeypatch.setenv("OSA_RUNTIME_ALLOWED_ORIGINS", "https://panel.example.test")
@@ -70,7 +60,7 @@ async def test_actual_request_caries_cors_headers_but_still_authenticates(
 
 
 @pytest.mark.asyncio
-async def test_no_cors_headers_when_unconfigured(runtime_agent: Any) -> None:
+async def test_no_cors_headers_when_unconfigured() -> None:
     monkeypatch = pytest.MonkeyPatch()
     try:
         monkeypatch.delenv("OSA_RUNTIME_ALLOWED_ORIGINS", raising=False)
