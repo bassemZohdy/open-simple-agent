@@ -103,4 +103,5 @@ SQLAlchemy 2.0 async, Alembic.
 - [x] P1.2: expose resource definitions over the API with write-through
       persistence.
 - [x] P1.5: implement `DeploymentRecordRepository` persistence.
-- [ ] P2.2: audit metadata repository.
+- [x] P2.2: audit metadata repository, including tenant-filtered PostgreSQL
+      persistence through migration 0006 and restart-survival coverage.

@@ -51,6 +51,20 @@ lost with a runtime process and cannot provide cross-replica continuity.
 - [ ] Add cross-process persistence, restart, expiry, ownership, and concurrent
   update tests, then document operational backup and upgrade behavior.
 
+## Memory schema ownership — PENDING
+
+`PostgresMemoryProvider` still creates `osa_memory_entries` with bootstrap DDL
+when `OSA_MEMORY_DATABASE_URL` is configured. The data semantics and
+PostgreSQL persistence are implemented, but schema ownership and upgrade
+ordering are not yet aligned with the migration-owned Control Plane policy.
+
+- [ ] Select migration ownership and operational commands for the independent
+  memory database.
+- [ ] Replace runtime `CREATE TABLE IF NOT EXISTS` bootstrap behavior with an
+  explicit, versioned migration path.
+- [ ] Add upgrade/rollback coverage and document backup, migration, and
+  startup-order requirements.
+
 ---
 
 # P1 — Managed platform follow-up
@@ -115,6 +129,19 @@ cannot observe task state created by another replica.
 - [ ] Add multi-replica acceptance coverage for task creation, completion,
   failure, lookup, and recovery without leaking tenant or caller state.
 
+## Capability-level audit telemetry — PENDING
+
+The current audit path records management mutations, runtime/A2A boundaries,
+and authentication/authorization denials, but it does not define or persist
+redaction-safe per-capability events for model, native-tool, or MCP activity.
+
+- [ ] Define the event taxonomy, redaction rules, retention, sampling, and
+  performance policy for capability-level telemetry.
+- [ ] Implement the optional sink and durable persistence path without storing
+  prompts, outputs, credentials, or unbounded tool payloads.
+- [ ] Add model/tool/MCP success, failure, timeout, and tenant-isolation tests
+  plus operational documentation.
+
 ---
 
 # P3 — Product surface and distribution
@@ -167,6 +194,10 @@ cannot observe task state created by another replica.
   covered by the shared stylesheet/runtime smoke checks.
 - [ ] Add translated-locale coverage while preserving the same accessible
   names, validation meaning, and browser-locale timestamp behavior.
+- [ ] Define deployment-specific OIDC browser login/refresh semantics once an
+  issuer, client, and redirect contract is selected.
+- [ ] Decide whether public agent-definition bundle import/export APIs are in
+  scope; resource import/export and server-side deployment export exist today.
 
 ## P3.3 Packaging, CI/CD, and release
 
@@ -213,6 +244,11 @@ Remaining release work:
 
 # Deferred until a concrete requirement
 
+- [ ] Track upstream MCP SDK major changes and revisit the pin when MCP 2.x
+  lands.
+- [ ] MCP resources/prompts exposure and legacy SSE transport support.
+- [ ] Configurable custom model-adapter registration until a second production
+  adapter is required.
 - [ ] Additional runtime frameworks such as LangChain/LangGraph.
 - [ ] Multiple unrelated agents in one runtime process.
 - [ ] Dynamic runtime plugin installation.
@@ -220,7 +256,8 @@ Remaining release work:
 - [ ] Advanced multi-tenancy and multi-region deployment.
 - [ ] Agent delegation/consent framework beyond baseline A2A security.
 - [ ] General human-approval framework beyond management operations.
-- [ ] Advanced memory extraction/consolidation and vector retrieval.
+- [ ] Advanced memory extraction/consolidation and vector retrieval (including
+  pgvector).
 - [ ] Enterprise external policy engine (until P2.2 selects a concrete need).
 
 ---
@@ -236,8 +273,9 @@ Remaining release work:
    release is intentionally scheduled.
 4. P2.2 lifecycle semantics are defined (ADR-007); add integration/contract
    tests when a concrete enterprise identity source is selected.
-5. Select and implement durable runtime sessions and distributed A2A task
-   state when their storage and operational semantics are approved.
+5. Select and implement durable runtime sessions, memory schema migrations, and
+   distributed A2A task state when their storage and operational semantics are
+   approved.
 6. Keep all Kubernetes/Kind/OpenShift follow-up pending until explicitly
    resumed.
 
@@ -545,10 +583,13 @@ Every item below was independently confirmed by reading the current source
   `[Unreleased]` (which must be empty), so historical dev-milestone headings
   can no longer satisfy a release by collision. Cleanup: removed stale empty
   `.claude/` and `control-plane/ui/` directories.
-- 2026-09-05 — Backlog reconciliation: added persistent runtime-session work
-  and ADR-005 P2.4 distributed A2A task-state work already identified as open
-  in the API/operations documentation but missing from this authoritative
-  backlog. Both remain pending a storage and operational design.
+- 2026-09-05 — Backlog reconciliation: added persistent runtime-session work,
+  memory schema-ownership work, and ADR-005 P2.4 distributed A2A task-state
+  work already identified as open in the API/operations documentation but
+  missing from this authoritative backlog. Also recorded capability-level
+  telemetry, conditional MCP, custom-adapter, OIDC, and bundle-API follow-ups
+  from the current docs/ADRs. These remain deferred or pending their
+  respective storage, transport, and product requirements.
 - 2026-09-04 — Control Panel UI presentation review of
   `control-plane/frontend` filed 15 fixes (F1–F15) and 7 improvements
   (I1–I7). Read-only review; no source changes made.

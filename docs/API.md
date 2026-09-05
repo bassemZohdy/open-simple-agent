@@ -186,7 +186,8 @@ definitions, prompts, credentials, and remote outputs are never recorded.
 The in-memory repository is the default; PostgreSQL persistence uses migration
 0006. Runtime and A2A boundary invocations plus authentication/authorization
 denials are emitted through the optional runtime audit sink. Internal
-capability-level events and distributed persistence remain open in P2.2.
+capability-level events remain open; durable runtime sessions, memory schema
+migrations, and distributed A2A task state are tracked in `TODO.md`.
 
 ### Definition resource policy
 

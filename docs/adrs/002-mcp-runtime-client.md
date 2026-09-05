@@ -91,9 +91,10 @@ catalog/schema types (`osa.generic_agent.mcp`).
   invocation, timeouts, oversized responses, and connection failures; a
   localhost Streamable HTTP server covers HTTP transport and 401 auth
   failures.
-- Acceptance (TODO P1.3): a configured agent discovers and invokes a
+- Acceptance (P1.3): a configured agent discovers and invokes a
   filtered MCP tool through the ADK Runner; timeout/auth/oversize/disconnect
-  failures are deterministic errors surfaced to the model or caller.
+  failures are deterministic errors surfaced to the model or caller. This is
+  covered by `tests/integration/test_mcp_agent.py`.
 
 ## Follow-up
 

@@ -801,7 +801,7 @@ class PostgresDeploymentRecordRepository(DeploymentRecordRepository):
 
 
 # ---------------------------------------------------------------------------
-# Audit metadata (interface now; enforcement in P2.2)
+# Append-only audit metadata persistence
 # ---------------------------------------------------------------------------
 
 
