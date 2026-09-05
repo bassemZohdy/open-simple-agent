@@ -48,7 +48,17 @@ export function DeploymentsPage() {
   const [rollbackConfirm, setRollbackConfirm] = useState(false);
   const [managedMessage, setManagedMessage] = useState("");
   const [managedOutput, setManagedOutput] = useState<string | null>(null);
-  const [busyAction, setBusyAction] = useState<LifecycleAction | null>(null);
+  const [busy, setBusy] = useState<{ action: LifecycleAction; deploymentId?: string } | null>(null);
+
+  // I6: only the buttons tied to the running action's deployment lock; the
+  // rest of the page stays interactive. A deploy rewrites the history table,
+  // so it locks the whole section.
+  function busyLocked(deploymentId?: string): boolean {
+    if (busy === null) return false;
+    if (busy.action === "deploy") return true;
+    if (busy.deploymentId === undefined) return true;
+    return busy.deploymentId === deploymentId;
+  }
   const [message, setMessage] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
 
@@ -133,7 +143,7 @@ export function DeploymentsPage() {
   }
 
   async function runLifecycle(action: Exclude<LifecycleAction, "logs">, deploymentId?: string) {
-    setBusyAction(action);
+    setBusy({ action, deploymentId });
     setMessage(null);
     setActionError(null);
     try {
@@ -158,14 +168,14 @@ export function DeploymentsPage() {
     } catch (caught) {
       setActionError(errorMessage(caught, `Unable to ${action} deployment`));
     } finally {
-      setBusyAction(null);
+      setBusy(null);
     }
   }
 
   async function loadLogs(event?: FormEvent<HTMLFormElement>) {
     event?.preventDefault();
     if (!selected) return;
-    setBusyAction("logs");
+    setBusy({ action: "logs", deploymentId: selected.deployment_id });
     setActionError(null);
     try {
       const response = await client.getDeploymentLogs(selected.deployment_id, logTail);
@@ -174,7 +184,7 @@ export function DeploymentsPage() {
       setActionError(errorMessage(caught, "Unable to load deployment logs"));
       setLogs(null);
     } finally {
-      setBusyAction(null);
+      setBusy(null);
     }
   }
 
@@ -186,7 +196,7 @@ export function DeploymentsPage() {
       setActionError("A message is required");
       return;
     }
-    setBusyAction("invoke-managed");
+    setBusy({ action: "invoke-managed", deploymentId: selected.deployment_id });
     setActionError(null);
     try {
       const result = await client.invokeRuntimeEndpoint(selected.invoke_url, message);
@@ -194,7 +204,7 @@ export function DeploymentsPage() {
     } catch (caught) {
       setActionError(errorMessage(caught, "Unable to reach the runtime endpoint"));
     } finally {
-      setBusyAction(null);
+      setBusy(null);
     }
   }
 
@@ -203,6 +213,28 @@ export function DeploymentsPage() {
     if (selectedAgentId) void loadHistory(selectedAgentId);
     else void loadAgents();
   }
+
+  // I1: starting deployments converge without manual refresh clicks.
+  const hasStarting = deployments.some((entry) => entry.status === "starting");
+  useEffect(() => {
+    if (!selectedAgentId || !hasStarting) return;
+    const interval = window.setInterval(() => {
+      deployments
+        .filter((entry) => entry.status === "starting")
+        .forEach((entry) => {
+          void client
+            .getDeployment(entry.deployment_id)
+            .then((updated) => {
+              setDeployments((current) =>
+                current.map((item) => (item.deployment_id === updated.deployment_id ? updated : item)),
+              );
+              setSelected((current) => (current && current.deployment_id === updated.deployment_id ? updated : current));
+            })
+            .catch(() => undefined);
+        });
+    }, 3000);
+    return () => window.clearInterval(interval);
+  }, [client, deployments, hasStarting, selectedAgentId]);
 
   const selectedAgent = agents.find((agent) => agent.agent_id === selectedAgentId) ?? null;
 
@@ -229,7 +261,7 @@ export function DeploymentsPage() {
           </select>
         </label>
         {selectedAgentId ? (
-          <button type="submit" disabled={busyAction !== null}>Refresh history</button>
+          <button type="submit" disabled={busy !== null}>Refresh history</button>
         ) : null}
       </form>
 
@@ -273,8 +305,8 @@ export function DeploymentsPage() {
                 <span className="eyebrow">{selectedAgent ? selectedAgent.name : "Agent"}</span>
                 <h3 id="deployment-history-title">Deployment history</h3>
               </div>
-              <button type="button" disabled={busyAction !== null} onClick={() => void runLifecycle("deploy")}>
-                {busyAction === "deploy" ? "Deploying…" : "Deploy current version"}
+              <button type="button" disabled={busy !== null} onClick={() => void runLifecycle("deploy")}>
+                {busy?.action === "deploy" ? "Deploying…" : "Deploy current version"}
               </button>
             </div>
             {historyLoading ? <div className="state-card" role="status">Loading deployments…</div> : null}
@@ -301,7 +333,7 @@ export function DeploymentsPage() {
                           <button
                             type="button"
                             className="secondary-button"
-                            disabled={busyAction !== null}
+                            disabled={busyLocked(selected?.deployment_id)}
                             onClick={() => {
                               setSelected(entry);
                               setLogs(null);
@@ -341,19 +373,19 @@ export function DeploymentsPage() {
                   <div><dt>Runtime endpoint</dt><dd>{selected.invoke_url ? <a className="agent-link" href={selected.invoke_url}>{selected.invoke_url}</a> : "Not configured"}</dd></div>
                 </dl>
                 <div className="action-row">
-                  <button type="button" disabled={busyAction !== null} onClick={() => void runLifecycle("status", selected.deployment_id)}>
-                    {busyAction === "status" ? "Refreshing…" : "Refresh status"}
+                  <button type="button" disabled={busyLocked(selected?.deployment_id)} onClick={() => void runLifecycle("status", selected.deployment_id)}>
+                    {busy?.action === "status" && busy.deploymentId === selected.deployment_id ? "Refreshing…" : "Refresh status"}
                   </button>
                   {stoppable(selected.status) ? (
-                    <button type="button" disabled={busyAction !== null} onClick={() => void runLifecycle("stop", selected.deployment_id)}>
-                      {busyAction === "stop" ? "Stopping…" : "Stop"}
+                    <button type="button" disabled={busyLocked(selected?.deployment_id)} onClick={() => void runLifecycle("stop", selected.deployment_id)}>
+                      {busy?.action === "stop" && busy.deploymentId === selected.deployment_id ? "Stopping…" : "Stop"}
                     </button>
                   ) : null}
-                  <button type="button" disabled={busyAction !== null} onClick={() => void runLifecycle("restart", selected.deployment_id)}>
-                    {busyAction === "restart" ? "Restarting…" : "Restart"}
+                  <button type="button" disabled={busyLocked(selected?.deployment_id)} onClick={() => void runLifecycle("restart", selected.deployment_id)}>
+                    {busy?.action === "restart" && busy.deploymentId === selected.deployment_id ? "Restarting…" : "Restart"}
                   </button>
-                  <button type="button" className="danger-button" disabled={busyAction !== null} onClick={() => void requestRollback()}>
-                    {busyAction === "rollback" ? "Rolling back…" : rollbackConfirm ? "Confirm rollback" : "Rollback"}
+                  <button type="button" className="danger-button" disabled={busyLocked(selected?.deployment_id)} onClick={() => void requestRollback()}>
+                    {busy?.action === "rollback" && busy.deploymentId === selected.deployment_id ? "Rolling back…" : rollbackConfirm ? "Confirm rollback" : "Rollback"}
                   </button>
                 </div>
                 {rollbackConfirm ? (
@@ -362,10 +394,10 @@ export function DeploymentsPage() {
                       Roll back to version {rollbackVersion.trim() || "(previous version)"}? This relaunches the
                       deployment from an earlier immutable snapshot.
                     </span>
-                    <button type="button" className="danger-button" disabled={busyAction !== null} onClick={() => void requestRollback()}>
+                    <button type="button" className="danger-button" disabled={busyLocked(selected?.deployment_id)} onClick={() => void requestRollback()}>
                       Confirm rollback
                     </button>
-                    <button type="button" className="secondary-button" disabled={busyAction !== null} onClick={() => setRollbackConfirm(false)}>
+                    <button type="button" className="secondary-button" disabled={busyLocked(selected?.deployment_id)} onClick={() => setRollbackConfirm(false)}>
                       Cancel
                     </button>
                   </div>
@@ -386,10 +418,10 @@ export function DeploymentsPage() {
                         setRollbackConfirm(false);
                       }}
                       placeholder="Leave empty for the previous version"
-                      disabled={busyAction !== null}
+                      disabled={busyLocked(selected?.deployment_id)}
                     />
                   </label>
-                  <button type="submit" className="secondary-button" disabled={busyAction !== null}>
+                  <button type="submit" className="secondary-button" disabled={busyLocked(selected?.deployment_id)}>
                     Roll back to this version
                   </button>
                 </form>
@@ -409,11 +441,11 @@ export function DeploymentsPage() {
                           value={managedMessage}
                           onChange={(event) => setManagedMessage(event.target.value)}
                           placeholder="Ask the deployed agent something"
-                          disabled={busyAction !== null}
+                          disabled={busyLocked(selected?.deployment_id)}
                         />
                       </label>
-                      <button type="submit" disabled={busyAction !== null}>
-                        {busyAction === "invoke-managed" ? "Invoking…" : "Send test message"}
+                      <button type="submit" disabled={busyLocked(selected?.deployment_id)}>
+                        {busy?.action === "invoke-managed" ? "Invoking…" : "Send test message"}
                       </button>
                     </form>
                     {managedOutput !== null ? (
@@ -443,15 +475,15 @@ export function DeploymentsPage() {
                     id="log-tail"
                     value={logTail}
                     onChange={(event) => setLogTail(Number(event.target.value))}
-                    disabled={busyAction !== null}
+                    disabled={busyLocked(selected?.deployment_id)}
                   >
                     {logTailOptions.map((option) => (
                       <option key={option} value={option}>{option}</option>
                     ))}
                   </select>
                 </label>
-                <button type="submit" disabled={busyAction !== null}>
-                  {busyAction === "logs" ? "Loading…" : "Load logs"}
+                <button type="submit" disabled={busyLocked(selected?.deployment_id)}>
+                  {busy?.action === "logs" ? "Loading…" : "Load logs"}
                 </button>
               </form>
               {logs === null ? (

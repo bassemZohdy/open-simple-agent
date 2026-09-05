@@ -271,19 +271,19 @@ record resolutions in the Review Log.
 
 ### Improvements
 
-- [ ] I1 Poll deployment status (or provide one "refresh all") so `starting`
+- [x] I1 Poll deployment status (or provide one "refresh all") so `starting`
   deployments converge without manual "Refresh status" clicks.
-- [ ] I2 Render localized/relative timestamps in version history and the
+- [x] I2 Render localized/relative timestamps in version history and the
   audit table instead of raw ISO strings.
-- [ ] I3 Move the audit action filter server-side (the API only supports
+- [x] I3 Move the audit action filter server-side (the API only supports
   `limit` today) or relabel the count badge so "N matching" does not imply a
   global match count over the unloaded window.
-- [ ] I4 Health page: render the full readiness payload and add a refresh
+- [x] I4 Health page: render the full readiness payload and add a refresh
   control.
 - [ ] I5 Production serving story for the Panel: SPA fallback so deep links
   like `/agents/<id>` do not 404 on plain static hosts, plus the UI
   container image already marked as future work in PROJECT_DEFINITION.
-- [ ] I6 Scope the Deployments busy state per row/action instead of locking
+- [x] I6 Scope the Deployments busy state per row/action instead of locking
   every button on the page during any single request.
 - [ ] I7 Surface immutable version snapshot content when the API exposes it
   (definitions are write-only today, so clone/edit cannot show the source
@@ -424,6 +424,17 @@ Every item below was independently confirmed by reading the current source
 
 ## Review Log
 
+- 2026-09-05 — Control Panel improvements I1–I4, I6: deployments in
+  `starting` state poll every 3s until they converge (I1); version history and
+  the audit table render locale-formatted timestamps instead of raw ISO
+  strings (I2); the audit badge now states "N shown of M most recent events
+  loaded" instead of implying a global match count (I3); the Health page
+  renders the full readiness payload — scalar fields plus the raw JSON — with
+  a refresh control (I4); the Deployments busy state is scoped per deployment
+  (a running action locks only that deployment's controls; table Manage
+  buttons stay live and only a deploy locks the section) (I6). I5 (production
+  SPA-fallback serving) and I7 (exposing immutable version snapshot content)
+  remain open: both are backend/hosting product decisions, not UI fixes.
 - 2026-09-05 — BF1 resolved: `GenericAdkAgent._invocation_runner()` builds a
   fresh `LlmAgent` + `Runner` per invocation with the effective instruction
   (base + this caller's policy-loaded memory context) baked in; `invoke`,

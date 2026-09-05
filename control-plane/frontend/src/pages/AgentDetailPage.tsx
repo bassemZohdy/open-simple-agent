@@ -3,6 +3,7 @@ import { Link, useParams } from "react-router-dom";
 
 import { ApiError, type AgentSummary, type AgentVersionSummary } from "../api/client";
 import { useControlPlaneClient } from "../api/useControlPlaneClient";
+import { formatTimestamp } from "../lib/format";
 
 type LifecycleAction = "activate" | "disable" | "archive";
 
@@ -202,7 +203,7 @@ export function AgentDetailPage() {
                     <div className="version-card-heading"><div><span className="eyebrow">Version</span><h4>{entry.version}</h4></div>{entry.version === agent.current_version ? <span className="status status-active">Current</span> : null}</div>
                     <p>{entry.change_summary || "No change summary"}</p>
                     <dl className="metadata-list version-metadata">
-                      <div><dt>Created</dt><dd><time dateTime={entry.created_at}>{entry.created_at}</time></dd></div>
+                      <div><dt>Created</dt><dd><time dateTime={entry.created_at}>{formatTimestamp(entry.created_at)}</time></dd></div>
                       <div><dt>Created by</dt><dd>{entry.created_by || "Control Plane"}</dd></div>
                       <div><dt>Snapshot</dt><dd>{entry.has_definition ? "Definition available" : "No definition"}</dd></div>
                     </dl>

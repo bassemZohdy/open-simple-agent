@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState, type FormEvent } from "react";
 
 import { ApiError, type AuditEvent } from "../api/client";
 import { useControlPlaneClient } from "../api/useControlPlaneClient";
+import { formatTimestamp } from "../lib/format";
 
 const limitOptions = [50, 100, 200, 500] as const;
 
@@ -108,7 +109,7 @@ export function AuditPage() {
           <h2 id="audit-title">Audit &amp; metrics</h2>
           <p>Recent Control Plane audit events and bounded operational metrics.</p>
         </div>
-        <span className="count-badge" aria-label={`${visibleEvents.length} matching audit events`}>{visibleEvents.length}</span>
+        <span className="count-badge" aria-label={`${visibleEvents.length} shown of the ${events.length} most recent events loaded`}>{visibleEvents.length}<small>/{events.length} loaded</small></span>
       </div>
 
       <form className="filter-bar" onSubmit={submitFilters}>
@@ -161,7 +162,7 @@ export function AuditPage() {
             <tbody>
               {visibleEvents.map((entry) => (
                 <tr key={entry.event_id}>
-                  <td><time dateTime={entry.occurred_at}>{entry.occurred_at}</time></td>
+                  <td><time dateTime={entry.occurred_at}>{formatTimestamp(entry.occurred_at)}</time></td>
                   <td>{entry.actor}</td>
                   <td><code>{entry.action}</code></td>
                   <td><code>{entry.target}</code></td>

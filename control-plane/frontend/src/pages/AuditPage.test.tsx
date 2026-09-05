@@ -92,7 +92,7 @@ describe("AuditPage", () => {
     await screen.findByText("deployment.deploy");
     fireEvent.change(screen.getByLabelText("Action"), { target: { value: "agent" } });
     expect(screen.queryByText("deployment.deploy")).not.toBeInTheDocument();
-    const badge = screen.getByLabelText("0 matching audit events");
+    const badge = screen.getByLabelText("0 shown of the 1 most recent events loaded");
     expect(badge).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("Action"), { target: { value: "deployment" } });
     expect(await screen.findByText("deployment.deploy")).toBeInTheDocument();
