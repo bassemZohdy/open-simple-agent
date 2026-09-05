@@ -35,6 +35,24 @@ documentation, and appropriate failure/security behavior are complete.
 
 ---
 
+# P1 — Runtime durability follow-up
+
+## Persistent runtime sessions — PENDING
+
+The `SessionProvider` contract currently uses the in-memory `SessionManager`.
+It enforces ownership, TTL, and bounded history correctly, but session state is
+lost with a runtime process and cannot provide cross-replica continuity.
+
+- [ ] Select the persistent-provider contract and configuration semantics for
+  `spec.session.persistence` (including database lifecycle and migration
+  ownership).
+- [ ] Implement and wire a durable provider without weakening ownership
+  checks, TTL expiry, bounded history, or metadata redaction.
+- [ ] Add cross-process persistence, restart, expiry, ownership, and concurrent
+  update tests, then document operational backup and upgrade behavior.
+
+---
+
 # P1 — Managed platform follow-up
 
 ## P1.5 Kubernetes deployment provider — PENDING / PAUSED
@@ -83,6 +101,19 @@ disablement through RFC 7662 introspection.
 - [ ] Add integration/contract tests once a concrete enterprise identity
   source is selected, covering introspection liveness, key rotation, and
   role-change propagation.
+
+## P2.4 Distributed A2A task state — PENDING
+
+The runtime A2A executor and SDK task store are currently process-local. The
+protocol and authentication behavior are implemented, but a runtime replica
+cannot observe task state created by another replica.
+
+- [ ] Select a durable task-store backend plus task retention, ownership, and
+  recovery semantics compatible with the A2A SDK.
+- [ ] Implement and wire the selected store so task updates remain consistent
+  across runtime replicas and restarts.
+- [ ] Add multi-replica acceptance coverage for task creation, completion,
+  failure, lookup, and recovery without leaking tenant or caller state.
 
 ---
 
@@ -205,7 +236,9 @@ Remaining release work:
    release is intentionally scheduled.
 4. P2.2 lifecycle semantics are defined (ADR-007); add integration/contract
    tests when a concrete enterprise identity source is selected.
-5. Keep all Kubernetes/Kind/OpenShift follow-up pending until explicitly
+5. Select and implement durable runtime sessions and distributed A2A task
+   state when their storage and operational semantics are approved.
+6. Keep all Kubernetes/Kind/OpenShift follow-up pending until explicitly
    resumed.
 
 ---
@@ -512,6 +545,10 @@ Every item below was independently confirmed by reading the current source
   `[Unreleased]` (which must be empty), so historical dev-milestone headings
   can no longer satisfy a release by collision. Cleanup: removed stale empty
   `.claude/` and `control-plane/ui/` directories.
+- 2026-09-05 — Backlog reconciliation: added persistent runtime-session work
+  and ADR-005 P2.4 distributed A2A task-state work already identified as open
+  in the API/operations documentation but missing from this authoritative
+  backlog. Both remain pending a storage and operational design.
 - 2026-09-04 — Control Panel UI presentation review of
   `control-plane/frontend` filed 15 fixes (F1–F15) and 7 improvements
   (I1–I7). Read-only review; no source changes made.
