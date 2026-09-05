@@ -490,7 +490,7 @@ Every item below was independently confirmed by reading the current source
   requires an explicit confirmation and Enter in the version field drives the
   same flow (F14); `.detail-grid` no longer overflows 320px viewports (F15).
   Gates: tsc clean, 32 vitest tests passing, production build clean.
-- 2026-09-05 — Backend finding resolutions (BF1 remains open, in progress):
+- 2026-09-05 — Backend, runtime, and release-tooling finding resolutions:
   BF2 tenant-scoped `ExternalAgentCatalog` (`for_tenant` namespaces mirroring
   `ResourceCatalogs`; records carry `tenant_id`; cross-tenant list/get/invoke/
   refresh/delete return 404 — regression-tested with two JWT tenants);
