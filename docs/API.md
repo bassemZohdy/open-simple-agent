@@ -4,7 +4,8 @@ This document describes routes implemented on `main`. The Control Plane uses
 in-memory repositories by default and can use PostgreSQL; the runtime keeps
 session state in its configured provider and memory can use PostgreSQL. With a
 Control Plane DSN, agents, resources, deployment records, and audit events are
-shared through PostgreSQL, but external-agent records and local provider
+shared through PostgreSQL, but resource catalog caches are materialized only at
+startup, external-agent records remain process-local, and local provider
 processes remain process-local until the pending work in `TODO.md` lands.
 Neither application currently provides rate limiting. Both use the stable OSA
 error envelope `{"error": {"code", "message"}}` and share the optional JWT
@@ -233,7 +234,9 @@ All reads and writes are restricted to the caller's tenant (or the shared scope
 when authentication is disabled). Equal names in different tenants are
 independent resources. Writes are validated against the domain schema (422 on
 violation) and persisted write-through to the `ResourceDefinitionRepository`,
-so resources survive restarts and are shared across replicas. Secret values never appear:
+so resource records survive restarts. The process-local catalogs used by route
+validation and bundle export are currently materialized only at startup, so
+replica cache coherence remains pending. Secret values never appear:
 `credential_ref` exposes only non-secret coordinates (`source`, `key`,
 `env_var`) and is redacted defensively in every response.
 

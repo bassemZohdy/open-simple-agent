@@ -165,7 +165,10 @@ and `ResourceDefinitionRepository` contracts (ADR-004): by default in-memory
 resource definitions materialize into the catalogs at startup. Schema is
 managed by Alembic (`osa-cp-migrate`, explicit ops step — the app verifies
 connectivity and never migrates, avoiding multi-replica races). Records and
-version history survive restarts, and replicas share state.
+version history survive restarts, and agent records/version history share state
+across replicas. Resource records are durable, but the process-local catalogs
+used for resource reads and validation are currently materialized only at
+startup; replica cache coherence remains open in `TODO.md`.
 
 Routes enforce create/transition validation, cumulative list filters with
 pagination/sorting, immutable version snapshots, optimistic concurrency, and

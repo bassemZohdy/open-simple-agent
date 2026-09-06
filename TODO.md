@@ -33,9 +33,10 @@ documentation, and appropriate failure/security behavior are complete.
   runtime invocation with direct CORS-enabled browser-to-runtime calls, and
   frontend CI coverage.
 - The PostgreSQL Control Plane persistence boundary currently covers agents,
-  resources, deployment records, and audit events. The external-agent registry
-  is still process-local, and the local deployment provider's process state is
-  not restart- or replica-safe; both boundaries are open in the review findings
+  resource records, deployment records, and audit events. Resource catalog
+  caches are materialized only at startup; the external-agent registry is still
+  process-local, and the local deployment provider's process state is not
+  restart- or replica-safe. These boundaries are open in the review findings
   below.
 
 ---
@@ -151,6 +152,9 @@ cannot observe task state created by another replica.
   across runtime replicas and restarts.
 - [ ] Add multi-replica acceptance coverage for task creation, completion,
   failure, lookup, and recovery without leaking tenant or caller state.
+- [ ] Define A2A cancellation semantics for in-flight tasks, including safe
+  cancellation of the underlying OSA run, terminal-state ordering, and
+  protection against late events or retries resurrecting a canceled task.
 
 ## Capability-level audit telemetry — PENDING
 
@@ -637,6 +641,14 @@ limit work above.
   schemes/hosts, DNS-rebinding and redirect handling, private-address policy,
   and equivalent protection for credential token URLs; add negative tests and
   document the operator escape hatch if private A2A endpoints are required.
+- [ ] BF19 PostgreSQL resource definitions are materialized into each process's
+  `ResourceCatalogs` only during startup. Resource CRUD writes the database and
+  the local catalog, but reads, duplicate checks, activation validation, and
+  bundle export use that local cache. Failure: a resource created, replaced, or
+  deleted on replica A remains stale or missing on replica B despite shared
+  PostgreSQL records. Add read-through or invalidation/notification semantics,
+  preserve tenant isolation and write consistency, and cover cross-replica
+  create/update/delete/activation/deployment behavior.
 
 ### Improvements
 
@@ -746,10 +758,11 @@ limit work above.
 - 2026-09-05 — Full-project contract and security review: confirmed new open
   work for durable external-agent records, tenant-safe/atomic bundle export,
   service-level deployment idempotency, rollback consistency, local-provider
-  shutdown/reconciliation, outbound A2A SSRF policy, CI documentation-link
-  validation, and an honest frontend not-found route. No source behavior was
-  changed during this review; each item is recorded with its failure scenario
-  and acceptance direction above.
+  shutdown/reconciliation, outbound A2A SSRF policy, resource-cache coherence,
+  CI documentation-link validation, A2A cancellation semantics, and an honest
+  frontend not-found route. No source behavior was changed during this review;
+  each item is recorded with its failure scenario and acceptance direction
+  above.
 - 2026-09-04 — Control Panel UI presentation review of
   `control-plane/frontend` filed 15 fixes (F1–F15) and 7 improvements
   (I1–I7). Read-only review; no source changes made.

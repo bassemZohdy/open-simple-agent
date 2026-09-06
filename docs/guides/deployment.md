@@ -60,7 +60,9 @@ docker run -d -p 8000:8000 \
 - Without `OSA_CONTROL_PLANE_DATABASE_URL` the Control Plane runs in-memory
   (single process; state lost on restart).
 - With a DSN, agents/deployments/resources/audit events persist in PostgreSQL
-  and their records are shared across replicas. External-agent records remain
+  and their records are shared across replicas. Resource catalogs are
+  materialized into each process only at startup, so resource reads and
+  validation can be stale between replicas. External-agent records remain
   process-local, and the local deployment provider's child-process state is
   not restart- or replica-safe yet; use the pending provider/reconciliation
   work in `TODO.md` when selecting a production topology.
