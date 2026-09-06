@@ -58,6 +58,6 @@ uv run ruff format . && uv run ruff check .   # format + lint
 uv run mypy .            # strict type check across all Python members
 
 cd control-plane/frontend
-npm install              # Control Panel setup
+npm ci --ignore-scripts  # Control Panel setup from the pinned lockfile
 npm run typecheck && npm run test && npm run build
 ```

@@ -48,8 +48,9 @@ open-simple-agent/
 ```
 
 The React Control Panel lives in `control-plane/frontend`. Run its checks with
-`npm ci`, `npm run typecheck`, `npm run test`, and `npm run build` from that
-directory; CI also builds and smoke-tests its production image.
+`npm ci --ignore-scripts`, `npm run typecheck`, `npm run test`, and
+`npm run build` from that directory; CI also builds and smoke-tests its
+production image.
 
 ## Architecture Decision Records
 

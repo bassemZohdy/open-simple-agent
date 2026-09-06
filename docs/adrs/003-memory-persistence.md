@@ -16,9 +16,10 @@ Open Simple Agent maintainers
 
 Memory is currently in-process (`InMemoryProvider`): it does not survive
 restarts and cannot be shared across replicas. P1.4 requires a first
-persistent provider. The project has ratified a database stack (PostgreSQL
-16, SQLAlchemy 2.0 async, Alembic) for the Control Plane (P1.1); memory
-persistence lands first in the build order, so it introduces that stack.
+persistent provider. The project has ratified and implemented a database stack
+(PostgreSQL 16, SQLAlchemy 2.0 async, Alembic) for the Control Plane (P1.1);
+memory uses the same client stack but remains an independently deployed runtime
+concern.
 Access requirements for memory at this stage are scope-keyed lookup plus
 case-insensitive substring search (the semantics the in-memory provider
 already exposes) — semantic/vector retrieval is explicitly deferred in the
@@ -64,8 +65,9 @@ backlog.
   reserved — raw interactions are never persisted automatically. A
   policy-driven extraction pipeline is future work and will arrive as an
   explicit, opt-in behavior.
-- The table is created with `CREATE TABLE IF NOT EXISTS` until the Alembic
-  migration tooling introduced with P1.1 takes over schema management.
+- The table is created with `CREATE TABLE IF NOT EXISTS` until a dedicated
+  memory migration path is adopted. Control Plane Alembic migrations do not
+  own this independently deployed runtime table.
 
 ## Consequences
 
@@ -73,14 +75,15 @@ backlog.
 
 - Memory survives restarts and is shared across replicas; isolation tests
   cover user/agent/tenant/application scopes.
-- One operational database for memory and (upcoming) Control Plane state.
+- One PostgreSQL technology stack can serve memory and Control Plane state,
+  while their DSNs and migration ownership remain independent.
 
 ### Negative or trade-offs
 
 - `ILIKE` substring search is linear at scale; an index on
   `(scope, scope_id, key, created_at)` covers the common paths, and pgvector
   remains available if semantic search becomes a requirement.
-- Two sources of schema truth exist until Alembic lands (P1.1).
+- Memory still has bootstrap DDL instead of a versioned migration history.
 
 ## Validation
 
@@ -92,7 +95,7 @@ backlog.
 
 ## Follow-up
 
-- [ ] Replace bootstrap `CREATE TABLE IF NOT EXISTS` with Alembic migrations
-      in P1.1.
+- [ ] Replace bootstrap `CREATE TABLE IF NOT EXISTS` with a dedicated,
+      versioned memory migration path and document its operational ownership.
 - [ ] Revisit pgvector when semantic retrieval becomes a concrete
       requirement.

@@ -18,6 +18,10 @@ npm run test
 npm run build
 ```
 
+`npm ci --ignore-scripts` installs the pinned lockfile used by CI. Use
+`npm install` only when intentionally changing frontend dependencies and
+regenerating `package-lock.json`.
+
 Set `VITE_OSA_API_BASE_URL` to the Control Plane origin when it is not `http://localhost:8000`.
 
 The shell supports an optional Bearer token for Control Plane instances using `OSA_AUTH_MODE=optional|required`. Tokens are stored only in `sessionStorage`; they are never written to source, configuration, URLs, or logs. OIDC login/refresh orchestration is intentionally not invented here because issuer/client/redirect semantics are deployment-specific and are not yet a stable Control Plane contract.

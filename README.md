@@ -8,16 +8,16 @@ skills, memory, and session settings and is executed by a runtime.
 The first runtime targets [Google ADK](https://google.github.io/adk-docs/).
 
 > **Development status:** OSA is an early-stage framework. The domain model,
-> deployment bundles, in-memory catalogs, control-plane API, a runnable
-> real-model ADK runtime (LiteLLM adapter, native function calling, session
-> isolation), MCP runtime, PostgreSQL persistence, A2A interoperability, the
-> `osa-runtime` service CLI, production-oriented runtime and Control Plane
-> container images, release supply-chain automation, and a React/TypeScript
-> Control Panel application are implemented. JWT bearer authentication, opt-in
-> role/permission route enforcement, and runtime tenant binding are available;
-> enterprise identity lifecycle, translated-locale coverage, release decisions,
-> and paused Kubernetes follow-up remain open; live-provider CI acceptance is
-> available as an opt-in job.
+> deployment bundles, control-plane API, runnable ADK runtime, MCP runtime,
+> PostgreSQL persistence, A2A interoperability, the `osa-runtime` service CLI,
+> production-oriented images, release supply-chain automation, and the
+> React/TypeScript Control Panel are implemented. JWT bearer authentication,
+> opt-in role/permission enforcement, and runtime tenant binding are available.
+> The remaining production-readiness work is tracked in `TODO.md`: durable
+> sessions and migration-owned memory schema, deployment/export/provider
+> hardening, durable external-A2A/task state, outbound SSRF policy, capacity
+> controls, locale/OIDC decisions, and release decisions. Kubernetes follow-up
+> is intentionally paused; live-provider CI acceptance is opt-in.
 
 ## What works today
 
@@ -43,13 +43,13 @@ The first runtime targets [Google ADK](https://google.github.io/adk-docs/).
 ```mermaid
 flowchart TB
     CP["Control Plane API\nagent records and templates"]
-    CAT["In-memory catalogs\nmodels, MCPs, tools, skills, memory policies"]
+    CAT["Catalogs\nresource caches with optional PG records"]
     DEF["AgentDefinition\nstable OSA contract"]
     ADK["ADK runtime\nGenericAdkAgent"]
     API["Runtime HTTP API"]
-    MODEL["ModelProvider\ncurrently fake in HTTP bootstrap"]
+    MODEL["Model provider\nconfigured live adapter or explicit fake"]
     TOOL["Native tools"]
-    MEM["Memory and sessions\nin memory"]
+    MEM["Session and memory providers\nconfigured per deployment"]
 
     CP --> CAT
     CP --> DEF
@@ -153,7 +153,7 @@ The Control Panel is a separate frontend package:
 
 ```bash
 cd control-plane/frontend
-npm install
+npm ci --ignore-scripts
 npm run dev
 ```
 
@@ -323,14 +323,13 @@ open-simple-agent/
 
 ## Release status
 
-The P0 runnable-agent gate, managed-platform foundation, and first production
-Control Panel image are implemented. Release supply-chain automation can build
-validated Python artifacts and signed/attested GHCR images from an intentional
-version/tag. Remaining work is tracked in [TODO.md](TODO.md), led by concrete
-enterprise identity-source tests, release registry/first-release decisions,
-translated-locale coverage, and deliberately paused Kubernetes/Kind/OpenShift
-follow-up; live-provider acceptance is available when its repository secret is
-intentionally enabled.
+The P0 runnable-agent gate, managed-platform foundation, current Control Panel,
+and production images are implemented. Release automation can build validated
+Python artifacts and signed/attested GHCR images from an intentional
+version/tag. The next recommended task is the secure, atomic deployment-bundle
+export tracked as BF14 in [TODO.md](TODO.md); the rest of the remaining work is
+listed there by priority. Live-provider acceptance is available when its
+repository secret is intentionally enabled.
 
 ## License
 

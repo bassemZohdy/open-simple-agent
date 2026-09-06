@@ -172,9 +172,11 @@ Supported configuration scopes currently are `user`, `agent`, `tenant`, and
 
 A2A is the interoperability protocol used for Agent Cards, discovery, skills,
 and remote agent invocation. It belongs to the data plane and is separate from
-deployment management. The initial A2A server/client and external-agent registry
-are implemented; future work may deepen delegation/consent semantics without
-turning A2A into a management protocol.
+deployment management. The initial A2A server/client and external-agent
+registry are implemented; the current external-agent registry and A2A task
+store are process-local, so durable multi-replica behavior remains backlog work.
+Future work may deepen delegation/consent semantics without turning A2A into a
+management protocol.
 
 ## Major components
 
@@ -230,7 +232,9 @@ Deployment providers own process/container/workload lifecycle and remain
 separate from `AgentRuntime`, which owns in-process behavior.
 
 The local deployment provider is integrated through the Control Plane lifecycle
-API. A first generic `kubectl`-backed Kubernetes provider slice also exists with
+API, but its child-process state is local to the Control Plane process and its
+export/retry/rollback/restart guarantees remain under active hardening. A first
+generic `kubectl`-backed Kubernetes provider slice also exists with
 Deployment/Service/config/secret/probe/lifecycle behavior, but further
 Kubernetes/Kind validation and packaged provider selection are deliberately
 paused. OpenShift-specific behavior remains separately deferred.
@@ -296,9 +300,12 @@ field is overrideable. See [docs/CONFIGURATION.md](docs/CONFIGURATION.md).
 
 Production Control Plane state uses PostgreSQL through repository contracts and
 Alembic-owned migrations. In-memory repositories remain available for tests and
-development. Sessions and memory use separate provider contracts because their
-access, expiry, and search semantics differ; persistent policy-scoped memory has
-an initial PostgreSQL implementation.
+development. Agent, resource, deployment, and audit records are durable, while
+resource catalog caches and external-agent records are currently process-local.
+Sessions and memory use separate provider contracts because their access,
+expiry, and search semantics differ; persistent policy-scoped memory has an
+initial PostgreSQL implementation, but its schema still needs explicit
+migration ownership.
 
 Provider contracts must allow in-memory implementations in tests without making
 in-memory behavior the production model.
@@ -380,6 +387,8 @@ The dependency order is:
 9. release automation and production distribution.
 
 Items 1–7 and the Manager Agent/release foundations are substantially
-implemented. Current delivery focus is the remaining Control Panel product
-surface while Kubernetes follow-up stays paused. The detailed,
-acceptance-tested backlog is maintained in [TODO.md](TODO.md).
+implemented. Current delivery focus is production-readiness hardening of
+deployment safety, outbound security, persistence boundaries, and capacity
+controls, followed by the remaining Control Panel and release decisions while
+Kubernetes follow-up stays paused. The detailed, acceptance-tested backlog is
+maintained in [TODO.md](TODO.md).

@@ -1,284 +1,198 @@
 # Open Simple Agent — Active Backlog
 
-Updated 2026-09-05. This file tracks active, pending, and deliberately deferred
-work only. Completed implementation history belongs in `CHANGELOG.md`, the
-architecture/API documentation, ADRs, and git history.
+Updated 2026-09-06. This file contains only unfinished, deferred, or
+deliberately gated work. Completed implementation history is recorded in
+`CHANGELOG.md` and git history.
 
-A task is complete only after implementation, automated tests, relevant
+A task is complete only when the implementation, automated tests, relevant
 documentation, and appropriate failure/security behavior are complete.
 
-## Current baseline
+## Current status
 
-- The P0 runnable-agent release gate is complete: external bundles, fail-fast
-  resource validation, LiteLLM/ADK execution, native function calling, isolated
-  sessions, service lifecycle, runtime image, and deterministic container smoke
-  acceptance are implemented.
-- The managed platform foundation is implemented: PostgreSQL Control Plane
-  persistence, resource/template APIs, MCP runtime integration, persistent
-  policy-scoped memory, local deployment lifecycle, A2A/external agents,
-  authentication/authorization, tenant ownership, audit, observability, and
-  streaming/replica behavior.
-- The Manager Agent management-tool surface and its approval/security guards are
-  implemented.
-- CI enforces Ruff formatting/lint, strict mypy, the full PostgreSQL/A2A test
-  suite with an 84% coverage floor, dependency/license scanning, runtime +
-  Control Plane image smoke/SBOM checks, and Control Panel typecheck/test/build.
-- A first `kubectl`-backed Kubernetes deployment-provider slice exists, but all
-  further Kubernetes/Kind work is intentionally paused as described below.
-- The React/TypeScript Control Panel foundation exists with an API-authenticated
-  shell, Agents list/filtering, template and resource-catalog views, readiness
-  view, agent detail/version history/lifecycle actions, deployment
-  lifecycle/status/log views, audit/metrics views, validated agent
-  create/edit/clone flows, an A2A invocation test console, managed-agent
-  runtime invocation with direct CORS-enabled browser-to-runtime calls, and
-  frontend CI coverage.
-- The PostgreSQL Control Plane persistence boundary currently covers agents,
-  resource records, deployment records, and audit events. Resource catalog
-  caches are materialized only at startup; the external-agent registry is still
-  process-local, and the local deployment provider's process state is not
-  restart- or replica-safe. These boundaries are open in the review findings
-  below.
+The P0 runnable-agent gate, managed-platform foundation, Manager Agent
+management surface, current Control Panel, runtime/Control Plane images, and
+release-supply-chain automation are implemented and covered by CI.
+
+The current production-readiness limits are:
+
+- runtime sessions are in-memory unless a durable provider is selected and
+  implemented;
+- memory PostgreSQL still uses transitional bootstrap DDL;
+- Control Plane resource records are durable, but per-process resource catalogs
+  are startup caches;
+- external-agent records and local deployment-provider process state are
+  process-local;
+- deployment export, retry, rollback, and restart reconciliation need stronger
+  safety guarantees;
+- outbound A2A destinations do not yet have an application-level SSRF policy;
+- A2A task state, capability-level telemetry, and HTTP capacity controls are
+  not replica-safe or fully defined;
+- translated-locale coverage, deployment-specific OIDC browser login, package
+  registry publication, and the first public release remain open; Kubernetes
+  follow-up is intentionally paused.
+
+## Recommended next task
+
+Start with **BF14: secure and atomically stage deployment bundle exports**.
+It is a focused security/data-integrity fix on the active deployment path and
+is a prerequisite for trusting the local provider in multi-tenant or shared
+deployment roots. Follow it with BF18 (outbound A2A SSRF policy), then the
+related deployment reliability work BF15–BF17 and BF19.
 
 ---
 
-# P1 — Runtime durability follow-up
+# P1 — Runtime durability
 
 ## Persistent runtime sessions — PENDING
 
-The `SessionProvider` contract currently uses the in-memory `SessionManager`.
-It enforces ownership, TTL, and bounded history correctly, but session state is
-lost with a runtime process and cannot provide cross-replica continuity.
+`SessionProvider` currently defaults to the in-memory `SessionManager`. It
+enforces ownership, TTL, and bounded history, but state is lost with a runtime
+process and cannot provide cross-replica continuity.
 
 - [ ] Select the persistent-provider contract and configuration semantics for
-  `spec.session.persistence` (including database lifecycle and migration
-  ownership).
-- [ ] Implement and wire a durable provider without weakening ownership
-  checks, TTL expiry, bounded history, or metadata redaction.
-- [ ] Add cross-process persistence, restart, expiry, ownership, and concurrent
-  update tests, then document operational backup and upgrade behavior.
+  `spec.session.persistence`, including database lifecycle and migration
+  ownership.
+- [ ] Implement and wire a durable provider without weakening ownership checks,
+  TTL expiry, bounded history, or metadata redaction.
+- [ ] Add restart, expiry, ownership, concurrent-update, and cross-process
+  tests; document backup, upgrade, and failure-recovery behavior.
 
 ## Memory schema ownership — PENDING
 
 `PostgresMemoryProvider` still creates `osa_memory_entries` with bootstrap DDL
-when `OSA_MEMORY_DATABASE_URL` is configured. The data semantics and
-PostgreSQL persistence are implemented, but schema ownership and upgrade
-ordering are not yet aligned with the migration-owned Control Plane policy.
+when `OSA_MEMORY_DATABASE_URL` is configured. PostgreSQL persistence works, but
+schema ownership and upgrade ordering are not yet migration-controlled.
 
 - [ ] Select migration ownership and operational commands for the independent
   memory database.
 - [ ] Replace runtime `CREATE TABLE IF NOT EXISTS` bootstrap behavior with an
   explicit, versioned migration path.
-- [ ] Add upgrade/rollback coverage and document backup, migration, and
-  startup-order requirements.
+- [ ] Add upgrade/rollback coverage and document backup, migration, and startup
+  ordering requirements.
 
 ---
 
-# P1 — Managed platform follow-up
+# P1 — Managed platform
 
-## P1.5 Kubernetes deployment provider — PENDING / PAUSED
+## P1.5 Kubernetes deployment provider — PAUSED
 
-The first provider slice is already implemented and retained in the codebase:
-Deployment + Service + bundle ConfigMap generation, Kubernetes Secret-backed
-environment references, readiness/liveness probes, hardened pod security,
-scale/restart/rollback/status/log operations, and OSA identity labels.
+The first `kubectl`-backed provider slice exists: Deployment and Service
+generation, bundle ConfigMaps, Secret references, probes, hardened pod
+security, scale/restart/rollback/status/log operations, and OSA identity
+labels. Do not resume this work until it is explicitly reprioritized.
 
-Do **not** resume the remaining Kubernetes work until it is explicitly
-reprioritized.
-
-- [ ] Wire packaged Control Plane provider selection/configuration to the
+- [ ] Wire packaged Control Plane provider selection and configuration to the
   Kubernetes provider.
 - [ ] Validate deploy/readiness/scale/restart/rollback/recovery against a real
   Kind cluster in CI or a dedicated acceptance workflow.
-- [ ] Add robust status-watch/recovery behavior for Control Plane restart and
+- [ ] Add status-watch and recovery behavior for Control Plane restart and
   already-running Kubernetes workloads.
-- [ ] Document production RBAC, namespace, image-pull-secret, network-policy,
-  resource-limit, and upgrade requirements.
-- [ ] Keep OpenShift-specific behavior deferred separately; do not introduce
-  OpenShift assumptions into the generic Kubernetes provider.
+- [ ] Document production RBAC, namespaces, image-pull secrets, network
+  policies, resource limits, and upgrade requirements.
+- [ ] Keep OpenShift-specific behavior separate; do not introduce OpenShift
+  assumptions into the generic Kubernetes provider.
 
-## Packaged Control Plane deployment launcher contract — PENDING
+## Packaged Control Plane deployment launcher — PENDING
 
-The Control Plane image is management-only and starts the configured
-application factory, but its default local deployment command invokes
-`osa-runtime`. That executable is not packaged in `Dockerfile.control-plane`.
-Failure: an operator deploys an active agent through an isolated Control Plane
-container, and bundle export succeeds but process launch fails with an
-executable-not-found error. The local provider therefore cannot be treated as
-a self-contained production deployment strategy yet.
+The Control Plane image is management-only, while the default local deployment
+command invokes `osa-runtime`. That executable is not packaged in
+`Dockerfile.control-plane`, so an isolated Control Plane container cannot
+launch a runtime without an operator-provided launcher or colocated runtime.
 
 - [ ] Decide the supported production contract: package the runtime launcher,
   require an operator-provided launcher/provider, or make provider selection
-  explicit rather than relying on the local default.
-- [ ] Add image-level integration coverage that proves the selected deployment
-  topology can launch, probe, stop, and observe a runtime.
-- [ ] Document the supported split-image and colocated-process topologies,
-  including the security boundary around `OSA_DEPLOY_COMMAND_TEMPLATE`.
+  explicit instead of relying on the local default.
+- [ ] Add image-level integration coverage proving that the selected topology
+  can launch, probe, stop, and observe a runtime.
+- [ ] Document split-image and colocated-process topologies, including the
+  security boundary around `OSA_DEPLOY_COMMAND_TEMPLATE`.
 
 ---
 
-# P2 — Production controls follow-up
+# P2 — Production controls
 
-## P2.2 Enterprise identity lifecycle
+## P2.2 Enterprise identity lifecycle — PARTIALLY COMPLETE
 
-The enterprise identity lifecycle semantics are defined in ADR-007
-(`docs/adrs/007-enterprise-identity-lifecycle.md`): authorization remains
-**claim-driven** with the IdP as the lifecycle authority — no external policy
-engine and no OSA-side identity store. The shared validation path rejects
-tokens carrying an `active` claim that is not `true`; opaque tokens gain live
-disablement through RFC 7662 introspection.
+ADR-007 defines claim-driven lifecycle semantics with the IdP as lifecycle
+authority. The shared validation path handles the `active` claim and opaque
+token introspection. Integration coverage remains blocked on selecting a
+concrete enterprise identity source.
 
-- [x] Define enterprise identity lifecycle semantics: provisioning/
-  deprovisioning expectations, disabled identities, role/group
-  synchronization, service-account lifecycle, permission revocation bound,
-  and stale-token behavior (ADR-007).
-- [x] Decide whether enterprise authorization remains claim-driven or requires
-  an external policy/identity integration (claim-driven; the external policy
-  engine stays a deferred item with an explicit revisit trigger).
-- [x] Reject tokens whose `active` claim is present but not `true` in the
-  shared JWT/introspection validation path.
-- [ ] Add integration/contract tests once a concrete enterprise identity
-  source is selected, covering introspection liveness, key rotation, and
-  role-change propagation.
+- [ ] Add integration/contract tests for introspection liveness, key rotation,
+  disabled identities, and role-change propagation once an identity source is
+  selected.
 
 ## P2.4 Distributed A2A task state — PENDING
 
-The runtime A2A executor and SDK task store are currently process-local. The
-protocol and authentication behavior are implemented, but a runtime replica
-cannot observe task state created by another replica.
+The runtime A2A executor and SDK task store are process-local. A runtime
+replica cannot observe task state created by another replica.
 
-- [ ] Select a durable task-store backend plus task retention, ownership, and
+- [ ] Select a durable task-store backend plus retention, ownership, and
   recovery semantics compatible with the A2A SDK.
-- [ ] Implement and wire the selected store so task updates remain consistent
-  across runtime replicas and restarts.
+- [ ] Implement and wire the store so task updates remain consistent across
+  runtime replicas and restarts.
 - [ ] Add multi-replica acceptance coverage for task creation, completion,
   failure, lookup, and recovery without leaking tenant or caller state.
-- [ ] Define A2A cancellation semantics for in-flight tasks, including safe
-  cancellation of the underlying OSA run, terminal-state ordering, and
-  protection against late events or retries resurrecting a canceled task.
+- [ ] Define cancellation semantics for in-flight tasks, including safe
+  cancellation of the OSA run, terminal-state ordering, and protection against
+  late events or retries resurrecting a canceled task.
 
 ## Capability-level audit telemetry — PENDING
 
 The current audit path records management mutations, runtime/A2A boundaries,
-and authentication/authorization denials, but it does not define or persist
-redaction-safe per-capability events for model, native-tool, or MCP activity.
+and authentication/authorization denials, but not redaction-safe per-capability
+events for model, native-tool, or MCP activity.
 
-- [ ] Define the event taxonomy, redaction rules, retention, sampling, and
-  performance policy for capability-level telemetry.
-- [ ] Implement the optional sink and durable persistence path without storing
+- [ ] Define event taxonomy, redaction rules, retention, sampling, and
+  performance policy.
+- [ ] Implement an optional sink and durable persistence path without storing
   prompts, outputs, credentials, or unbounded tool payloads.
 - [ ] Add model/tool/MCP success, failure, timeout, and tenant-isolation tests
   plus operational documentation.
 
 ## Rate limiting and quotas — PENDING
 
-Neither HTTP application currently enforces per-principal or per-tenant rate
-limits, concurrency quotas, or a `429`/`Retry-After` contract. Failure: a noisy
-or hung caller can consume model, MCP, A2A, streaming, or deployment API
-capacity even though operation timeouts are enforced.
+Neither HTTP application enforces per-principal or per-tenant rate limits,
+concurrency quotas, or a `429`/`Retry-After` contract. Until this is implemented,
+internet-facing deployments need an API gateway or service mesh for capacity
+controls.
 
-- [ ] Define per-route, principal, and tenant limits, burst behavior, retry
+- [ ] Define route, principal, and tenant limits, burst behavior, retry
   semantics, and stable `429` response headers.
-- [ ] Select a replica-safe enforcement and storage strategy that works for
-  streaming and long-running A2A/deployment operations.
+- [ ] Select replica-safe enforcement and storage for streaming and long-running
+  A2A/deployment operations.
 - [ ] Add isolation, burst, streaming, A2A, metrics, and documentation tests.
 
 ---
 
 # P3 — Product surface and distribution
 
-## P3.1 Control Panel
+## P3.1 Control Panel — PARTIALLY COMPLETE
 
-- [x] Create the TypeScript/React application and authenticated API shell. The
-  current shell accepts an optional short-lived Bearer token stored only in
-  browser `sessionStorage`; deployment-specific OIDC login/refresh orchestration
-  remains an integration concern until issuer/client/redirect semantics are
-  defined.
-- [x] Add agents, versions, templates, resources, deployments, health, and audit
-  views.
-  - [x] Read-only Agents list/search/status filtering.
-  - [x] Control Plane readiness view.
-  - [x] Agent detail/version history and lifecycle actions.
-  - [x] Templates and resource catalogs, including tenant-scoped Model, Tool,
-    Skill, MCP, and MemoryPolicy browsing/search and safe redacted-definition
-    inspection.
-  - [x] Deployment lifecycle/status/logs, including per-agent history,
-    intent-only deploy, stop/restart/rollback actions, observed-status
-    refresh, and bounded captured-log inspection with tail selection.
-  - [x] Audit events and operational metrics, including client-side action
-    filtering, bounded event limits, parsed Prometheus sample tables, and the
-    raw exposition view.
-- [x] Add validated agent create/edit/clone flows. Create supports empty
-  drafts, built-in templates, or pasted JSON definitions validated on the
-  client (name/JSON/metadata.name) and server (422 surfaced inline); editing
-  flows through immutable version creation on the detail page; clone
-  deep-links into a pre-filled create panel (definitions are write-only, so
-  the copy re-selects a template or definition).
-- [x] Add an A2A test console: external agents listed with card/version and
-  health status, message + timeout invocation through
-  `POST /external-agents/{id}/invoke`, and inline response/error rendering.
-- [x] Decide the managed-agent runtime-access design (ADR-008): deployment
-  records expose an optional operator-configured public runtime URL
-  (`OSA_DEPLOY_INVOKE_URL_TEMPLATE`, synthesized server-side, migration 0007);
-  the Control Plane still carries no invocation traffic.
-- [x] Add managed-agent invocation from the Control Panel (sessions,
-  streaming, tool traces) using the recorded runtime endpoint — the runtime
-  now supports opt-in browser CORS via `OSA_RUNTIME_ALLOWED_ORIGINS`, the
-  deployment service forwards configured origins to launched runtimes, and
-  the Control Panel exposes a direct test-message form on deployments that
-  publish an invoke URL (ADR-008).
-- [x] Complete accessibility and responsive behavior coverage for the current
-  English locale. The panel now has shared visible focus rings, semantic table
-  captions/column scopes, app-owned form validation, reduced-motion handling,
-  responsive table containment, skip-to-content, route-change focus, and
-  loading/empty/error recovery states; the 320px contract is documented and
-  covered by the shared stylesheet/runtime smoke checks.
-- [ ] Add translated-locale coverage while preserving the same accessible
-  names, validation meaning, and browser-locale timestamp behavior.
-- [ ] Define deployment-specific OIDC browser login/refresh semantics once an
+The current English Control Panel includes the authenticated shell, agent and
+resource views, authoring, lifecycle/deployment views, audit/metrics, A2A and
+managed-runtime invocation consoles, safe snapshot inspection, responsive
+behavior, and loading/empty/error recovery states.
+
+- [ ] Add translated-locale coverage while preserving accessible names,
+  validation meaning, and browser-locale timestamp behavior.
+- [ ] Define deployment-specific OIDC browser login/refresh semantics after an
   issuer, client, and redirect contract is selected.
 - [ ] Decide whether public agent-definition bundle import/export APIs are in
   scope; resource import/export and server-side deployment export exist today.
 
-## P3.3 Packaging, CI/CD, and release
+## P3.3 Packaging, CI/CD, and release — PARTIALLY COMPLETE
 
-Completed release-supply-chain automation:
+CI and release workflows validate lockstep versions, build Python distributions,
+publish signed/attested GHCR images, generate SBOMs, and support immutable
+digest rollback of the mutable `latest` channel. Live-provider acceptance is
+available as an opt-in job and remains offline-safe without its secret.
 
-- [x] Validate that release tags match the lockstep version in all four
-  manifests and require a dated matching changelog section.
-- [x] Build the three Python wheel/sdist distributions as one lockstep release
-  and validate them before publication.
-- [x] Publish versioned runtime and Control Plane images to GHCR, with `latest`
-  as the mutable convenience channel.
-- [x] Add OCI SBOM/provenance metadata and GitHub build-provenance attestations
-  for release artifacts/images.
-- [x] Keyless-sign published container image digests with Cosign using GitHub
-  OIDC.
-- [x] Create GitHub Releases with Python distributions and SHA-256 checksums;
-  support exact `vX.Y.Z` tag releases and validated manual release dispatch
-  from `main`.
-- [x] Modernize CI actions and make missing SBOM outputs fail the build; upload
-  both runtime and Control Plane image SBOMs after both are generated.
-
-Remaining release work:
-
-- [x] Add a live-provider acceptance job using the opt-in
-  `OSA_LIVE_PROVIDER_API_KEY` repository secret and the P0.2 real-model
-  acceptance path. The job runs on `main` pushes or manual dispatch, installs
-  the optional LiteLLM dependency, and remains a no-op with a notice when the
-  secret is not configured; `OSA_LIVE_PROVIDER_MODEL` optionally selects the
-  model (default `openai/gpt-4o-mini`).
-- [ ] Decide whether Python distributions also need publication to PyPI or
-  another package registry; GitHub Release assets are the implemented
-  distribution path today.
-- [x] Automate rollback of mutable release/deployment channel pointers to a
-  previously published immutable digest: the `Rollback image channel` workflow
-  re-tags `latest` via `docker buildx imagetools create` after policy
-  validation (`scripts/rollback_release.py`, unit-tested). Immutable version
-  tags are never rebuilt or overwritten; signatures and attestations survive
-  because they are digest-bound.
+- [ ] Decide whether Python distributions need PyPI or another package
+  registry; GitHub Release assets are the current distribution path.
 - [ ] Perform the first automated public release only after intentionally
-  selecting/bumping the release version and moving the desired changelog
-  entries out of `Unreleased`.
+  selecting a release version and moving the relevant changelog entries out of
+  `Unreleased`.
 
 ---
 
@@ -294,500 +208,115 @@ Remaining release work:
 - [ ] Dynamic runtime plugin installation.
 - [ ] Advanced semantic agent discovery and hosted marketplace.
 - [ ] Advanced multi-tenancy and multi-region deployment.
-- [ ] Agent delegation/consent framework beyond baseline A2A security.
-- [ ] General human-approval framework beyond management operations.
-- [ ] Advanced memory extraction/consolidation and vector retrieval (including
-  pgvector).
-- [ ] Enterprise external policy engine (until P2.2 selects a concrete need).
+- [ ] Agent delegation/consent beyond baseline A2A security.
+- [ ] General human approval beyond management operations.
+- [ ] Advanced memory extraction/consolidation and vector retrieval, including
+  pgvector.
+- [ ] Enterprise external policy engine until P2.2 selects a concrete need.
 
 ---
 
-# Priority order while Kubernetes is paused
+# Active review findings
 
-1. ~~Enable managed-agent invocation from the Panel on top of ADR-008's
-   recorded runtime endpoints (runtime CORS or a proxy route), bringing
-   sessions, streaming, and tool traces to the console.~~ **Done.**
-2. Use the opt-in live-provider acceptance job when a suitable CI secret and
-   provider budget are available.
-3. Complete the remaining P3.3 registry/rollback/first-release decisions when a
-   release is intentionally scheduled.
-4. P2.2 lifecycle semantics are defined (ADR-007); add integration/contract
-   tests when a concrete enterprise identity source is selected.
-5. Select and implement durable runtime sessions, memory schema migrations, and
-   distributed A2A task state when their storage and operational semantics are
-   approved.
-6. Keep all Kubernetes/Kind/OpenShift follow-up pending until explicitly
-   resumed.
+These findings are unresolved and have concrete failure scenarios. They are
+ordered by the recommended implementation sequence. Resolved findings
+`F1–F15`, `I1–I7`, `BF1–BF12`, and `BI1–BI5` are recorded in `CHANGELOG.md` and
+are intentionally not duplicated here.
 
----
+## BF14 — Safe deployment bundle export
 
-# Review Findings
+`DeploymentService._export_bundle` builds paths from agent, version, and
+resource names below the shared `OSA_DEPLOY_ROOT`. A path separator can escape
+the root, while equal names in different tenants can collide during startup.
 
-Findings are filed with a concrete failure scenario. Resolve them in order and
-record resolutions in the Review Log.
+- [ ] Use deployment-scoped opaque directories and safe filenames.
+- [ ] Enforce resolved-path containment, stage exports atomically, and clean up
+  partial exports.
+- [ ] Add traversal, cross-tenant, collision, and concurrency tests.
 
-## Control Panel UI (control-plane/frontend) — 2026-09-04
+## BF18 — Outbound A2A SSRF policy
 
-### Fixes
+External-agent registration, refresh, invocation, and credential token requests
+accept arbitrary destinations without application-level SSRF, redirect, or
+DNS-rebinding controls.
 
-- [x] F1 Dark mode leaves light-theme grays on dark surfaces: `.state-card`,
-  `.filter-bar label`, `td small`, `.muted-text`, card/body `p`, `.eyebrow`,
-  and `th` keep `#475467`/`#667085` (~2.2–3.4:1, below WCAG AA 4.5:1);
-  `.count-badge` and the anonymous `.connection-pill` render near-white text
-  on a `#eef2f6` pill; `.confirmation` renders dark red on `#291b1c`.
-  Failure: with OS dark mode, loading/empty states, count badges, form
-  labels, and the archive confirmation are unreadable.
-- [x] F2 No scroll reset on route change: `AppShell` focuses `#main-content`
-  with `preventScroll: true` and `BrowserRouter` does no scroll management.
-  Failure: opening an agent from the bottom of a long list renders the
-  detail page scrolled to the old offset with the top content off-screen.
-- [x] F3 AgentsPage and the DeploymentsPage agent picker hardcode
-  `limit: 100` and never send `offset`, though `/agents` supports
-  limit/offset. Failure: with >100 agents the rest are unreachable in the UI
-  and the total badge disagrees with the rows shown.
-- [x] F4 Create-agent "Built-in template" source with no template selected
-  silently omits `template` and creates an empty draft. Failure: the user
-  picks the template source, misses the dropdown, and gets a blank draft
-  instead of a template-based agent.
-- [x] F5 `closeCreate()` never clears `?create=1&cloneOf=…` from the URL.
-  Failure: closing the clone panel and clicking "Create agent" in the same
-  visit re-enters clone mode with stale pre-filled metadata.
-- [x] F6 Disabled buttons keep `cursor: pointer` and full styling (no
-  `:disabled` rules). Failure: during busy states (e.g. "Creating…") other
-  buttons look clickable and clicks silently no-op.
-- [x] F7 Console timeout input is not clamped: clearing it sends
-  `timeout_seconds=0` (`Number("")`) and out-of-range values pass through
-  despite `min`/`max`. Failure: invoke with a cleared timeout fails with a
-  confusing server-side error.
-- [x] F8 ResourcesPage and TemplatesPage error states have no retry path
-  (every other page has one). Failure: a transient API error requires a full
-  page reload or kind switch to recover.
-- [x] F9 Stale copy on `/console`: the footer still claims managed-agent
-  invocation "require[s] runtime access design (pending)" although ADR-008
-  managed invocation shipped on the Deployments page. Failure: operators
-  conclude the feature does not exist.
-- [x] F10 No React error boundary. Failure: any render exception (e.g. an
-  unexpected API payload shape such as `labels: null`) unmounts the whole
-  app to a blank page with no recovery.
-- [x] F11 No 401/403 handling: an expired token surfaces only as per-page
-  errors and Retry loops with the dead token. Failure: mid-session token
-  expiry leaves every view failing with no prompt to reconnect.
-- [x] F12 `AuthContext` guards the initial `sessionStorage` read but not the
-  `setItem`/`removeItem` writes. Failure: where storage is unavailable
-  (private mode, storage disabled), submitting a token throws and the form
-  dies silently.
-- [x] F13 No fetch carries a timeout or `AbortController`;
-  `invokeRuntimeEndpoint` waits forever. Failure: a hung runtime leaves
-  "Invoking…" spinning indefinitely; only a page reload escapes.
-- [x] F14 Rollback has no confirmation (archive has one) and the rollback
-  version input's form swallows Enter (`onSubmit` is only `preventDefault`).
-  Failure: one stray click immediately relaunches an older version, and
-  pressing Enter in the version field silently does nothing.
-- [x] F15 `.detail-grid { minmax(300px, 1fr) }` exceeds the ~282px content
-  width of a 320px viewport. Failure: horizontal page scroll on small
-  phones; use `minmax(min(300px, 100%), 1fr)`.
+- [ ] Define allowed schemes/hosts, private-address policy, DNS-rebinding and
+  redirect handling, and equivalent rules for credential token URLs.
+- [ ] Add negative tests and document the operator escape hatch for private A2A
+  endpoints.
 
-### Improvements
+## BF15 — Deployment retry idempotency
 
-- [x] I1 Poll deployment status (or provide one "refresh all") so `starting`
-  deployments converge without manual "Refresh status" clicks.
-- [x] I2 Render localized/relative timestamps in version history and the
-  audit table instead of raw ISO strings.
-- [x] I3 Move the audit action filter server-side (the API only supports
-  `limit` today) or relabel the count badge so "N matching" does not imply a
-  global match count over the unloaded window.
-- [x] I4 Health page: render the full readiness payload and add a refresh
-  control.
-- [x] I5 Production serving story for the Panel: `control-plane/frontend`
-  now ships a non-root Nginx image with `/health/live`, immutable asset
-  caching, and SPA fallback so deep links like `/agents/<id>` do not 404;
-  the image health/deep-link/clean-shutdown smoke test runs in CI.
-- [x] I6 Scope the Deployments busy state per row/action instead of locking
-  every button on the page during any single request.
-- [x] I7 Surface immutable version snapshot content through a dedicated
-  authorized detail endpoint and the Agent detail page. The response keeps
-  immutable metadata, recursively redacts secret-like values, reports the
-  redacted paths, and is covered by backend/API/UI tests; clone/edit still
-  requires an explicitly supplied definition because the source remains
-  write-only.
+`DeploymentService.deploy` allocates a fresh port for each request, so a retry
+after a lost response changes the command and can start a second runtime.
 
-## Backend, Runtime & Release Tooling (control-plane/backend, generic-agent,
-runtimes/adk, scripts, docs) — 2026-09-04
+- [ ] Define an idempotent desired-deployment identity and serialize concurrent
+  requests.
+- [ ] Test retries and duplicate requests for each provider.
 
-Every item below was independently confirmed by reading the current source
-(not just reported by a review pass); two are empirically reproduced.
+## BF16 — Rollback consistency
 
-### Fixes
+Rollback does not consistently stop the existing provider deployment, forward
+the runtime environment, or persist a provider's replacement deployment ID and
+invoke URL.
 
-- [x] BF1 Cross-user memory leakage via a shared, never-reset `LlmAgent`
-  instruction: `GenericAdkAgent._invoke`/`stream_invoke`
-  (`runtimes/adk/src/osa/runtimes/adk/runtime.py:487-488`, `:559-560`) run on
-  one process-wide `llm_agent` instance and only *set*
-  `self.llm_agent.instruction` when the current request's memory lookup
-  returns content — there is no `else` branch restoring the base
-  instruction when it doesn't. Failure: User A's request pulls their private
-  memory into the shared instruction; User B's very next request (new topic,
-  no memory hits, so the `if memory_context:` branch is skipped) is sent to
-  the model with A's memory content still attached, and the model can
-  reflect it back to B. Directly contradicts the "isolated sessions" P0
-  guarantee. Concurrent in-flight requests make the window worse (A's own
-  call can race and pick up B's just-written instruction).
-- [x] BF2 External A2A agent records have no tenant isolation:
-  `ExternalAgentRecord`
-  (`control-plane/backend/src/osa/control_plane/backend/external_agents.py`)
-  has no `tenant_id` field, `ExternalAgentCatalog` is one process-global
-  dict, and none of `list_external_agents`/`get_external_agent`/
-  `refresh_external_agent`/`delete_external_agent`/`invoke_external_agent`
-  filter or check ownership by tenant — unlike every other resource type in
-  this package (`_owned_record`/`_request_tenant` for agents,
-  `scoped_catalogs` for resources). Failure: Tenant A registers an external
-  agent with an `OutboundCredential`; Tenant B (valid token, different
-  `tenant_id`, same `external-agent:*` permission) lists it, invokes it —
-  using A's stored credential against the remote service — or deletes it.
-- [x] BF3 PostgreSQL-backed deployment records are never wired up despite a
-  configured DSN: in `create_control_plane_app`
-  (`control-plane/backend/src/osa/control_plane/backend/service.py:88-133`),
-  `deployment_records: Any = None` is declared before the `if dsn:` branch
-  and never assigned inside it — only `agents`/`resources`/
-  `audit_repository` get Postgres implementations. The `if deployment_records
-  is not None:` gate (line 124) that would build a `DeploymentService` around
-  it is therefore permanently dead, and `PostgresDeploymentRecordRepository`
-  (`repositories.py:698`) is never imported from `service.py`. Failure: an
-  operator sets `OSA_CONTROL_PLANE_DATABASE_URL` and runs two Control Plane
-  replicas per ADR-004's stated goal; a deploy routed to replica A is
-  invisible to `GET /deployments/{id}` on replica B, and all deployment
-  history is lost on restart.
-- [x] BF4 `PATCH /agents/{id}` with a new `definition` leaves the Postgres
-  `skills` column stale: `update_agent`
-  (`control-plane/backend/src/osa/control_plane/backend/api.py:595-611`)
-  never puts `skills` into the `updates` dict passed to
-  `agent_repository.update()`, then calls `_sync_derived_fields(updated)`
-  (`api.py:233-236`) which mutates the returned Python object's `.skills`
-  in place. `PostgresAgentRepository.update()`
-  (`repositories.py:363-391`) returns a freshly re-queried record, so that
-  mutation is never written back — `_UPDATABLE_COLUMNS` even lists `skills`
-  as a valid column, it's just never populated by the caller. Failure (
-  Postgres backend only): the immediate PATCH response shows the correct new
-  skills (illusion of success), but the stored row — and every later
-  `GET /agents?skill=…` filter — keeps the pre-update skill list
-  indefinitely.
-- [x] BF5 `GET /agents/{agent_id}/deployments` is authorized against
-  `agent:read` instead of `deployment:read`:
-  `permission_for_request`
-  (`generic-agent/src/osa/generic_agent/auth.py:230-257`) routes on
-  `path.startswith("/deployments/") or path.endswith("/deploy")` before
-  falling through to the generic `/agents/` clause; `/agents/{id}/deployments`
-  matches neither, so it resolves to `AGENT_READ` like any other
-  `/agents/...` route. Every sibling deployment-observing endpoint (
-  `GET /deployments/{id}`, `.../logs`) correctly requires `DEPLOYMENT_READ`.
-  Failure: an enterprise role mapped to `agent:read` but not
-  `deployment:read` can still read deployment ids, status, and `invoke_url`
-  through this one route, bypassing the permission boundary enforced
-  everywhere else.
-- [x] BF6 MCP tool-call retries can duplicate non-idempotent tool
-  executions: `McpToolConnection.call_tool`
-  (`runtimes/adk/src/osa/runtimes/adk/mcp_client.py:301-334`) retries on a
-  bare `except Exception`, with no distinction between a transient
-  transport failure and a response that was simply lost after the server
-  already completed the call, and no idempotency key. Failure: a tool that
-  sends an email or creates a record times out waiting for its response,
-  OSA retries and the server runs it a second time.
-- [x] BF7 The documented local quick-start (`README.md`, `CONTRIBUTING.md`,
-  `AGENTS.md`: `uv sync --all-packages` then `uv run pytest`) omits the
-  `--extra a2a` CI always adds, and `tests/integration/test_a2a.py` has no
-  `pytest.mark.skipif`/`importorskip` guard the way
-  `tests/integration/test_postgres_memory.py` does for the `postgres` extra.
-  Empirically reproduced: a venv synced exactly per the README's documented
-  commands fails 11 tests in `test_a2a.py` with
-  `A2aNotInstalledError` instead of skipping. Failure: a new contributor
-  follows the README verbatim and sees unexplained test failures that look
-  like a broken checkout.
+- [ ] Make rollback an atomic stop/relaunch/persist operation with failure
+  recovery.
+- [ ] Add regression tests for process count, URL/port, environment, and status.
 
-### Improvements
+## BF17 — Local-provider reconciliation
 
-- [x] BI1 `docs/guides/security.md` — the doc that states "current security
-  behavior... is tested" — never mentions `OSA_RUNTIME_ALLOWED_ORIGINS` or
-  CORS, even though ADR-008 explicitly puts "the runtime's auth/CORS
-  posture" on the operator and the CHANGELOG notes the Control Panel's
-  runtime-invoke request never forwards the Panel's own bearer token.
-  Failure: an operator enables `OSA_RUNTIME_ALLOWED_ORIGINS` for the
-  Deployments-page "Send test message" feature, checks the security guide
-  for guidance, finds nothing, and doesn't realize the runtime's own
-  `OSA_AUTH_MODE` now gates a newly browser-reachable endpoint.
-- [x] BI2 `scripts/release_validation.py`'s changelog check
-  (`release_heading = re.compile(rf"^## \[{{version}}\] - \d{{4}}-\d{{2}}-\d{{2}}$")`)
-  matches *any* heading anywhere in the file, regardless of position or
-  date, and `CHANGELOG.md` already carries pre-release dev-milestone
-  headings from `[0.0.1]` through `[0.14.0]` above the never-yet-tagged
-  `[Unreleased]` section (`git tag -l` is currently empty). Empirically
-  confirmed in `.sandbox/`: bumping all four manifests to a version that
-  collides with one of those existing headings (e.g. `0.2.0`) makes
-  `validate_release()` pass even though `## [Unreleased]` still has
-  unmigrated content and the matched heading's date/content predate the
-  actual release. Failure: whoever cuts the first real release picks a
-  version number that happens to match one of these old headings and ships
-  a GitHub Release whose linked changelog section is stale, unrelated
-  content.
+The local provider is process-local, its `shutdown()` is not wired into the
+Control Plane lifespan, and a PostgreSQL-backed restart cannot rehydrate its
+child processes.
 
-- [x] BF8 `TestStdioProtocol::test_timeout_is_deterministic` is
-  load-sensitive. Under machine load, the mcp library's read-timeout race can
-  surface a raw `CancelledError` out of `McpToolConnection.call_tool`
-  (`runtimes/adk/src/osa/runtimes/adk/mcp_client.py`) instead of the expected
-  `McpToolExecutionError` — on Python ≥3.8 `CancelledError` derives from
-  `BaseException`, so the retry loop's `except Exception` neither converts
-  nor retries it. Reproduced twice during the 2026-09-04 merge-verification
-  run (full suite failed once under post-sync load; quiet re-run green: 525
-  passed / 21 skipped). Failure: a CI run under load goes red on an unrelated
-  change and masks real failures. Fix direction: bound
-  `session.call_tool` with our own `asyncio.wait_for(..., timeout_seconds)`
-  inside `call_tool` so timeout → `TimeoutError` conversion is deterministic
-  at the OSA boundary; implement together with BF6, which reworks the same
-  retry/timeout block.
+- [ ] Define shutdown, orphan cleanup, restart/reconciliation, and multi-replica
+  semantics, or make an external provider mandatory for production.
+- [ ] Cover graceful shutdown, restart recovery, and persisted running records.
 
-### Contract alignment review — 2026-09-05
+## BF19 — Resource-catalog cache coherence
 
-- [x] BF9 Runtime `GET /v1/capabilities` reported `streaming: false` even
-  though `POST /v1/invoke/stream` was implemented and documented. Failure:
-  clients disable a supported feature based on false capability metadata.
-  The response now reports streaming support and the integration test asserts
-  the contract.
-- [x] BF10 The stream route was absent from the shared `agent:invoke` route
-  permission mapping. Failure: with optional authentication and permission
-  enforcement, an anonymous caller could reach the stream route while the
-  non-streaming invoke route required `agent:invoke`. Both routes now share
-  the mapping and regression coverage.
-- [x] BF11 The production runtime image omitted the `a2a` extra although the
-  deployment guide and runtime contract promise optional A2A support. Failure:
-  an enabled A2A bundle starts in an image without the required SDK. The image
-  now installs `litellm`, `postgres`, and `a2a` extras together.
-- [x] BF12 The Control Plane image launched `api:app`, the always-in-memory
-  module app, so `OSA_CONTROL_PLANE_DATABASE_URL` was ignored by the container.
-  Failure: a supposedly PostgreSQL-backed image silently lost state on restart
-  or across replicas. The image now launches
-  `create_control_plane_app` with Uvicorn's `--factory` flag.
-- [x] BI3 `docs/API.md` placed runtime streaming under the Control Plane and
-  omitted the runtime stream and metrics route rows. Failure: generated-route
-  review could not detect runtime documentation drift. The section is now
-  under Runtime API, and the contract test checks that runtime routes are
-  documented.
-- [x] BI4 The deployment guide omitted `OSA_DEPLOY_COMMAND_TEMPLATE`,
-  `OSA_DEPLOY_ROOT`, `OSA_DEPLOY_INVOKE_URL_TEMPLATE`, and
-  `OSA_DEPLOY_RUNTIME_ALLOWED_ORIGINS`. Failure: operators could not configure
-  the documented deployment behavior from the deployment guide. The guide
-  now lists each variable, default, placeholder, and security boundary.
-- [x] BI5 Documentation now distinguishes the independent Control Plane and
-  memory PostgreSQL DSNs, their backup scopes, and transitional memory
-  bootstrap DDL. Failure: an operator could back up or migrate one database
-  while assuming it covered all OSA state.
-- [ ] BI6 The isolated Control Plane image still does not contain the default
-  `osa-runtime` launcher used by the local deployment provider. This is now a
-  documented production-topology decision rather than an implicit guarantee;
-  resolve it under the packaged launcher contract above.
-- [ ] BI7 Neither HTTP app provides rate limiting or quotas. Define and
-  implement a replica-safe capacity contract before treating the services as
-  internet-facing without an external gateway or mesh.
+PostgreSQL resource definitions are materialized into each process's
+`ResourceCatalogs` only at startup. Cross-replica create, replace, or delete can
+therefore leave reads, duplicate checks, activation validation, and bundle
+export stale or missing.
 
-## Full-project contract and security review — 2026-09-05
+- [ ] Add read-through or invalidation/notification semantics while preserving
+  tenant isolation and write consistency.
+- [ ] Cover cross-replica create/update/delete, activation, and deployment.
 
-The following gaps were confirmed against the current implementation and are
-not duplicates of the pending storage, Kubernetes, A2A task-state, or rate
-limit work above.
+## BF13 — Durable external-agent records
 
-### Fixes
+External A2A records are always process-local: a restart loses registrations and
+replicas can have different endpoints and health state.
 
-- [ ] BF13 External A2A agent records are always process-local: `create_control_plane_app`
-  installs a new `ExternalAgentCatalog` even when PostgreSQL is configured, and
-  no external-agent table/repository exists. Failure: a restart loses registered
-  endpoints and credentials, while two replicas have different registries and
-  health state. Add a tenant-scoped durable repository and migration, persist
-  only credential references (never resolved values), and cover restart,
-  replica, health-refresh, deletion, and tenant-isolation behavior.
-- [ ] BF14 Deployment bundle export is not safe for untrusted or colliding names:
-  `_export_bundle` builds paths from `record.name`, `record.current_version`, and
-  referenced resource names directly below the shared `OSA_DEPLOY_ROOT`. Failure:
-  a name containing path separators can escape the root, and equal agent/version
-  names in different tenants can overwrite or race on the same bundle while a
-  runtime is starting. Use deployment-scoped opaque directories and safe
-  filenames, enforce resolved-path containment, stage atomically, clean up
-  partial exports, and add traversal/cross-tenant/concurrency tests.
-- [ ] BF15 Deployment retries are not idempotent at the service boundary:
-  `DeploymentService.deploy` allocates a fresh port for every request, changing
-  the synthesized command so `LocalDeploymentProvider` cannot recognize the
-  same desired deployment. Failure: a client retry after a lost response starts
-  a second runtime for the same agent/version. Define an idempotency/desired
-  deployment identity, serialize concurrent requests, and test retry and
-  duplicate-request behavior for each provider.
-- [ ] BF16 Rollback does not preserve a consistent deployment identity: it does
-  not stop the existing provider deployment before launching the target, does
-  not forward `_runtime_env()`, and does not update the stored deployment ID or
-  `invoke_url` when a provider returns a fresh deployment/port. Failure: the
-  previous process can remain alive, the returned URL can point to a stopped
-  runtime, and browser invocation can lose its configured CORS origins. Make
-  rollback an atomic stop/relaunch/persist operation with failure recovery and
-  regression tests for process count, URL/port, environment, and status.
-- [ ] BF17 Local deployment lifecycle is not reconciled with persisted records:
-  `LocalDeploymentProvider` is explicitly process-local, `shutdown()` is not
-  wired into the Control Plane lifespan, and a PostgreSQL-backed restart has no
-  way to rehydrate provider processes. Failure: Control Plane shutdown can
-  orphan launched runtimes, while persisted `running` records become
-  unmanageable or return 404 after restart. Define local-provider shutdown,
-  orphan cleanup, restart/reconciliation, and multi-replica semantics (or make
-  an external provider mandatory for production), then cover graceful shutdown
-  and restart recovery.
-- [ ] BF18 Outbound A2A registration, refresh, and invocation accept arbitrary
-  user-supplied URLs and the HTTP client has no SSRF/redirect/IP-range policy.
-  Failure: an authorized caller can make the Control Plane or its credential
-  adapters probe internal services or cloud metadata endpoints. Define allowed
-  schemes/hosts, DNS-rebinding and redirect handling, private-address policy,
-  and equivalent protection for credential token URLs; add negative tests and
-  document the operator escape hatch if private A2A endpoints are required.
-- [ ] BF19 PostgreSQL resource definitions are materialized into each process's
-  `ResourceCatalogs` only during startup. Resource CRUD writes the database and
-  the local catalog, but reads, duplicate checks, activation validation, and
-  bundle export use that local cache. Failure: a resource created, replaced, or
-  deleted on replica A remains stale or missing on replica B despite shared
-  PostgreSQL records. Add read-through or invalidation/notification semantics,
-  preserve tenant isolation and write consistency, and cover cross-replica
-  create/update/delete/activation/deployment behavior.
+- [ ] Add a tenant-scoped durable repository and migration, persisting only
+  credential references.
+- [ ] Cover restart, replica, health refresh, deletion, and tenant isolation.
 
-### Improvements
+## BI8 — Documentation link validation
 
-- [ ] BI8 Add Markdown link/anchor validation to CI. The current contract tests
-  validate documented routes and YAML examples but do not catch a renamed guide,
-  ADR, or changelog link until a reader follows it.
-- [ ] BI9 Replace the frontend wildcard route's `PlaceholderPage` copy (`Planned
-  in P3.1`) with an accessible not-found/recovery page and a route smoke test.
-  Failure: a typo or stale deep link is presented as a planned product route
-  instead of giving the user a clear recovery action.
+The current contract tests validate routes and YAML examples but do not catch a
+renamed guide, ADR, or changelog link.
 
-## Review Log
+- [ ] Add Markdown link and anchor validation to CI.
 
-- 2026-09-05 — Full documentation and project-contract review: fixed runtime
-  capability/permission drift, aligned both container entrypoints with their
-  documented extras and persistence behavior, moved and expanded the runtime
-  API reference, added runtime OpenAPI route coverage, documented all Control
-  Plane deployment variables, and clarified independent database backup and
-  memory-schema semantics. Added pending work for the isolated Control Plane
-  launcher boundary and HTTP rate limiting/quotas. Full Python, frontend, and
-  container validation was rerun successfully before commit.
+## BI9 — Honest not-found route
 
-- 2026-09-05 — Control Panel remaining review items I5/I7 resolved. Added the
-  non-root Nginx production image with SPA fallback and CI image smoke checks;
-  added authorized, recursively redacted immutable version-detail snapshots
-  with API/UI coverage; and completed current English-locale accessibility and
-  responsive behavior coverage (focus, tables, forms, reduced motion, narrow
-  viewport). Broader translated-locale support remains a separate backlog
-  decision.
+The frontend wildcard route still uses `PlaceholderPage` copy that says
+`Planned in P3.1`, which mislabels a typo or stale deep link as a planned
+product route.
 
-- 2026-09-05 — P3.3 live-provider acceptance resolved at the workflow level:
-  `tests/acceptance/test_live_provider.py` exercises the real LiteLLM/ADK
-  Runner/native-tool path when `OSA_LIVE_PROVIDER_API_KEY` is configured, and
-  CI runs it only on `main` pushes/manual dispatch with that dedicated secret;
-  offline runs skip with an explicit notice. Provider execution remains
-  intentionally opt-in because it consumes external model budget.
+- [ ] Replace it with an accessible not-found/recovery page and add a route
+  smoke test.
 
-- 2026-09-05 — Control Panel improvements I1–I4, I6: deployments in
-  `starting` state poll every 3s until they converge (I1); version history and
-  the audit table render locale-formatted timestamps instead of raw ISO
-  strings (I2); the audit badge now states "N shown of M most recent events
-  loaded" instead of implying a global match count (I3); the Health page
-  renders the full readiness payload — scalar fields plus the raw JSON — with
-  a refresh control (I4); the Deployments busy state is scoped per deployment
-  (a running action locks only that deployment's controls; table Manage
-  buttons stay live and only a deploy locks the section) (I6). At that review
-  point I5 (production SPA-fallback serving) and I7 (exposing immutable version
-  snapshot content) were still open; both are now resolved in the review entry
-  above.
-- 2026-09-05 — BF1 resolved: `GenericAdkAgent._invocation_runner()` builds a
-  fresh `LlmAgent` + `Runner` per invocation with the effective instruction
-  (base + this caller's policy-loaded memory context) baked in; `invoke`,
-  `stream_invoke`, and `_run_adk` consume the per-invocation runner instead of
-  mutating the shared `llm_agent.instruction`, so one caller's memory can no
-  longer leak into the next caller's request (regression test asserts user B's
-  prompt never contains user A's memory and the shared agent object stays at
-  its base instruction). `build_llm_agent` gained an `instruction` override.
-  Sessions remain continuous: every per-invocation runner shares the app name
-  and the OSA-backed session service. Full suite: 534 passed / 22 skipped at
-  86.32% coverage.
-- 2026-09-05 — Control Panel fixes F1–F15: dark-mode now restyles every
-  muted surface and pill (F1); route changes reset scroll (F2); agent lists
-  page past the first 100 records on the Agents list and the Deployments
-  picker (F3); template-source creation requires a selected template (F4);
-  closing the create panel clears `?create=1`/`?cloneOf` (F5); disabled
-  buttons render and read as disabled (F6); the console timeout input is
-  clamped to 1–300s with the effective value shown (F7); Resources and
-  Templates error states gained Retry paths (F8); the `/console` footer no
-  longer claims managed invocation is pending (F9); an error boundary keeps
-  render exceptions from blanking the app (F10); an `osa:unauthorized` event
-  from the API client clears rejected tokens so the panel falls back to
-  anonymous mode (F11); sessionStorage writes are guarded for private-mode
-  storage (F12); every fetch carries an abort deadline — runtime/external
-  invokes get margins beyond their server-side timeouts (F13); rollback now
-  requires an explicit confirmation and Enter in the version field drives the
-  same flow (F14); `.detail-grid` no longer overflows 320px viewports (F15).
-  Gates: tsc clean, 32 vitest tests passing, production build clean.
-- 2026-09-05 — Backend, runtime, and release-tooling finding resolutions:
-  BF2 tenant-scoped `ExternalAgentCatalog` (`for_tenant` namespaces mirroring
-  `ResourceCatalogs`; records carry `tenant_id`; cross-tenant list/get/invoke/
-  refresh/delete return 404 — regression-tested with two JWT tenants);
-  BF3 `create_control_plane_app` now wires `PostgresDeploymentRecordRepository`
-  when a DSN is set (wiring unit test + CI persistence round-trip test);
-  BF4 `PATCH /agents/{id}` persists derived `skills` alongside the definition
-  (copy-on-write repository regression test mimicking Postgres read
-  semantics); BF5 agent-scoped `/deployments` routes resolve to
-  `deployment:read|write` (route-mapping test); BF6+BF8 `call_tool` retries
-  only connection-level failures, in-flight failures surface immediately as
-  `McpToolExecutionError`, and a client-side `asyncio.wait_for` deadline makes
-  timeouts deterministic (fixture `slow_tool` sleep and test timeout margins
-  rebalanced so connect cannot eat the call budget under load); BF7 `test_a2a`
-  is collection-guarded without the `a2a` extra and the quickstart docs
-  (README/CONTRIBUTING/AGENTS) now sync with CI's
-  `--extra postgres --extra a2a`; BI1 security guide documents the runtime
-  CORS posture (`OSA_RUNTIME_ALLOWED_ORIGINS` / `OSA_DEPLOY_RUNTIME_ALLOWED_ORIGINS`);
-  BI2 release validation pins the release heading to the FIRST section after
-  `[Unreleased]` (which must be empty), so historical dev-milestone headings
-  can no longer satisfy a release by collision. Cleanup: removed stale empty
-  `.claude/` and `control-plane/ui/` directories.
-- 2026-09-05 — Backlog reconciliation: added persistent runtime-session work,
-  memory schema-ownership work, and ADR-005 P2.4 distributed A2A task-state
-  work already identified as open in the API/operations documentation but
-  missing from this authoritative backlog. Also recorded capability-level
-  telemetry, conditional MCP, custom-adapter, OIDC, and bundle-API follow-ups
-  from the current docs/ADRs. These remain deferred or pending their
-  respective storage, transport, and product requirements.
-- 2026-09-05 — Full-project contract and security review: confirmed new open
-  work for durable external-agent records, tenant-safe/atomic bundle export,
-  service-level deployment idempotency, rollback consistency, local-provider
-  shutdown/reconciliation, outbound A2A SSRF policy, resource-cache coherence,
-  CI documentation-link validation, A2A cancellation semantics, and an honest
-  frontend not-found route. No source behavior was changed during this review;
-  each item is recorded with its failure scenario and acceptance direction
-  above.
-- 2026-09-04 — Control Panel UI presentation review of
-  `control-plane/frontend` filed 15 fixes (F1–F15) and 7 improvements
-  (I1–I7). Read-only review; no source changes made.
-- 2026-09-04 — Full-project review and test pass. Ran the automated gates
-  (`uv run ruff check/format`, `uv run mypy .`, `uv run pytest --cov`
-  matching CI's exact `--extra postgres --extra a2a` sync, and
-  `npm run typecheck/test/build` for `control-plane/frontend`) — all clean:
-  0 lint/type errors, 525 passed/21 skipped at 85.78% coverage (≥84% floor),
-  9/9 frontend test files passing, clean frontend build. Used a gitignored
-  `.sandbox/` (see `.gitignore`) to reproduce the documented no-extras
-  quickstart in an isolated `UV_PROJECT_ENVIRONMENT` and to empirically
-  confirm the release-validation gap against copied manifests/changelog —
-  neither touched the real checkout. Two parallel focused reviews (backend
-  API/persistence/deployment providers; generic-agent + ADK runtime
-  auth/memory/session/MCP/A2A) plus a docs/release-tooling pass filed 7
-  fixes (BF1–BF7) and 2 improvements (BI1–BI2) above; every finding was
-  independently re-verified against current source before filing, so all
-  are marked confirmed rather than merely reported. Also checked and ruled
-  out (no genuine issue found): JWT/OIDC validation paths (expired/
-  malformed/audience/`active`-claim handling all fail closed, verified with
-  a real signed test token), session/memory scope ownership checks in
-  `session.py`/`session_service.py`, local and Kubernetes deployment
-  provider idempotent-redeploy/terminal-state guards, CORS env-var naming
-  agreement between the Control Plane and runtime, credential handling in
-  bundle export and generated Kubernetes manifests (`secretKeyRef` only,
-  never inline), and `scripts/rollback_release.py`'s channel/digest/tag
-  validation. Read-only against tracked files; only `TODO.md` and
-  `.gitignore` (adding `.sandbox/`) were changed.
+## Folded findings
+
+- **BI6** is tracked by the packaged Control Plane deployment launcher task.
+- **BI7** is tracked by the rate limiting and quotas task.
+
+## Review history
+
+The 2026-09-04 and 2026-09-05 review resolutions, evidence, and validation
+results remain in `CHANGELOG.md` and git history. New reviews should add only
+unresolved work here and record completed items in the changelog.

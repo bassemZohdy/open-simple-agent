@@ -25,7 +25,8 @@ flowchart TB
         AC["AgentCatalog"]
         TC["TemplateCatalog"]
         RC["ResourceCatalogs"]
-        DP["LocalDeploymentProvider"]
+        DP["LocalDeploymentProvider\nAPI-wired"]
+        KDP["KubernetesDeploymentProvider\nexplicit wiring only"]
     end
 
     subgraph DOMAIN["Generic contracts"]
@@ -53,7 +54,8 @@ flowchart TB
     RAPI --> GA
     GA --> ADK
     ADK --> MAD
-    DP -. "not API-wired" .-> CPAPI
+    CPAPI --> DP
+    KDP -. "not packaged or selected" .-> CPAPI
 ```
 
 ## Agent construction
@@ -230,8 +232,10 @@ tenant claims propagate into invocations.
 execution. `LocalDeploymentProvider` launches a server-owned command as a
 subprocess, captures bounded logs per deployment, probes a health URL during
 startup (early exit or a missed probe window fails the deployment with the
-captured logs), detects dead processes on status, supports idempotent
-re-deploys of the same running command, and cleans up on stop/shutdown.
+captured logs), detects dead processes on status, and can recognize idempotent
+re-deploys of the same running command. Service-level retry identity, rollback
+consistency, and Control Plane shutdown/reconciliation remain open. Provider
+cleanup occurs when the provider's shutdown path is explicitly called.
 
 The Control Plane exposes deployment APIs (P1.5) through
 `DeploymentService`: deploying an active agent exports its definition plus
@@ -239,11 +243,13 @@ referenced resources to a bundle directory and launches a runtime via a
 server-owned command template (`OSA_DEPLOY_COMMAND_TEMPLATE`) — commands are
 never accepted from API input. Intent and observed state persist through the
 `DeploymentRecordRepository` (in-memory, or PostgreSQL when the Control
-Plane uses a database); rollback relaunches an earlier immutable version
-snapshot. Record persistence does not currently reconcile the local provider's
-subprocess state across Control Plane restarts or replicas. Deployed runtimes
-are external processes: no ADK internals are imported. The first generic Kubernetes provider slice exists; packaged
-provider selection and real Kind validation remain open in `TODO.md`.
+Plane uses a database); rollback currently relaunches an earlier immutable
+version snapshot but its stop/relaunch/persist consistency remains open.
+Record persistence does not currently reconcile the local provider's subprocess
+state across Control Plane restarts or replicas. Deployed runtimes are external
+processes: no ADK internals are imported. The first generic Kubernetes provider
+slice exists; packaged provider selection and real Kind validation remain open
+in `TODO.md`.
 OpenShift-specific provider work is intentionally deferred.
 
 Deployment records expose an optional public runtime invoke URL synthesized
@@ -285,7 +291,7 @@ attributes.
 
 ## Tests and CI
 
-The current baseline is 559 collected tests: 536 pass locally and 23
+The current baseline is 560 collected tests: 537 pass locally and 23
 PostgreSQL/A2A tests are skipped when their optional dependencies or
 `OSA_TEST_DATABASE_URL` are unavailable. CI runs:
 
@@ -309,7 +315,9 @@ shared provider. Live-model acceptance is covered by an opt-in test that uses
 the LiteLLM adapter and can run only when its repository secret is enabled;
 there is no Kubernetes, live-identity-provider, or multi-process deployment
 test yet. CI enforces an 84% coverage threshold; identity-provider and
-Kubernetes tests remain backlog work.
+Kubernetes tests remain backlog work. The opt-in live-provider job is available
+when its repository secret is configured, but it is intentionally skipped in
+offline CI runs.
 
 ## Dependency risks
 

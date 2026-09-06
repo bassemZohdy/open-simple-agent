@@ -114,8 +114,9 @@ spec:
 
 Allow/deny overlap is invalid. The policy is independent of the prompt;
 enterprise policy evaluation remains open. Inbound A2A security is enforced by
-the shared OIDC/OAuth boundary. Kubernetes provider work may be validated with
-Kind; OpenShift-specific behavior is deferred.
+the shared OIDC/OAuth boundary. Kubernetes provider selection and Kind
+validation are deployment concerns and remain paused; OpenShift-specific
+behavior is deferred.
 
 | Path | Type | Default | Current behavior |
 |---|---|---:|---|
@@ -304,7 +305,9 @@ Service bootstraps resolve every bundle secret before reporting ready.
 MCP definitions and external A2A agent records may use a `credential` object.
 It contains references only; the configured `SecretResolver` resolves values
 when the connection is created. Resolved values are never stored in a
-definition, returned by an API, logged, or included in an error.
+definition, returned by an API, logged, or included in an error. Outbound
+destinations are not yet protected by an application-level SSRF, redirect, or
+DNS-rebinding policy; see BF18 in `TODO.md` and the security guide.
 
 API keys are sent in a named HTTP header. An optional
 `environment_variable` is useful for stdio MCP servers:

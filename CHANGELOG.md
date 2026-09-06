@@ -1,5 +1,26 @@
 # Changelog
 
+All notable changes to Open Simple Agent will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
+
+> **Versioning note:** entries `0.1.0` through `0.14.0` record internal
+> development milestones; they are not published package releases. All package
+> manifests now share one lockstep release version, enforced by
+> `tests/unit/test_versioning.py`. The first public release and optional
+> package-registry publication remain tracked in `TODO.md` (P3.3).
+
+## [Unreleased]
+
+### Changed — Documentation cleanup and backlog normalization
+- Reordered the changelog so current unreleased changes appear under the
+  standard `## [Unreleased]` heading.
+- Simplified `TODO.md` to unresolved, deferred, and deliberately gated work;
+  resolved review findings remain in this changelog and git history.
+- Aligned the README, project definition, architecture, API reference,
+  configuration reference, and operational guides with the current deployment
+  limitations and recommended BF14 next task.
+
 ### Added — P3.1: Managed-agent runtime invocation from Control Panel
 - Runtime CORS support: opt-in `OSA_RUNTIME_ALLOWED_ORIGINS` environment
   variable adds `CORSMiddleware` to the runtime FastAPI application so browser
@@ -54,8 +75,9 @@
 - `InvocationPage` at `/console`: registered external agents listed with
   card/version, URL, and health status; message + timeout invocation through
   `POST /external-agents/{id}/invoke` with inline response rendering and
-  502/remote-failure surfacing. Managed-agent sessions/streaming/tool traces
-  remain pending the runtime-access design decision.
+  502/remote-failure surfacing. At the time of this entry, managed-agent
+  sessions/streaming/tool traces remained pending the runtime-access decision;
+  they were added later under ADR-008.
 
 ### Added — P3.1: Agent authoring Control Panel flows
 - Validated create/clone panel on the Agents page: empty draft, built-in
@@ -94,8 +116,6 @@
   migrations, multi-replica notes), security (auth, tenancy, secrets,
   policy, supply chain, audit), and upgrade (lockstep versions, migrations,
   rolling replicas, rollback) guides, linked from the documentation index.
-
-
 ### Added — P3.3: License scanning and SBOMs
 - **License scanning + SBOMs (P3.3)**
   - CI `security` job: pip-licenses exact-string allow-list over the
@@ -137,18 +157,6 @@
 - Added exact allow/deny policy rules for model, tool, MCP, skill, and inbound
   A2A resources. Policies are checked before runtime construction and denied
   references return the stable `policy_violation` error.
-
-All notable changes to Open Simple Agent will be documented in this file.
-
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
-
-> **Versioning note:** entries `0.1.0` through `0.14.0` record internal
-> development milestones; they are not published package releases. All package
-> manifests now share one lockstep release version, enforced by
-> `tests/unit/test_versioning.py`. Automated release publishing remains
-> tracked in `TODO.md` (P3.3).
-
-## [Unreleased]
 
 ### Fixed — Documentation and runtime contract alignment
 - Runtime capabilities now report the implemented SSE streaming endpoint, and

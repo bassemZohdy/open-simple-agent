@@ -6,10 +6,10 @@ session state in its configured provider and memory can use PostgreSQL. With a
 Control Plane DSN, agents, resources, deployment records, and audit events are
 shared through PostgreSQL, but resource catalog caches are materialized only at
 startup, external-agent records remain process-local, and local provider
-processes remain process-local until the pending work in `TODO.md` lands.
-Neither application currently provides rate limiting. Both use the stable OSA
-error envelope `{"error": {"code", "message"}}` and share the optional JWT
-Bearer authentication boundary described below.
+processes remain process-local. The corresponding durability and safety work is
+tracked in `TODO.md` (BF13–BF19). Neither application currently provides rate
+limiting. Both use the stable OSA error envelope `{"error": {"code", "message"}}`
+and share the optional JWT Bearer authentication boundary described below.
 
 ## Control Plane API
 
@@ -269,8 +269,8 @@ Every transition persists intent and observed state through the
 Control Plane is configured with a database). This record durability does not
 make the local subprocess provider restart- or replica-safe; provider
 shutdown/reconciliation, service-level retry idempotency, and rollback
-consistency remain open. The Kubernetes provider and multi-host scheduling also
-remain open (see `TODO.md`).
+consistency remain open as BF15–BF17. The Kubernetes provider and multi-host
+scheduling also remain open (see `TODO.md`).
 
 ### A2A and external agents (P2.1)
 
@@ -323,8 +323,7 @@ bearer/OIDC enforcement as the runtime invoke route, and protected Agent
 Cards advertise the required `osa_oidc` scheme. Outbound remote-agent calls can
 attach the configured API-key, OAuth2, or mTLS credential. Application-level
 SSRF, private-address, DNS-rebinding, and redirect policy is not yet enforced;
-restrict egress at the deployment boundary until the corresponding security
-task in `TODO.md` is complete.
+restrict egress at the deployment boundary until BF18 in `TODO.md` is complete.
 
 ## Runtime API
 
@@ -432,7 +431,8 @@ the `model_invocation_failed` code when raised to the HTTP layer.
   function calling with declarations from `ToolDefinition.capabilities`.
 - One agent is stored in module-level state, matching the bundle model.
 - Sessions are in memory and not replica-safe; memory can use the PostgreSQL
-  provider when `OSA_MEMORY_DATABASE_URL` is set.
+  provider when `OSA_MEMORY_DATABASE_URL` is set. Durable sessions remain open
+  work in `TODO.md`.
 - The `fake` model provider requires explicit opt-in via
   `OSA_ALLOW_FAKE_PROVIDER=1` in service bootstraps.
 - A2A Agent Card and JSON-RPC routes are available when `spec.a2a.enabled` and

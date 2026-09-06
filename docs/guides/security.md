@@ -125,6 +125,8 @@ gateway or service mesh; the planned OSA-side controls are tracked in
 
 ## Provider-dependent verification still open
 
-- Live-provider acceptance (requires an explicitly configured CI secret)
-- Live identity-provider certification (requires provider credentials)
-- Integration tests against a concrete enterprise identity source
+- Live-provider acceptance is available as an opt-in CI job and requires the
+  explicitly configured `OSA_LIVE_PROVIDER_API_KEY` repository secret.
+- Live identity-provider certification requires provider credentials.
+- Integration tests against a concrete enterprise identity source remain open
+  until that source is selected.

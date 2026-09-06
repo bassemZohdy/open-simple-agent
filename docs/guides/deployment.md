@@ -64,8 +64,8 @@ docker run -d -p 8000:8000 \
   materialized into each process only at startup, so resource reads and
   validation can be stale between replicas. External-agent records remain
   process-local, and the local deployment provider's child-process state is
-  not restart- or replica-safe yet; use the pending provider/reconciliation
-  work in `TODO.md` when selecting a production topology.
+  not restart- or replica-safe yet; use BF17 in `TODO.md` when selecting a
+  production topology.
 
 ### Deployment configuration
 
@@ -112,7 +112,8 @@ a separate step, then roll replicas.
   cross-replica session continuity; with the in-memory provider, sessions
   are per-process (documented limitation).
 - Neither service enforces HTTP rate limits or quotas yet. Apply those controls
-  at an API gateway or service mesh until the planned implementation lands.
+  at an API gateway or service mesh until the P2 rate-limit work in `TODO.md`
+  lands.
 
 ## Deploying an agent through the Control Plane
 
@@ -128,6 +129,10 @@ never accepts process commands.
 
 ## Remaining deployment work
 
-- Packaged Kubernetes provider selection and real Kind acceptance (see
-  `TODO.md`; the first generic provider slice exists but follow-up is paused)
-- Distributed A2A task stores (A2A task state is in-memory per runtime)
+- Safe, tenant-isolated, atomic bundle export and service-level deployment
+  retry/rollback/reconciliation (BF14–BF17 in `TODO.md`)
+- Resource-catalog cache coherence and durable external-agent records (BF13 and
+  BF19)
+- Packaged Kubernetes provider selection and real Kind acceptance (the first
+  generic provider slice exists, but follow-up is paused)
+- Distributed A2A task state and cancellation semantics (P2.4)
