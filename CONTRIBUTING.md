@@ -12,7 +12,7 @@ uv sync --all-packages --extra postgres --extra a2a
 ```
 
 `--all-packages` is required: the workspace root has no runtime dependencies of
-its own, so a bare `uv sync` installs none of the three members' dependencies.
+its own, so a bare `uv sync` installs none of the four members' dependencies.
 The `postgres` and `a2a` extras match CI. Without them the suite still passes —
 PostgreSQL tests (which also need `OSA_TEST_DATABASE_URL`) and A2A tests skip —
 but the full CI matrix only runs with the extras installed.
@@ -129,16 +129,16 @@ or catalog entry as a working integration without runtime behavior and tests.
 
 ## Release Process
 
-All three packages are released together as one versioned release — packages
+All four packages are released together as one versioned release — packages
 are not published independently. The release version is the `version` field,
-kept identical across the workspace root and the three member manifests; it is
+kept identical across the workspace root and the four member manifests; it is
 the single authoritative version source. `tests/unit/test_versioning.py`
 fails when the manifests drift or when the installed distributions / FastAPI
 application metadata report a different version.
 
 Before releasing:
 
-1. Bump `version` in `pyproject.toml` and the three member manifests to the
+1. Bump `version` in `pyproject.toml` and the four member manifests to the
    same value and refresh `uv.lock`.
 2. Move relevant changelog entries out of `Unreleased` into a dated
    `## [X.Y.Z] - YYYY-MM-DD` section.
@@ -152,7 +152,8 @@ lockstep or the dated changelog section is missing.
 
 The workflow publishes:
 
-- `osa-generic-agent`, `osa-adk-runtime`, and `osa-control-plane` wheel/sdist
+- `osa-generic-agent`, `osa-adk-runtime`, `osa-langgraph-runtime`, and
+  `osa-control-plane` wheel/sdist
   artifacts on the GitHub Release, with SHA-256 checksums and GitHub build
   provenance attestations.
 - `ghcr.io/<owner>/<repo>-runtime:X.Y.Z` and

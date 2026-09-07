@@ -203,7 +203,10 @@ available as an opt-in job and remains offline-safe without its secret.
 - [ ] MCP resources/prompts exposure and legacy SSE transport support.
 - [ ] Configurable custom model-adapter registration until a second production
   adapter is required.
-- [ ] Additional runtime frameworks such as LangChain/LangGraph.
+- [ ] Complete the LangGraph-first technology selection with a bounded OSA
+  contract/security/durability POC (the programmatic runtime slice exists;
+  MCP/A2A, shared HTTP service, and durable checkpoint validation remain); see
+  the [weighted DAR-001 comparison](docs/DAR-001-adk-vs-langchain-langgraph.md).
 - [ ] Multiple unrelated agents in one runtime process.
 - [ ] Dynamic runtime plugin installation.
 - [ ] Advanced semantic agent discovery and hosted marketplace.

@@ -153,6 +153,7 @@ jobs:
           uv export --format requirements-txt --no-hashes --no-dev --all-packages \
             --no-emit-package osa-generic-agent \
             --no-emit-package osa-adk-runtime \
+            --no-emit-package osa-langgraph-runtime \
             --no-emit-package osa-control-plane > requirements-audit.txt
           uvx pip-audit -r requirements-audit.txt --no-deps --progress-spinner off
       - name: Enforce permissive license allow-list (pip-licenses)

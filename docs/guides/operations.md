@@ -64,7 +64,7 @@ health probe; startup failures carry the captured logs in the record detail.
 
 ## Upgrades
 
-1. Bump the version once across the workspace root and the three member
+1. Bump the version once across the workspace root and the four member
    manifests (lockstep is enforced by `tests/unit/test_versioning.py`).
 2. Run `osa-cp-migrate` against the target database.
 3. Roll images: the runtime and Control Plane images are built separately

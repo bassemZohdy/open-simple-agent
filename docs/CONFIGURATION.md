@@ -9,6 +9,23 @@ loader (`osa.generic_agent.bundle`) on `main`.
 supported environment overrides and validates the result as an immutable
 Pydantic model. Unknown properties are rejected at every schema level.
 
+## Selecting a runtime backend
+
+The agent definition does not contain a framework selector. Deployment code
+chooses the backend while preserving the same OSA definition and catalogs:
+
+- `osa.runtimes.adk.AdkRuntime` is the packaged ADK 2.x runtime and owns the
+  current FastAPI/A2A service surface.
+- `osa.runtimes.langgraph.LangGraphRuntime` is the programmatic
+  LangChain/LangGraph backend. It uses the shared `RuntimeDependencies` layer
+  and currently supports native tools, sessions, memory, timeouts, and OSA
+  streaming. Install its `providers` extra for direct LangChain integrations,
+  or its `litellm` extra to reuse `provider: litellm` model entries; MCP, A2A,
+  and the shared HTTP service adapter remain pending.
+
+This keeps framework-native objects and provider packages out of the generic
+configuration contract.
+
 ```python
 from pathlib import Path
 
@@ -66,22 +83,23 @@ spec:
 |---|---|---:|---|
 | `apiVersion` | string | `osa/v1alpha1` | Must equal `osa/v1alpha1`; other values are rejected |
 | `kind` | string | `Agent` | Must equal `Agent`; other values are rejected |
-| `metadata.name` | string | required | Used for runtime metadata and ADK name derivation |
+| `metadata.name` | string | required | Used for runtime metadata and framework-specific agent naming |
 | `metadata.version` | string | `0.1.0` | No semantic-version validation |
 | `metadata.description` | string | empty | Used in generic metadata |
 | `metadata.labels` | map of string | empty | Stored as metadata |
 
-`spec.description` is separate from `metadata.description`; the ADK `LlmAgent`
-uses `spec.description`.
+`spec.description` is separate from `metadata.description`; the selected
+runtime backend uses `spec.description` when its framework supports an agent
+description.
 
 ### Runtime references
 
 | Path | Type | Default | Current behavior |
 |---|---|---:|---|
-| `spec.instruction` | string | empty | Used as the ADK `LlmAgent` instruction |
+| `spec.instruction` | string | empty | Used as the system/instruction message by the selected runtime backend |
 | `spec.model` | model reference or null | null | Resolved from the catalog; an unknown reference fails fast, an absent reference uses the catalog default (deterministic mode only when no default exists) |
 | `spec.model.parameters` | map | empty | Per-agent generation overrides; override `ModelDefinition.runtime_settings` |
-| `spec.mcps` | MCP references | empty | Resolved against the catalog; tools discovered and invoked at runtime (ADR-002) |
+| `spec.mcps` | MCP references | empty | Resolved and invoked by the ADK runtime (ADR-002); the LangGraph backend currently fails fast until its MCP adapter is added |
 | `spec.mcps[].tools_filter` | string list | empty | Agent-level allowlist of server tool names (intersects the server definition's filter) |
 | `spec.tools` | tool references | empty | Definitions and implementations resolve at construction |
 | `spec.skills` | skill references | empty | Definitions resolve at construction as metadata |
@@ -127,9 +145,9 @@ behavior is deferred.
 | `spec.session.persistence` | boolean | false | Stored; persistent session providers pending (P1) |
 | `spec.session.ttl_seconds` | integer or null | null | Must be > 0 when set; expired sessions are deleted on access |
 | `spec.session.max_history_messages` | integer | 20 | Bounds the per-session conversation history |
-| `spec.a2a.enabled` | boolean | false | Enables the runtime Agent Card and JSON-RPC A2A routes when the optional A2A extra is installed |
+| `spec.a2a.enabled` | boolean | false | Enables ADK runtime Agent Card and JSON-RPC A2A routes when the optional A2A extra is installed; not exposed by the current LangGraph slice |
 | `spec.runtime.timeout_seconds` | integer or null | null | Must be > 0 when set; the invocation is cancelled with `invocation_timeout` when exceeded |
-| `spec.runtime.max_iterations` | integer or null | null | Must be >= 1 when set; caps ADK function-call rounds (default 3), fails with `iteration_limit_exceeded` |
+| `spec.runtime.max_iterations` | integer or null | null | Must be >= 1 when set; caps model/tool rounds (default 3) in both runtime backends, failing with `iteration_limit_exceeded` |
 
 ## Memory runtime behavior
 

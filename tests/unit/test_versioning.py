@@ -1,6 +1,6 @@
 """Version consistency across the workspace (P0.6).
 
-All three member packages are released together in lockstep: the version fields
+All workspace member packages are released together in lockstep: the version fields
 in every manifest must be identical, the installed distributions must report
 that same release version, and the FastAPI application metadata must derive
 from the installed package metadata rather than a hard-coded constant.
@@ -17,12 +17,14 @@ WORKSPACE_ROOT = Path(__file__).resolve().parents[2]
 _MEMBERS = (
     "generic-agent",
     "runtimes/adk",
+    "runtimes/langgraph",
     "control-plane/backend",
 )
 
 _DISTRIBUTIONS = {
     "generic-agent": "osa-generic-agent",
     "runtimes/adk": "osa-adk-runtime",
+    "runtimes/langgraph": "osa-langgraph-runtime",
     "control-plane/backend": "osa-control-plane",
 }
 

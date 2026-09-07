@@ -17,8 +17,8 @@ schema is Alembic-owned, and migrations are an explicit operational step.
 
 ## Versioning model
 
-All three packages (`osa-generic-agent`, `osa-adk-runtime`,
-`osa-control-plane`) release together in lockstep — one version across every
+All four packages (`osa-generic-agent`, `osa-adk-runtime`,
+`osa-langgraph-runtime`, `osa-control-plane`) release together in lockstep — one version across every
 manifest, enforced by `tests/unit/test_versioning.py`. Upgrade all images to
 the same version.
 

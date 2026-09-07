@@ -12,6 +12,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added — LangChain/LangGraph runtime backend
+- Added the `osa-langgraph-runtime` workspace package with LangChain chat-model
+  adapters and a LangGraph `StateGraph` model/tool pipeline.
+- Added the framework-neutral `RuntimeDependencies` composition layer and
+  shared `AgentStreamEvent` contract; both ADK 2.x and LangGraph runtimes can
+  consume the same OSA catalogs, providers, policies, sessions, memory, and
+  observability services.
+- Added OSA-native tool wrapping, bounded model/tool iterations, session
+  ownership, policy-controlled memory context, timeouts, stable responses,
+  streaming events, bundle bootstrap, and six LangGraph behavioral tests.
+- LangGraph MCP references fail fast until a dedicated LangChain MCP adapter is
+  implemented; the packaged HTTP/A2A service remains ADK-backed for now.
+
 ### Changed — Documentation cleanup and backlog normalization
 - Reordered the changelog so current unreleased changes appear under the
   standard `## [Unreleased]` heading.

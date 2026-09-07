@@ -25,9 +25,11 @@ instructions + model + tools + MCP servers + skills + memory + session
 and executes directly through an agent runtime. OSA focuses on agents, not
 workflows.
 
-The initial runtime implementation is Google ADK. Additional runtimes are only
-introduced for a concrete product requirement; behavioral equivalence across
-frameworks is not a goal.
+OSA currently ships two runtime implementations: Google ADK 2.x and a
+LangChain/LangGraph backend. Both implement the same generic OSA invocation
+contract, while framework-native capabilities remain backend-specific.
+Behavioral equivalence is required only for the generic security and
+invocation boundary, not for every framework feature.
 
 ## Primary goal
 
@@ -77,8 +79,8 @@ Any future relationship requires an explicit decision recorded in this project.
    boundary or enable a required capability.
 3. **Control plane and data plane separation.** Management requests and agent
    invocations have different paths and scaling/security concerns.
-4. **Framework isolation.** ADK objects stay inside the ADK runtime package;
-   generic contracts remain framework-neutral.
+4. **Framework isolation.** ADK, LangChain, and LangGraph objects stay inside
+   their runtime packages; generic contracts remain framework-neutral.
 5. **Fail early on invalid references.** A deployment must not silently run
    with missing tools, skills, models, MCPs, policies, or secrets.
 6. **Externalized secrets.** Configuration stores references, never secret
@@ -192,6 +194,14 @@ Owns stable domain types and contracts:
 It must not depend on Google ADK, FastAPI, Kubernetes, or application-specific
 agent implementations.
 
+### Runtime backends
+
+Runtime backends own framework-specific construction and execution while
+implementing the generic `AgentRuntime`/`Agent` contracts. The shared
+`RuntimeDependencies` composition object supplies OSA catalogs, model/tool
+providers, session and memory providers, secret resolution, and observability
+without importing a framework into `generic-agent`.
+
 ### ADK runtime
 
 Owns framework-specific construction and execution:
@@ -208,6 +218,20 @@ native tools to ADK-native function calling, integrates MCP toolsets, maintains
 OSA-owned session/memory boundaries, supports SSE invocation streaming, and
 exposes optional A2A routes. Provider adapters remain replaceable behind OSA
 contracts.
+
+### LangChain/LangGraph runtime
+
+The `runtimes/langgraph` package owns the second backend:
+
+- LangChain chat-model initialization and tool wrappers;
+- a LangGraph `StateGraph` model/tool loop with bounded OSA iteration limits;
+- OSA-owned resource policy, session ownership, bounded history, memory
+  context, timeouts, stable responses, and streaming events.
+
+The current slice is programmatic and intentionally does not expose the ADK
+runtime's HTTP/A2A service or MCP client. It accepts an optional LangGraph
+checkpointer for experiments, but the OSA `SessionProvider` remains the
+contractual session boundary until durable checkpoint ownership is defined.
 
 ### Control Plane
 

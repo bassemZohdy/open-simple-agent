@@ -13,6 +13,12 @@ def test_adk_runtime_import():
     assert osa.runtimes.adk.__doc__ is not None
 
 
+def test_langgraph_runtime_import():
+    import osa.runtimes.langgraph
+
+    assert osa.runtimes.langgraph.__doc__ is not None
+
+
 def test_control_plane_backend_import():
     import osa.control_plane.backend
 

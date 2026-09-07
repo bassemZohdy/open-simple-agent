@@ -5,10 +5,15 @@ running, managing, and discovering autonomous AI agents. It focuses on agents,
 not workflows: an agent combines instructions, a model, tools, MCP servers,
 skills, memory, and session settings and is executed by a runtime.
 
-The first runtime targets [Google ADK](https://google.github.io/adk-docs/).
+OSA ships two runtime backends behind the same framework-neutral OSA
+contracts: [Google ADK 2.x](https://google.github.io/adk-docs/) and a
+LangChain/LangGraph backend. The ADK backend remains the packaged HTTP/A2A
+service runtime; the LangGraph backend is currently a programmatic runtime
+slice for backend evaluation and coexistence.
 
 > **Development status:** OSA is an early-stage framework. The domain model,
-> deployment bundles, control-plane API, runnable ADK runtime, MCP runtime,
+> deployment bundles, control-plane API, runnable ADK runtime, LangChain/
+> LangGraph runtime slice, MCP runtime,
 > PostgreSQL persistence, A2A interoperability, the `osa-runtime` service CLI,
 > production-oriented images, release supply-chain automation, and the
 > React/TypeScript Control Panel are implemented. JWT bearer authentication,
@@ -31,12 +36,13 @@ The first runtime targets [Google ADK](https://google.github.io/adk-docs/).
 | Sessions | `SessionProvider` contract, ownership (agent/user/tenant), TTL, bounded history fed back to the model | In-memory only; not replica-safe |
 | Memory | Policy catalog resolution (authoritative scope/limits/retention), scope-id isolation (user/agent/tenant/application), enforcement after every write, explicit writes, PostgreSQL persistence (ADR-003) | Extraction pipeline (auto-extract) reserved; vector search deferred |
 | ADK runtime | Invocation through the ADK `Runner`; timeouts, iteration limits, stable error types; SSE streaming (`/v1/invoke/stream`) with stable OSA events and disconnect cancellation; A2A Agent Card + JSON-RPC server (ADR-005) | Token-level streaming requires a streaming model; A2A task state is in-memory per runtime |
+| LangChain/LangGraph runtime | `osa-langgraph-runtime` uses LangChain chat models/tools and a LangGraph `StateGraph` model/tool loop; shares OSA catalogs, policies, sessions, memory, timeouts, stable responses, and streaming events | Programmatic backend only; MCP, A2A, and a framework-neutral HTTP service adapter are not yet included |
 | Control Plane | Agent CRUD, lifecycle transitions, immutable versions, optimistic concurrency, validated contracts; tenant-owned agent CRUD/lifecycle routes; tenant-scoped resource CRUD/list/search APIs with reference checks and bundle import/export; tenant-owned deployment APIs (deploy/status/stop/restart/logs/rollback); external A2A agent registry with card validation, health, and outbound credential adapters; append-only tenant-filtered audit events; in-memory default or PostgreSQL repositories via `OSA_CONTROL_PLANE_DATABASE_URL` (ADR-004), Alembic schema (`osa-cp-migrate`); shared JWT bearer authentication and opt-in route permissions | PostgreSQL persistence currently covers agents, resource records, deployment records, and audit events; resource catalog caches are startup-materialized and external-agent records remain process-local; definition resource policy is enforced by the runtime and enterprise policy remains open |
 | Control Panel | React/TypeScript/Vite shell; session-scoped Bearer token support; typed Control Plane client; agents, templates, tenant-scoped resources, readiness, agent detail/version history, safe immutable snapshot inspection, deployments, audit/metrics, authoring, A2A console, managed-runtime invocation, and responsive/loading/empty/error states | Broader translated-locale coverage and deployment-specific OIDC login remain deployment concerns |
 | Deployment | Local provider with bounded logs, health probing, and startup-failure capture; deploy/status/stop/restart/logs/rollback APIs through the Control Plane with persisted tenant-owned records; first generic Kubernetes provider slice retained | Persisted records do not make the local process provider restart- or replica-safe; further Kubernetes/Kind work is intentionally paused |
 | Runtime API | Invoke, capabilities, liveness, readiness, optional A2A Agent Card/JSON-RPC, shared JWT/OIDC bearer authentication including RFC 7662 opaque-token introspection, opt-in route permissions, tenant-claim binding, request IDs, Prometheus metrics, redaction-safe structured logs and runtime/A2A audit events; SSE streaming (`/v1/invoke/stream`) with stable OSA events; `osa-runtime` CLI with bundle bootstrap | No built-in rate limiting or quotas; use an API gateway or service mesh |
 | CI | Ruff format/lint, strict mypy, full Python suite with PostgreSQL + A2A services and an 84% coverage gate, Control Panel typecheck/test/build, both image smoke tests, dependency/license scanning, CycloneDX SBOMs, and a gated live-provider acceptance job | Live-provider execution requires the opt-in repository secret |
-| Release | Lockstep release validation; three Python distributions; GHCR runtime/Control Plane images; SBOM/provenance attestations; keyless Cosign image signing; GitHub Releases with checksums; immutable-digest channel rollback | First public release and optional package-registry publication remain open |
+| Release | Lockstep release validation; four Python distributions; GHCR runtime/Control Plane images; SBOM/provenance attestations; keyless Cosign image signing; GitHub Releases with checksums; immutable-digest channel rollback | First public release and optional package-registry publication remain open |
 
 ## Architecture
 
@@ -45,7 +51,9 @@ flowchart TB
     CP["Control Plane API\nagent records and templates"]
     CAT["Catalogs\nresource caches with optional PG records"]
     DEF["AgentDefinition\nstable OSA contract"]
-    ADK["ADK runtime\nGenericAdkAgent"]
+    CONTRACT["Runtime abstraction\nAgentRuntime + RuntimeDependencies"]
+    ADK["ADK 2.x runtime\nGenericAdkAgent"]
+    LG["LangChain/LangGraph runtime\nOsaLangGraphAgent"]
     API["Runtime HTTP API"]
     MODEL["Model provider\nconfigured live adapter or explicit fake"]
     TOOL["Native tools"]
@@ -53,11 +61,16 @@ flowchart TB
 
     CP --> CAT
     CP --> DEF
-    DEF --> ADK
+    DEF --> CONTRACT
+    CONTRACT --> ADK
+    CONTRACT --> LG
     API --> ADK
     ADK --> MODEL
     ADK --> TOOL
     ADK --> MEM
+    LG --> MODEL
+    LG --> TOOL
+    LG --> MEM
 ```
 
 The Control Plane stores definitions and management metadata. Agent invocation
@@ -143,7 +156,7 @@ uv run ruff format --check .
 uv run ruff check .
 ```
 
-`uv sync --all-packages` is required because this is a three-member uv
+`uv sync --all-packages` is required because this is a four-member uv
 workspace. A bare `uv sync` does not install the member packages. The
 `postgres` and `a2a` extras match CI: without them, the PostgreSQL (needs
 `OSA_TEST_DATABASE_URL`) and A2A integration tests are skipped instead of
@@ -195,6 +208,30 @@ async def main() -> None:
 
 asyncio.run(main())
 ```
+
+The same definition can be run through the LangChain/LangGraph backend. It
+uses LangChain's `init_chat_model` adapter for provider-specific live models,
+an optional LiteLLM compatibility adapter, and an explicit OSA `ModelProvider`
+bridge for deterministic tests:
+
+```python
+from osa.runtimes.langgraph import LangGraphRuntime
+
+
+async def main() -> None:
+    runtime = LangGraphRuntime(model_provider=FakeModelProvider("Hello from LangGraph"))
+    agent = await runtime.create(definition)
+    response = await agent.invoke(AgentRequest(input="Hello"))
+    print(response.output)
+    await runtime.shutdown()
+```
+
+Both backends consume the generic `AgentRuntime` and `Agent` contracts. The
+LangGraph backend is intentionally programmatic in this slice; the existing
+`osa-runtime` CLI and HTTP/A2A surface remain ADK-backed until a shared
+framework-neutral service adapter is added. Install the package's `providers`
+extra for direct provider integrations or its `litellm` extra to reuse an OSA
+model entry with `provider: litellm`.
 
 ## Running an agent
 
@@ -249,6 +286,8 @@ Two FastAPI applications exist:
 - Configured/production Control Plane: the
   `osa.control_plane.backend.service:create_control_plane_app` factory
 - Agent runtime: `osa.runtimes.adk.api:runtime_app` (or the `osa-runtime` CLI)
+  The LangChain/LangGraph backend is currently programmatic; use
+  `osa.runtimes.langgraph.service:build_runtime` for bundle bootstrap.
 
 The Control Plane can be started for development after setup:
 
@@ -283,6 +322,7 @@ open-simple-agent/
 ├── control-plane/frontend/  # React/TypeScript administrative Control Panel
 ├── generic-agent/           # Stable domain model, bundles, and runtime contracts
 ├── runtimes/adk/            # Google ADK runtime, model adapters, service CLI
+├── runtimes/langgraph/      # LangChain/LangGraph runtime backend
 ├── docs/                    # Architecture, configuration, API, guides, and ADRs
 ├── examples/                # Runnable bundles
 ├── tests/                   # Python unit/integration tests
@@ -301,8 +341,9 @@ open-simple-agent/
 - MCP is modeled separately from native tools because it may expose tools,
   resources, and prompts.
 - Sessions and long-term memory are separate concepts.
-- ADK is the initial implementation; cross-framework behavioral equivalence is
-  not a goal.
+- ADK and LangChain/LangGraph are independent implementations behind shared
+  OSA contracts; cross-framework behavioral equivalence is validated only for
+  the generic invocation, policy, session, memory, and streaming surfaces.
 - OSA is an independent project. No architecture, dependency, or
   interoperability relationship with the Micro-Agents project is defined.
 

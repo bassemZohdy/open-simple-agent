@@ -113,7 +113,7 @@ from osa.generic_agent.observability import (
     redact_fields,
     redact_text,
 )
-from osa.generic_agent.runtime import AgentFactory, AgentRuntime
+from osa.generic_agent.runtime import AgentFactory, AgentRuntime, RuntimeDependencies
 from osa.generic_agent.secret import (
     EnvironmentSecretResolver,
     SecretError,
@@ -131,6 +131,7 @@ from osa.generic_agent.session import (
     SessionProvider,
 )
 from osa.generic_agent.skill import SkillCatalog, SkillDefinition
+from osa.generic_agent.streaming import AgentStreamEvent
 from osa.generic_agent.tool import (
     Tool,
     ToolCapability,
@@ -160,6 +161,8 @@ __all__ = [
     "AgentRequest",
     "AgentResponse",
     "AgentRuntime",
+    "AgentStreamEvent",
+    "RuntimeDependencies",
     "AgentSpec",
     "AgentStatus",
     "AuthMode",

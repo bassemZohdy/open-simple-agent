@@ -10,6 +10,7 @@ readme = "README.md"
 members = [
     "generic-agent",
     "runtimes/adk",
+    "runtimes/langgraph",
     "control-plane/backend",
 ]
 
@@ -30,6 +31,7 @@ line-length = 120
 src = [
     "generic-agent/src",
     "runtimes/adk/src",
+    "runtimes/langgraph/src",
     "control-plane/backend/src",
     "tests",
 ]
@@ -51,6 +53,7 @@ select = [
 known-first-party = [
     "osa.generic_agent",
     "osa.runtimes.adk",
+    "osa.runtimes.langgraph",
     "osa.control_plane.backend",
 ]
 
@@ -60,14 +63,18 @@ strict = true
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = true
-# PEP 420 namespace layout: `osa` spans all three workspace src roots and has
+# PEP 420 namespace layout: `osa` spans all four workspace src roots and has
 # no top-level __init__.py, so tell mypy where the package bases are.
-mypy_path = ["generic-agent/src", "runtimes/adk/src", "control-plane/backend/src"]
+mypy_path = ["generic-agent/src", "runtimes/adk/src", "runtimes/langgraph/src", "control-plane/backend/src"]
 explicit_package_bases = true
 
 [[tool.mypy.overrides]]
 module = ["tests.*"]
 disallow_untyped_defs = false
+
+[[tool.mypy.overrides]]
+module = ["langchain_litellm"]
+ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -1,0 +1,32 @@
+[project]
+name = "osa-langgraph-runtime"
+version = "0.1.0"
+description = "Open Simple Agent LangChain and LangGraph runtime implementation."
+requires-python = ">=3.12"
+license = "Apache-2.0"
+dependencies = [
+    "osa-generic-agent",
+    "langchain>=1.0,<2",
+    "langgraph>=1.0,<2",
+]
+
+[project.optional-dependencies]
+# Provider integrations are intentionally opt-in. The runtime's model adapter
+# uses LangChain's init_chat_model and the selected integration package.
+providers = [
+    "langchain-anthropic>=1.0",
+    "langchain-google-genai>=4.0",
+    "langchain-openai>=1.0",
+]
+# Compatibility adapter for existing OSA `provider: litellm` model entries.
+litellm = ["langchain-litellm>=0.7,<1"]
+
+[tool.uv.sources]
+osa-generic-agent = { workspace = true }
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/osa"]

@@ -9,6 +9,7 @@ MANIFESTS = (
     Path("pyproject.toml"),
     Path("generic-agent/pyproject.toml"),
     Path("runtimes/adk/pyproject.toml"),
+    Path("runtimes/langgraph/pyproject.toml"),
     Path("control-plane/backend/pyproject.toml"),
 )
 

@@ -5,13 +5,14 @@ map, not a promise that planned capabilities exist.
 
 ## Workspace
 
-OSA is a Python 3.12 uv workspace with three packages sharing the PEP 420
+OSA is a Python 3.12 uv workspace with four packages sharing the PEP 420
 namespace `osa`:
 
 | Package | Import root | Responsibility |
 |---|---|---|
 | `generic-agent` | `osa.generic_agent` | Domain model, configuration, deployment bundles, catalogs, provider contracts, errors |
 | `runtimes/adk` | `osa.runtimes.adk` | ADK-specific construction, model adapters, MCP client/toolsets, memory persistence, session bridging, Runner invocation, runtime API, service CLI |
+| `runtimes/langgraph` | `osa.runtimes.langgraph` | LangChain model/tool adapters, LangGraph `StateGraph` execution, OSA session/memory/policy bridge, programmatic bundle bootstrap |
 | `control-plane/backend` | `osa.control_plane.backend` | Agent records/templates/resources (in-memory or PostgreSQL repositories, ADR-004), local deployment provider, management API |
 
 Namespace levels such as `src/osa/` intentionally have no `__init__.py`.
@@ -36,11 +37,14 @@ flowchart TB
         PROVIDERS["Model, memory, session, tool, secret contracts"]
     end
 
-    subgraph DATA["ADK data plane"]
+    subgraph DATA["Runtime data plane"]
         RAPI["Runtime FastAPI / osa-runtime CLI"]
         GA["GenericAdkAgent"]
         ADK["ADK LlmAgent + Runner"]
         MAD["Model adapters (litellm / fake bridge)"]
+        LG["OsaLangGraphAgent"]
+        GRAPH["LangGraph StateGraph"]
+        LCM["LangChain chat model + tools"]
     end
 
     CPAPI --> AC
@@ -54,6 +58,11 @@ flowchart TB
     RAPI --> GA
     GA --> ADK
     ADK --> MAD
+    DEF --> LG
+    CONTRACT --> LG
+    PROVIDERS --> LG
+    LG --> GRAPH
+    GRAPH --> LCM
     CPAPI --> DP
     KDP -. "not packaged or selected" .-> CPAPI
 ```
@@ -76,6 +85,50 @@ flowchart TB
    declarations come from `ToolDefinition.capabilities`;
 6. builds an ADK `Runner` wired to `OsaAdkSessionService`, which stores ADK
    events inside the OSA session provider.
+
+`LangGraphRuntime.create()` uses the same `RuntimeDependencies` composition
+object and resolves the same OSA catalogs and providers before construction.
+It builds a LangChain chat model, wraps native OSA tools as `StructuredTool`
+instances, and compiles a `StateGraph` with a model node and LangChain
+`ToolNode`. The graph is internal runtime machinery; OSA does not expose a
+workflow DSL. The default backend uses the OSA `SessionProvider` as its source
+of truth and can accept an optional LangGraph checkpointer for bounded
+experiments.
+
+Both backends are independently constructible through `AgentRuntime` and
+return the framework-neutral `Agent` contract. This is the current abstraction
+boundary: generic contracts and policies do not import either framework.
+
+## LangChain/LangGraph invocation flow
+
+```mermaid
+sequenceDiagram
+    participant C as Caller
+    participant A as OsaLangGraphAgent
+    participant S as OSA SessionProvider
+    participant G as LangGraph StateGraph
+    participant M as LangChain ChatModel
+    participant T as LangChain ToolNode
+
+    C->>A: AgentRequest
+    A->>S: resolve/create session (ownership, TTL)
+    A->>S: load bounded history + policy memory
+    A->>G: ainvoke/astream messages
+    G->>M: model node
+    alt model emits tool calls
+        G->>T: ToolNode
+        T->>T: OSA tool wrapper (schema + timeout)
+        T->>M: tool result on next graph step
+    end
+    G-->>A: final AIMessage
+    A->>S: save bounded history
+    A-->>C: AgentResponse / AgentStreamEvent
+```
+
+The LangGraph backend supports OSA native tools, skills metadata, session
+ownership, memory context, runtime timeouts, iteration limits, and stable
+streaming events. MCP references fail fast until a LangChain MCP adapter is
+provided; A2A and the packaged FastAPI service remain ADK-only in this slice.
 
 ## Invocation flow
 
@@ -128,8 +181,10 @@ credential resolution (never storing values) follow `McpDefinition`.
 ## Sessions and memory
 
 The OSA `SessionProvider` is the single source of truth for sessions:
-ownership (`agent_name`, `user_id`, `tenant_id`), TTL expiry, bounded history
-(`max_history_messages`), and the ADK event payload ADK reuses for context.
+ownership (`agent_name`, `user_id`, `tenant_id`), TTL expiry, and bounded history
+(`max_history_messages`). ADK maps its event payload through
+`OsaAdkSessionService`; LangGraph translates the bounded history into
+LangChain messages before each graph run.
 Caller-supplied unknown IDs are rejected (`session_not_found`), identity
 changes are access violations (`session_access_denied`), and IDs are
 server-issued UUIDs. `OsaAdkSessionService` maps ADK session operations onto
@@ -291,7 +346,7 @@ attributes.
 
 ## Tests and CI
 
-The current baseline is 560 collected tests: 537 pass locally and 23
+The current baseline is 567 collected tests: 544 pass locally and 23
 PostgreSQL/A2A tests are skipped when their optional dependencies or
 `OSA_TEST_DATABASE_URL` are unavailable. CI runs:
 
@@ -326,6 +381,12 @@ offline CI runs.
   documented there).
 - `litellm>=1.84` is optional (`osa-adk-runtime[litellm]`); configuring a
   litellm model without the extra fails fast (ADR-001).
+- `langchain>=1.0,<2.0` and `langgraph>=1.0,<2.0` are isolated in
+  `osa-langgraph-runtime`; provider integrations are optional under its
+  `providers` extra, and the `litellm` extra bridges existing OSA LiteLLM
+  model entries through LangChain. The backend currently uses the OSA session
+  provider rather than claiming durable LangGraph checkpoint semantics by
+  default.
 - Package manifests share one lockstep release version, enforced by
   `tests/unit/test_versioning.py`; release automation publishes GitHub Release
   assets and signed/attested GHCR images, while the first public release and

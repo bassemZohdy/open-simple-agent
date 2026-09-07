@@ -14,7 +14,6 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
-from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 from google.genai import types
@@ -31,6 +30,7 @@ from osa.generic_agent import (
     AgentRequest,
     AgentResponse,
     AgentRuntime,
+    AgentStreamEvent,
     McpCatalog,
     MemoryEntry,
     MemoryPolicy,
@@ -42,6 +42,7 @@ from osa.generic_agent import (
     ModelProvider,
     Observability,
     PolicyViolationError,
+    RuntimeDependencies,
     SecretResolver,
     Session,
     SessionError,
@@ -76,25 +77,7 @@ _DEFAULT_MAX_TOOL_ITERATIONS = 3
 _ANONYMOUS_USER = "anonymous"
 
 
-@dataclass(frozen=True)
-class OsaStreamEvent:
-    """One stable OSA streaming event (P2.4)."""
-
-    type: str
-    invocation_id: str
-    session_id: str
-    text: str = ""
-    seq: int = 0
-
-    def to_payload(self) -> dict[str, Any]:
-        """JSON-serializable form used by the SSE endpoint."""
-        return {
-            "type": self.type,
-            "invocation_id": self.invocation_id,
-            "session_id": self.session_id,
-            "text": self.text,
-            "seq": self.seq,
-        }
+OsaStreamEvent = AgentStreamEvent
 
 
 def _nonnegative_int(value: object) -> int:
@@ -126,21 +109,40 @@ class GenericAdkAgent(AbstractAgent):
         secret_resolver: SecretResolver | None = None,
         mcp_pool: McpConnectionPool | None = None,
         observability: Observability | None = None,
+        dependencies: RuntimeDependencies | None = None,
     ) -> None:
         super().__init__(definition)
-        self._model_provider = model_provider
-        self._model_catalog = model_catalog if model_catalog is not None else ModelCatalog()
-        self._tool_catalog = tool_catalog if tool_catalog is not None else ToolCatalog()
-        self._skill_catalog = skill_catalog if skill_catalog is not None else SkillCatalog()
-        self._mcp_catalog = mcp_catalog if mcp_catalog is not None else McpCatalog()
-        self._memory_provider = memory_provider
-        self._memory_policies = memory_policies if memory_policies is not None else MemoryPolicyCatalog()
+        configured = dependencies or RuntimeDependencies.with_defaults(
+            model_provider=model_provider,
+            model_catalog=model_catalog,
+            tool_catalog=tool_catalog,
+            skill_catalog=skill_catalog,
+            mcp_catalog=mcp_catalog,
+            memory_provider=memory_provider,
+            memory_policies=memory_policies,
+            session_provider=session_provider,
+            secret_resolver=secret_resolver,
+            observability=observability,
+        )
+        self._model_provider = configured.model_provider
+        self._model_catalog = configured.model_catalog if configured.model_catalog is not None else ModelCatalog()
+        self._tool_catalog = configured.tool_catalog if configured.tool_catalog is not None else ToolCatalog()
+        self._skill_catalog = configured.skill_catalog if configured.skill_catalog is not None else SkillCatalog()
+        self._mcp_catalog = configured.mcp_catalog if configured.mcp_catalog is not None else McpCatalog()
+        self._memory_provider = configured.memory_provider
+        self._memory_policies = (
+            configured.memory_policies if configured.memory_policies is not None else MemoryPolicyCatalog()
+        )
         self._memory_policy = self._resolve_memory_policy()
-        self._session_provider = session_provider if session_provider is not None else SessionManager()
-        self._observability = observability or Observability()
+        self._session_provider = (
+            configured.session_provider if configured.session_provider is not None else SessionManager()
+        )
+        self._observability = configured.observability if configured.observability is not None else Observability()
         self._owns_mcp_pool = mcp_pool is None
         self._mcp_pool = (
-            mcp_pool if mcp_pool is not None else McpConnectionPool(secret_resolver, observability=self._observability)
+            mcp_pool
+            if mcp_pool is not None
+            else McpConnectionPool(configured.secret_resolver, observability=self._observability)
         )
         self._tools: dict[str, Tool] = {}
         self._tool_definitions: dict[str, ToolDefinition] = {}
@@ -150,7 +152,7 @@ class GenericAdkAgent(AbstractAgent):
         self._model_definition = self._resolve_model_definition()
         self._model_id = self._model_definition.model_id if self._model_definition is not None else "fake"
         self._adapters = model_adapters or default_registry(
-            fake_provider=model_provider,
+            fake_provider=self._model_provider,
             observability=self._observability,
         )
         if self._model_definition is not None:
@@ -331,7 +333,11 @@ class GenericAdkAgent(AbstractAgent):
         provider are configured; raw interactions are never auto-persisted.
         """
         scope, policy = self._effective_memory()
-        if self._memory_provider is None:
+        if (
+            self._memory_provider is None
+            or not self.definition.spec.memory.enabled
+            or (self._memory_policy is not None and not self._memory_policy.enabled)
+        ):
             return ""
         async with self._observability.span(
             "memory.search",
@@ -356,6 +362,8 @@ class GenericAdkAgent(AbstractAgent):
         """
         if self._memory_provider is None:
             raise RuntimeError(f"No memory provider configured for agent '{self.metadata.name}'")
+        if not self.definition.spec.memory.enabled:
+            raise RuntimeError(f"Memory is disabled for agent '{self.metadata.name}'")
         policy = self._memory_policy
         if policy is not None and not policy.enabled:
             raise RuntimeError(f"Memory is disabled by policy '{policy.name}' for agent '{self.metadata.name}'")
@@ -692,18 +700,43 @@ class AdkRuntime(AgentRuntime):
         model_adapters: ModelAdapterRegistry | None = None,
         secret_resolver: SecretResolver | None = None,
         observability: Observability | None = None,
+        dependencies: RuntimeDependencies | None = None,
     ) -> None:
-        self._model_provider = model_provider
-        self._model_catalog = model_catalog if model_catalog is not None else ModelCatalog()
-        self._tool_catalog = tool_catalog if tool_catalog is not None else ToolCatalog()
-        self._skill_catalog = skill_catalog if skill_catalog is not None else SkillCatalog()
-        self._mcp_catalog = mcp_catalog if mcp_catalog is not None else McpCatalog()
-        self._memory_provider = memory_provider
-        self._memory_policies = memory_policies
-        self._session_provider = session_provider if session_provider is not None else SessionManager()
+        self._dependencies = dependencies or RuntimeDependencies.with_defaults(
+            model_provider=model_provider,
+            model_catalog=model_catalog,
+            tool_catalog=tool_catalog,
+            skill_catalog=skill_catalog,
+            mcp_catalog=mcp_catalog,
+            memory_provider=memory_provider,
+            memory_policies=memory_policies,
+            session_provider=session_provider,
+            secret_resolver=secret_resolver,
+            observability=observability,
+        )
+        self._model_provider = self._dependencies.model_provider
+        self._model_catalog = (
+            self._dependencies.model_catalog if self._dependencies.model_catalog is not None else ModelCatalog()
+        )
+        self._tool_catalog = (
+            self._dependencies.tool_catalog if self._dependencies.tool_catalog is not None else ToolCatalog()
+        )
+        self._skill_catalog = (
+            self._dependencies.skill_catalog if self._dependencies.skill_catalog is not None else SkillCatalog()
+        )
+        self._mcp_catalog = (
+            self._dependencies.mcp_catalog if self._dependencies.mcp_catalog is not None else McpCatalog()
+        )
+        self._memory_provider = self._dependencies.memory_provider
+        self._memory_policies = self._dependencies.memory_policies
+        self._session_provider = (
+            self._dependencies.session_provider if self._dependencies.session_provider is not None else SessionManager()
+        )
         self._model_adapters = model_adapters
-        self._observability = observability or Observability()
-        self._mcp_pool = McpConnectionPool(secret_resolver, observability=self._observability)
+        self._observability = (
+            self._dependencies.observability if self._dependencies.observability is not None else Observability()
+        )
+        self._mcp_pool = McpConnectionPool(self._dependencies.secret_resolver, observability=self._observability)
         self._agents: list[GenericAdkAgent] = []
 
     async def create(self, definition: AgentDefinition) -> GenericAdkAgent:
@@ -721,6 +754,7 @@ class AdkRuntime(AgentRuntime):
             model_adapters=self._model_adapters,
             mcp_pool=self._mcp_pool,
             observability=self._observability,
+            dependencies=self._dependencies,
         )
         self._agents.append(agent)
         logger.info("Created agent '%s'", definition.metadata.name)
@@ -767,6 +801,7 @@ class AdkAgentFactory(AgentFactory):
         model_adapters: ModelAdapterRegistry | None = None,
         secret_resolver: SecretResolver | None = None,
         observability: Observability | None = None,
+        dependencies: RuntimeDependencies | None = None,
     ) -> None:
         self._model_provider = model_provider
         self._model_catalog = model_catalog if model_catalog is not None else ModelCatalog()
@@ -779,6 +814,7 @@ class AdkAgentFactory(AgentFactory):
         self._model_adapters = model_adapters
         self._secret_resolver = secret_resolver
         self._observability = observability or Observability()
+        self._dependencies = dependencies
 
     def create(self, definition: AgentDefinition) -> GenericAdkAgent:
         """Create a GenericAdkAgent from an AgentDefinition."""
@@ -795,4 +831,5 @@ class AdkAgentFactory(AgentFactory):
             model_adapters=self._model_adapters,
             secret_resolver=self._secret_resolver,
             observability=self._observability,
+            dependencies=self._dependencies,
         )

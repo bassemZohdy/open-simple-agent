@@ -70,6 +70,7 @@ jobs:
           mkdir -p dist
           uv build --package osa-generic-agent --out-dir dist --no-sources
           uv build --package osa-adk-runtime --out-dir dist --no-sources
+          uv build --package osa-langgraph-runtime --out-dir dist --no-sources
           uv build --package osa-control-plane --out-dir dist --no-sources
           uvx twine check dist/*
       - name: Attest Python distributions
