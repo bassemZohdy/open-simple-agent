@@ -324,8 +324,9 @@ a stable operation ID and monotonically increasing fencing epoch. The
 PostgreSQL ownership table is created only by migration 0010; a heartbeat
 renews the lease, takeover occurs only after expiry, and fenced repository
 writes reject late results. Status, logs, and provider reconciliation remain
-read-only observation paths. Full two-worker provider-side-effect and restart
-acceptance remains open in `TODO.md`.
+read-only observation paths. Independent-worker PostgreSQL acceptance passes
+in CI for provider-side-effect serialization, expiry/takeover, late-result
+rejection, tenant isolation, and restart/reconciliation recovery.
 The provider factory rejects `OSA_DEPLOY_PROVIDER=openshift` until a separate
 OpenShift provider is implemented; OpenShift API and admission behavior must
 not be added as conditional paths to the generic Kubernetes provider.

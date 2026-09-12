@@ -19,7 +19,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   persistence.
 - Added process-local ownership for in-memory and explicit SQLite Control Plane
   modes, plus focused serialization, expiry, tenant-isolation, and fencing
-  tests. Two-worker provider-side-effect acceptance remains open in `TODO.md`.
+  tests. Independent-worker PostgreSQL acceptance now covers provider-side-
+  effect serialization, expiry/takeover, late-result rejection, tenant
+  isolation, and restart/reconciliation recovery for the exposed paths.
 
 ### Hardened — Kubernetes provider boundary
 

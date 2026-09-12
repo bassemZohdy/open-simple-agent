@@ -45,8 +45,11 @@ the deployment key. PostgreSQL migration 0010 owns the lease rows, provider
 deploy specs carry the operation metadata, and durable deployment-record
 writes lock and validate the current owner/fence before updating state. The
 provider-only Kubernetes `scale()` capability is not exposed through
-`DeploymentService` yet. Two-worker provider-side-effect and restart/recovery
-acceptance is still required before this ADR can be accepted.
+`DeploymentService` yet. The independent-worker PostgreSQL acceptance passes
+in CI for provider-side-effect serialization, expiry/takeover, late-result
+rejection, tenant isolation, and restart/reconciliation recovery. A2A
+streaming/late-event acceptance and the open review questions still prevent
+accepting this ADR as a whole.
 
 ## Decision drivers
 

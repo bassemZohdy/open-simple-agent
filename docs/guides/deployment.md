@@ -208,9 +208,9 @@ never accepts process commands.
 ## Remaining deployment work
 
 - The real Kind-cluster lifecycle acceptance job passes in CI; Control Plane
-  restart recovery is covered by provider reconciliation tests. The ownership
-  implementation is present, but the two-worker PostgreSQL acceptance still
-  needs to prove provider-side-effect serialization, lease expiry/cancellation,
-  late results, tenant isolation, and restart/reconciliation recovery.
+  restart recovery is covered by provider reconciliation tests. Independent
+  PostgreSQL workers are also accepted in CI for provider-side-effect
+  serialization, lease expiry/takeover, late-result rejection, tenant
+  isolation, and restart/reconciliation recovery of the covered operations.
 - Complete true multi-process A2A active-task replica acceptance for streaming
   and late-event ordering (P2.4)

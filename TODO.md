@@ -53,8 +53,10 @@ Production-readiness limits are:
   capability telemetry now has an optional migration-owned PostgreSQL sink
   with deduplication, ordering, and tenant-retention controls;
   deployment-operation ownership now has a migration-owned PostgreSQL lease,
-  fencing, and stale-write guard for exposed mutations; two-worker provider
-  acceptance and global gateway quotas remain deployment concerns;
+  fencing, and stale-write guard for exposed mutations; independent-worker
+  PostgreSQL acceptance now proves serialization, takeover, late-result
+  rejection, tenant isolation, and recovery for the covered operations;
+  global gateway quotas remain a deployment concern;
 - deployment-specific browser OIDC, package publication, and the first public
   release remain open; the Kubernetes lifecycle acceptance passes in CI, while
   this workstation cannot run it locally because Docker is unavailable.
@@ -63,9 +65,8 @@ Production-readiness limits are:
 
 The following are the current blockers or decision gates:
 
-- **Infrastructure-gated:** multi-process deployment-operation ownership
-  requires a cluster-capable CI environment; concrete enterprise
-  identity-source acceptance requires a selected provider and test tenant.
+- **Infrastructure-gated:** concrete enterprise identity-source acceptance
+  requires a selected provider and test tenant.
   The real Kind lifecycle workflow passes in CI; OpenShift behavior remains a
   separate provider gate.
 - **Architecture-gated:** completing the remaining distributed A2A
@@ -80,13 +81,11 @@ The following are the current blockers or decision gates:
 
 ## Recommended next task
 
-Complete the two-worker PostgreSQL deployment-operation acceptance. The
-tenant/resource lease, fencing, stable operation IDs, heartbeat, takeover, and
-fenced durable writes are implemented and covered by focused tests; the
-remaining infrastructure-gated proof is provider-side-effect serialization,
-expiry/cancellation, late-result rejection, tenant isolation, and restart/
-reconciliation recovery. After that, return to the architecture-gated A2A
-streaming and late-event acceptance.
+Return to the architecture-gated A2A streaming and late-event acceptance after
+the ADR review. Deployment-operation ownership is implemented and its
+independent-worker PostgreSQL acceptance passes in CI for the exposed
+deploy/stop/restart/rollback paths, including takeover, stale-result fencing,
+tenant isolation, and recovery.
 
 ---
 
@@ -107,14 +106,15 @@ is unavailable.
 
 # P2 — Production controls
 
-## Distributed deployment-operation ownership — PENDING
+## Distributed deployment-operation ownership — COMPLETE
 
 Deployment intent, provider reconciliation, and Kubernetes lifecycle
 acceptance exist. PostgreSQL now serializes the exposed mutating deployment
 operations with the lease/fencing boundary proposed in ADR-011, keeps provider
 observation separate from owned intent, and fails closed on stale workers
-rather than replaying unknown side effects. The remaining task is the
-multi-worker acceptance proof.
+rather than replaying unknown side effects. Independent-worker PostgreSQL
+acceptance passes in CI for provider-side-effect serialization, expiry/takeover,
+late-result rejection, tenant isolation, and restart/reconciliation recovery.
 
 - [x] Decide that all mutating operations for one deployment serialize under
   one key while read-only observations remain concurrent. Deploy creation uses
@@ -128,7 +128,7 @@ multi-worker acceptance proof.
   deploy/stop/restart/rollback workers from persisting durable state. The
   Kubernetes provider records operation metadata in workload annotations;
   provider-only `scale()` is not exposed through the Control Plane service yet.
-- [ ] Add PostgreSQL acceptance with two independent workers covering command
+- [x] Add PostgreSQL acceptance with two independent workers covering command
   serialization, cancellation/expiry, late results, tenant isolation, and
   restart/reconciliation recovery.
 

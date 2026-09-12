@@ -305,8 +305,10 @@ late workers cannot persist fenced results. The local provider is explicitly
 development-only and stops its owned children on graceful shutdown. Kubernetes
 status/list operations rehydrate workloads from OSA identity labels after a
 Control Plane restart. Read-only status, logs, and reconciliation do not wait
-on the mutating-operation lease; full two-worker provider acceptance remains
-tracked in `TODO.md`.
+on the mutating-operation lease. Independent-worker PostgreSQL acceptance
+covers provider-side-effect serialization, expiry/takeover, late-result
+rejection, tenant isolation, and restart/reconciliation recovery for the
+exposed mutating paths.
 
 ### A2A and external agents (P2.1)
 
