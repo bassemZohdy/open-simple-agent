@@ -334,9 +334,10 @@ write a duplicate task history. The SDK active-task registry is still
 process-local. Durable SDK task saves carry the acquired ownership snapshot
 through the call context and are committed while the ownership-row lock is
 held; expired or superseded workers therefore fail closed without publishing
-a synthetic failure. True multi-process handler/active-task recovery,
-late-event acceptance, and non-idempotent replay remain open distributed-runtime
-work.
+a synthetic failure. Process-boundary PostgreSQL acceptance covers shared task
+creation, lookup, cancellation, and crash recovery. Multi-process
+streaming/late-event acceptance and non-idempotent replay remain open
+distributed-runtime work.
 
 External agents are A2A servers outside OSA, tracked as records distinct
 from managed agents (they are never deployed). The PostgreSQL-backed registry

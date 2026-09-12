@@ -354,9 +354,10 @@ durable task saves carry the ownership snapshot through the SDK call context
 and execute while the ownership-row lock is held; an expired or superseded
 worker therefore fails closed without publishing a synthetic failure. Remote
 handlers wait for durable cancellation, or safely finalize it after an owner
-lease expires; terminal snapshots replay through read-only SDK events. True
-multi-process handler/active-task recovery, late-event acceptance, and
-non-idempotent owner-loss replay remain open. The runtime drains the handler's active
+lease expires; terminal snapshots replay through read-only SDK events.
+Process-boundary PostgreSQL acceptance covers shared task creation, lookup,
+cancellation, and crash recovery. Multi-process streaming/late-event
+acceptance and non-idempotent owner-loss replay remain open. The runtime drains the handler's active
 tasks before closing agent and database dependencies. The Control Plane tracks **external** A2A agents as
 records distinct from managed agents: registration fetches and validates the
 remote Agent Card, refresh re-checks health, and invocation goes through the

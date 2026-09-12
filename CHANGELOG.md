@@ -70,8 +70,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Added focused conflict, expiry, fencing, cancellation, terminal-state, and
   unmigrated-startup tests. Independent-handler lookup, remote cancellation
   waiting, expired-owner cancellation takeover, and read-only terminal replay
-  are now covered; true multi-process handler recovery and non-idempotent
-  owner-loss replay remain open P2.4 work.
+  are now covered; multi-process streaming/late-event acceptance and
+  non-idempotent owner-loss replay remain open P2.4 work.
 - Added a PostgreSQL-gated replica task-store acceptance covering creation,
   completion, failure, lookup, recovery, and tenant/caller isolation across
   independent ownership workers.

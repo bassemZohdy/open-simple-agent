@@ -162,8 +162,9 @@ coordination.
   expired leases can be reclaimed, and the SDK task store fences each durable
   save while the ownership row is locked. Remote cancellation waits for the
   durable terminal state and can safely finalize cancellation after lease
-  expiry; terminal replay is read-only. The SDK active-task registry, true
-  multi-process handler acceptance, late-event acceptance, and non-idempotent
+  expiry; terminal replay is read-only. The SDK active-task registry and
+  process-boundary acceptance for creation/lookup/cancellation/recovery are
+  covered; multi-process streaming/late-event acceptance and non-idempotent
   owner-loss recovery remain open P2.4 work. Tune
   `OSA_A2A_TASK_CANCEL_WAIT_SECONDS` when owner shutdown routinely exceeds the
   default wait, keeping it bounded for client retries.

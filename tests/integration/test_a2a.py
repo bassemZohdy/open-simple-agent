@@ -11,12 +11,15 @@ otherwise so default test runs stay clean without protocol dependencies.
 from __future__ import annotations
 
 import asyncio
+import multiprocessing as mp
 import os
 import socket
 import threading
 import time
 from importlib.util import find_spec
+from queue import Empty
 from typing import TYPE_CHECKING, Any, cast
+from uuid import uuid4
 
 import pytest
 import uvicorn
@@ -29,6 +32,7 @@ from osa.generic_agent import (
     AgentDefinition,
     AgentMetadataConfig,
     AgentRequest,
+    AgentResponse,
     AgentSpec,
     ApiKeyCredential,
     AuthMode,
@@ -104,6 +108,179 @@ def _make_agent(
         model_catalog=_catalog(),
         skill_catalog=skill_catalog,
     )
+
+
+class _ProcessControlledAgent:
+    """Small process-local agent used by the PostgreSQL handler acceptance."""
+
+    def __init__(self, name: str, release_event: Any) -> None:
+        self.definition = _make_agent(name).definition
+        self.skills: list[Any] = []
+        self.release_event = release_event
+        self.started = asyncio.Event()
+        self.call_count = 0
+
+    async def invoke(self, request: object) -> AgentResponse:
+        del request
+        self.call_count += 1
+        self.started.set()
+        while not self.release_event.is_set():
+            await asyncio.sleep(0.05)
+        return AgentResponse(output="process response", invocation_id=uuid4())
+
+    async def shutdown(self) -> None:
+        return None
+
+
+async def _read_process_result(result_queue: Any, timeout: float = 10.0) -> dict[str, Any]:
+    try:
+        result = await asyncio.to_thread(result_queue.get, True, timeout)
+    except Empty as exc:
+        raise AssertionError("A2A process worker did not report within the timeout") from exc
+    if not isinstance(result, dict):
+        raise AssertionError(f"A2A process worker returned an invalid result: {result!r}")
+    if result.get("event") == "error":
+        raise AssertionError(f"A2A process worker failed: {result.get('error')}")
+    return result
+
+
+async def _run_a2a_process_worker(
+    role: str,
+    database_url: str,
+    task_table_name: str,
+    ownership_table_name: str,
+    command_queue: Any,
+    result_queue: Any,
+    release_event: Any,
+) -> None:
+    os.environ["OSA_A2A_OWNER_ID"] = f"process-acceptance-{role}"
+    from a2a.server.context import ServerCallContext
+    from a2a.server.request_handlers import DefaultRequestHandler
+    from a2a.server.tasks import DatabaseTaskStore
+    from a2a.types import (
+        CancelTaskRequest,
+        GetTaskRequest,
+        Message,
+        Part,
+        Role,
+        SendMessageConfiguration,
+        SendMessageRequest,
+        Task,
+    )
+    from sqlalchemy.ext.asyncio import create_async_engine
+
+    from osa.runtimes.adk.a2a import OsaA2aAgentExecutor, _a2a_task_owner, build_agent_card
+    from osa.runtimes.adk.a2a_ownership import A2aTaskOwnershipStore
+    from osa.runtimes.adk.a2a_task_store import FencedDatabaseTaskStore
+
+    engine = create_async_engine(database_url, pool_pre_ping=True)
+    ownership_store = A2aTaskOwnershipStore(
+        engine,
+        table_name=ownership_table_name,
+        lease_seconds=5,
+    )
+    sdk_store = DatabaseTaskStore(
+        engine,
+        create_table=False,
+        table_name=task_table_name,
+        owner_resolver=_a2a_task_owner,
+    )
+    task_store = FencedDatabaseTaskStore(sdk_store, ownership_store)
+    agent = _ProcessControlledAgent(f"process-{role}", release_event)
+    card = build_agent_card(agent.definition, [], "http://127.0.0.1/a2a")
+    handler = DefaultRequestHandler(
+        agent_executor=cast(
+            "Any",
+            OsaA2aAgentExecutor(
+                agent,
+                ownership_store=ownership_store,
+                task_store=task_store,
+            ),
+        ),
+        task_store=cast("Any", task_store),
+        agent_card=card,
+    )
+
+    await task_store.initialize()
+    result_queue.put({"event": "ready", "role": role})
+    try:
+        while True:
+            command = await asyncio.to_thread(command_queue.get)
+            operation = command.get("op")
+            if operation == "start":
+                request = SendMessageRequest(
+                    message=Message(
+                        message_id=f"process-{role}-message",
+                        role=Role.ROLE_USER,
+                        parts=[Part(text="start process task")],
+                    ),
+                    configuration=SendMessageConfiguration(return_immediately=True),
+                )
+                initial = await handler.on_message_send(request, ServerCallContext())
+                if not isinstance(initial, Task):
+                    raise AssertionError("process acceptance did not create an A2A task")
+                await asyncio.wait_for(agent.started.wait(), timeout=10)
+                result_queue.put({"event": "started", "role": role, "task_id": initial.id})
+            elif operation == "lookup":
+                task = await handler.on_get_task(
+                    GetTaskRequest(id=command["task_id"]),
+                    ServerCallContext(),
+                )
+                result_queue.put(
+                    {
+                        "event": "lookup",
+                        "task_id": command["task_id"],
+                        "state": int(task.status.state) if task is not None else None,
+                    }
+                )
+            elif operation == "cancel":
+                task = await handler.on_cancel_task(
+                    CancelTaskRequest(id=command["task_id"]),
+                    ServerCallContext(),
+                )
+                if not isinstance(task, Task):
+                    raise AssertionError("process acceptance cancellation did not return a task")
+                result_queue.put(
+                    {
+                        "event": "cancelled",
+                        "task_id": command["task_id"],
+                        "state": int(task.status.state),
+                        "agent_calls": agent.call_count,
+                    }
+                )
+            elif operation == "shutdown":
+                return
+            else:
+                raise AssertionError(f"unknown A2A process command: {operation!r}")
+    finally:
+        await handler.aclose()
+        await engine.dispose()
+
+
+def _a2a_process_worker(
+    role: str,
+    database_url: str,
+    task_table_name: str,
+    ownership_table_name: str,
+    command_queue: Any,
+    result_queue: Any,
+    release_event: Any,
+) -> None:
+    try:
+        asyncio.run(
+            _run_a2a_process_worker(
+                role,
+                database_url,
+                task_table_name,
+                ownership_table_name,
+                command_queue,
+                result_queue,
+                release_event,
+            )
+        )
+    except Exception as exc:
+        result_queue.put({"event": "error", "error": f"{type(exc).__name__}: {exc}"})
+        raise
 
 
 class TestAgentCardGeneration:
@@ -749,6 +926,192 @@ class TestA2aDistributedHandlerAcceptance:
             await handler_two.aclose()
             await engine_one.dispose()
             await engine_two.dispose()
+
+
+class TestA2aPostgresProcessAcceptance:
+    @pytest.mark.skipif(
+        not os.environ.get("OSA_TEST_DATABASE_URL"),
+        reason="OSA_TEST_DATABASE_URL not configured; PostgreSQL process acceptance skipped",
+    )
+    async def test_independent_process_handlers_share_lookup_cancel_and_recovery(self) -> None:
+        """Separate processes coordinate an active task through PostgreSQL."""
+        from a2a.server.tasks import DatabaseTaskStore
+        from a2a.types import TaskState
+        from sqlalchemy.ext.asyncio import create_async_engine
+
+        from osa.runtimes.adk.a2a import _a2a_task_owner
+        from osa.runtimes.adk.a2a_migrations import migrate_a2a_schema
+        from osa.runtimes.adk.a2a_ownership import A2aTaskOwnershipStore
+        from osa.runtimes.adk.a2a_task_store import FencedDatabaseTaskStore
+
+        suffix = uuid4().hex[:12]
+        task_table_name = f"osa_a2a_process_{suffix}"
+        ownership_table_name = f"{task_table_name}_ownership"
+        database_url = os.environ["OSA_TEST_DATABASE_URL"]
+        setup_engine = create_async_engine(database_url, pool_pre_ping=True)
+        setup_ownership = A2aTaskOwnershipStore(
+            setup_engine,
+            table_name=ownership_table_name,
+            lease_seconds=5,
+        )
+        setup_sdk_store = DatabaseTaskStore(
+            setup_engine,
+            create_table=False,
+            table_name=task_table_name,
+            owner_resolver=_a2a_task_owner,
+        )
+        setup_task_store = FencedDatabaseTaskStore(setup_sdk_store, setup_ownership)
+        await migrate_a2a_schema(
+            setup_engine,
+            task_table_name=task_table_name,
+            task_store=setup_task_store,
+            ownership_store=setup_ownership,
+        )
+        await setup_task_store.initialize()
+        await setup_engine.dispose()
+
+        process_context = mp.get_context("spawn")
+        owner_commands = process_context.Queue()
+        owner_results = process_context.Queue()
+        owner_release = process_context.Event()
+        observer_commands = process_context.Queue()
+        observer_results = process_context.Queue()
+        observer_release = process_context.Event()
+        owner_process = process_context.Process(
+            target=_a2a_process_worker,
+            args=(
+                "owner",
+                database_url,
+                task_table_name,
+                ownership_table_name,
+                owner_commands,
+                owner_results,
+                owner_release,
+            ),
+        )
+        observer_process = process_context.Process(
+            target=_a2a_process_worker,
+            args=(
+                "observer",
+                database_url,
+                task_table_name,
+                ownership_table_name,
+                observer_commands,
+                observer_results,
+                observer_release,
+            ),
+        )
+        processes = [owner_process, observer_process]
+
+        try:
+            owner_process.start()
+            observer_process.start()
+            assert (await _read_process_result(owner_results))["event"] == "ready"
+            assert (await _read_process_result(observer_results))["event"] == "ready"
+
+            owner_commands.put({"op": "start"})
+            started = await _read_process_result(owner_results)
+            assert started["event"] == "started"
+            task_id = str(started["task_id"])
+
+            observer_commands.put({"op": "lookup", "task_id": task_id})
+            observed = await _read_process_result(observer_results)
+            assert observed["event"] == "lookup"
+            assert observed["state"] in {
+                int(TaskState.TASK_STATE_SUBMITTED),
+                int(TaskState.TASK_STATE_WORKING),
+            }
+
+            observer_commands.put({"op": "cancel", "task_id": task_id})
+            await asyncio.sleep(0.4)
+            assert observer_process.is_alive()
+            try:
+                unexpected_result = await asyncio.to_thread(observer_results.get, True, 0.2)
+            except Empty:
+                pass
+            else:
+                raise AssertionError(f"remote cancellation completed before owner release: {unexpected_result!r}")
+
+            owner_release.set()
+            canceled = await _read_process_result(observer_results, timeout=15)
+            assert canceled["event"] == "cancelled"
+            assert canceled["task_id"] == task_id
+            assert canceled["state"] == int(TaskState.TASK_STATE_CANCELED)
+            assert canceled["agent_calls"] == 0
+
+            observer_commands.put({"op": "lookup", "task_id": task_id})
+            final = await _read_process_result(observer_results)
+            assert final["state"] == int(TaskState.TASK_STATE_CANCELED)
+
+            owner_commands.put({"op": "shutdown"})
+            observer_commands.put({"op": "shutdown"})
+            owner_process.join(timeout=10)
+            observer_process.join(timeout=10)
+            assert owner_process.exitcode == 0
+            assert observer_process.exitcode == 0
+
+            crashed_commands = process_context.Queue()
+            crashed_results = process_context.Queue()
+            crashed_release = process_context.Event()
+            crashed_process = process_context.Process(
+                target=_a2a_process_worker,
+                args=(
+                    "crashed-owner",
+                    database_url,
+                    task_table_name,
+                    ownership_table_name,
+                    crashed_commands,
+                    crashed_results,
+                    crashed_release,
+                ),
+            )
+            processes.append(crashed_process)
+            crashed_process.start()
+            assert (await _read_process_result(crashed_results))["event"] == "ready"
+            crashed_commands.put({"op": "start"})
+            crashed_started = await _read_process_result(crashed_results)
+            assert crashed_started["event"] == "started"
+            crashed_task_id = str(crashed_started["task_id"])
+            crashed_process.terminate()
+            crashed_process.join(timeout=10)
+            assert not crashed_process.is_alive()
+
+            await asyncio.sleep(6)
+            observer_process = process_context.Process(
+                target=_a2a_process_worker,
+                args=(
+                    "recovery-observer",
+                    database_url,
+                    task_table_name,
+                    ownership_table_name,
+                    observer_commands,
+                    observer_results,
+                    observer_release,
+                ),
+            )
+            processes.append(observer_process)
+            observer_process.start()
+            assert (await _read_process_result(observer_results))["event"] == "ready"
+            observer_commands.put({"op": "cancel", "task_id": crashed_task_id})
+            recovered = await _read_process_result(observer_results, timeout=15)
+            assert recovered["event"] == "cancelled"
+            assert recovered["task_id"] == crashed_task_id
+            assert recovered["state"] == int(TaskState.TASK_STATE_CANCELED)
+            assert recovered["agent_calls"] == 0
+        finally:
+            owner_release.set()
+            observer_release.set()
+            for process, commands in (
+                (owner_process, owner_commands),
+                (observer_process, observer_commands),
+            ):
+                if process.is_alive():
+                    commands.put({"op": "shutdown"})
+            for process in processes:
+                process.join(timeout=10)
+                if process.is_alive():
+                    process.terminate()
+                    process.join(timeout=10)
 
 
 class TestA2aServer:

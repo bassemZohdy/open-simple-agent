@@ -30,10 +30,11 @@ worker that loses its lease fails closed without publishing a synthetic
 failure. Independent handlers can look up shared active tasks, wait for a
 remote owner to publish cancellation, and safely finalize cancellation after
 an owner lease expires. Terminal replay is read-only and does not duplicate
-task history. The SDK active-task registry, true multi-process handler
-recovery, and safe replay policy for non-idempotent work are still open, so
-this ADR remains proposed until the full acceptance criteria and open review
-questions are resolved.
+task history. Process-boundary PostgreSQL acceptance covers shared task
+creation, lookup, cancellation, and crash recovery. The SDK active-task
+registry, multi-process streaming/late-event acceptance, and safe replay policy
+for non-idempotent work are still open, so this ADR remains proposed until the
+full acceptance criteria and open review questions are resolved.
 
 ## Decision drivers
 

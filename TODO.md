@@ -48,8 +48,9 @@ Production-readiness limits are:
   expired-lease takeover, explicit schema migration, fenced SDK task saves,
   remote-handler cancellation waiting, expired-owner cancellation, read-only
   terminal replay, and fail-closed owner-loss handling are implemented. The SDK
-  active-task registry, true multi-process handler acceptance, non-idempotent
-  owner-loss policy, and replica-wide telemetry collection are not complete;
+  active-task registry, multi-process streaming/late-event acceptance,
+  non-idempotent owner-loss policy, and replica-wide telemetry collection are
+  not complete;
   long-running deployment-operation ownership and global gateway quotas remain
   deployment concerns;
 - deployment-specific browser OIDC, package publication, and the first public
@@ -129,8 +130,9 @@ active executor registry remains process-local. Independent handlers can look
 up shared active tasks, wait for a remote owner to publish cancellation, and
 safely take over an expired owner lease; terminal snapshots are replayed through
 read-only SDK events so a second handler does not write duplicate task history.
-True multi-process handler/active-task recovery, streaming/late-event
-acceptance, and non-idempotent replay policy remain open.
+Process-boundary PostgreSQL acceptance covers task creation, lookup, remote
+cancellation, and crash/lease-expiry recovery. Multi-process streaming and
+late-event acceptance, plus non-idempotent replay policy, remain open.
 
 - [x] Fence SDK task mutations and add explicit owner-loss handling. The
   database adapter rejects missing, expired, or superseded fences without
@@ -145,9 +147,11 @@ acceptance, and non-idempotent replay policy remain open.
   wait for the durable terminal task, expired owners can be fenced out and
   cancellation can be finalized safely, and terminal snapshots replay without
   a second durable write.
-- [ ] Add true multi-process/multi-worker PostgreSQL acceptance for active-task
-  creation, streaming/lookup, recovery, cancellation, and late events; the SDK
+- [x] Add process-boundary PostgreSQL acceptance for active-task creation,
+  shared lookup, remote cancellation, and crash/lease-expiry recovery; the SDK
   active-task registry remains local to each process.
+- [ ] Add multi-process/multi-worker PostgreSQL acceptance for streaming and
+  late events; the SDK active-task registry remains local to each process.
 - [ ] Decide and implement the non-idempotent owner-loss/retry policy; default
   behavior must remain fail-closed until side-effect replay semantics are
   explicitly approved.
