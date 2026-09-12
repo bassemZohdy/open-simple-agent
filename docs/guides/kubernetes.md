@@ -18,7 +18,11 @@ The provider uses the operator's existing `kubectl` context and RBAC boundary. I
 
 ## Usage
 
-The provider is currently constructed explicitly by the Control Plane embedding code while the deployment-provider configuration switch and Kind acceptance job are completed.
+The packaged Control Plane selects the provider with
+`OSA_DEPLOY_PROVIDER=kubernetes` and requires `OSA_KUBERNETES_IMAGE` when a
+PostgreSQL Control Plane is configured. The provider remains operator-owned:
+OSA generates only the workload objects and never accepts arbitrary manifests
+or commands from the API.
 
 ```python
 from osa.control_plane.backend import KubernetesDeploymentProvider, KubernetesSecretRef
@@ -40,15 +44,37 @@ The Control Plane exports the selected agent and referenced resources to a deplo
 
 The provider never accepts arbitrary Kubernetes manifests or commands from the HTTP API. Resource names, labels, probes, command arguments, and workload shape are synthesized by OSA. Secret values are not placed in ConfigMaps; `KubernetesSecretRef` emits `secretKeyRef` references only.
 
-`kubectl` credentials and authorization remain an infrastructure concern. Give the Control Plane service account only the namespace-scoped permissions needed for OSA-managed ConfigMaps, Deployments, Services, Pods/log, and rollout/scale operations.
+`kubectl` credentials and authorization remain an infrastructure concern.
+Create a namespace-scoped Role and RoleBinding for the Control Plane service
+account. The provider needs read/create/update/patch/delete access to the
+OSA-managed ConfigMaps, Deployments, and Services; read access to Pods and
+Pods/log; and read/update/patch access to the Deployment `scale` subresource.
+Do not grant cluster-wide permissions when a namespace-scoped Role is enough.
+
+Provision the target namespace and its image-pull credentials before rollout.
+The generated workload currently uses the namespace's service-account/admission
+configuration for image pulls; runtime environment secrets use explicit
+`KubernetesSecretRef` references and are not copied into ConfigMaps. Apply a
+NetworkPolicy outside OSA that permits Control Plane-to-runtime Service traffic
+and only the runtime's required database, model-provider, and MCP egress.
+The provider does not synthesize CPU/memory requests or limits yet, so enforce
+those through a namespace `LimitRange`/`ResourceQuota` policy until the
+workload resource contract is selected.
+
+For upgrades, apply `osa-cp-migrate` and any runtime memory/session migrations
+before serving the new image, use an immutable runtime image tag or digest,
+wait for the generated Deployment readiness rollout, and retain the previous
+Deployment revision for `rollback`. The Control Plane image and runtime image
+are released separately; durable runtime sessions require a shared migrated
+session database.
 
 ## Remaining validation
 
-Before marking P1.5 complete:
+Before marking the Kubernetes follow-up complete:
 
-1. Add the external provider-selection configuration for the packaged Control Plane.
-2. Validate deploy/readiness/scale/restart/rollback/stop against a real Kind cluster in CI.
-3. Confirm restart recovery with persisted deployment records and Kubernetes labels.
-4. Document production RBAC and image-pull configuration.
+1. Validate deploy/readiness/scale/restart/rollback/stop against a real Kind cluster in CI.
+2. Confirm restart recovery with persisted deployment records and Kubernetes labels.
+3. Select and implement a workload resource request/limit contract if OSA should
+   generate those fields rather than rely on namespace policy.
 
 OpenShift-specific behavior remains deferred; the provider targets standard Kubernetes APIs first.

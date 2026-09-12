@@ -12,8 +12,9 @@ documentation, and appropriate failure/security behavior are complete.
 The runnable-agent gate, managed-platform foundation, Manager Agent surface,
 Control Plane, runtime images, release automation, current English Control
 Panel, durable runtime sessions, migration-owned memory schema,
-operator-selected deployment provider, capability telemetry, and opt-in HTTP
-rate-limit contract are implemented and covered by tests/CI.
+operator-selected deployment provider, capability telemetry, identity contract
+coverage, and opt-in HTTP rate-limit contract are implemented and covered by
+tests/CI.
 
 Production-readiness limits are:
 
@@ -21,7 +22,7 @@ Production-readiness limits are:
   provider and its migration is applied;
 - memory PostgreSQL requires its independent versioned migration;
 - resource records are durable and route/deployment reads reconcile local
-  catalogs; the PostgreSQL cross-replica acceptance is covered in CI;
+  catalogs; PostgreSQL cross-replica acceptance is covered in CI;
 - PostgreSQL external-agent records are durable, while the default in-memory
   registry and local provider process state remain process-local;
 - durable Control Planes require an external workload provider; local-provider
@@ -29,44 +30,34 @@ Production-readiness limits are:
 - outbound A2A, Streamable HTTP MCP, and OAuth token destinations have an
   application-level URL/DNS/redirect policy, with network egress still
   required as defense in depth;
-- A2A task state and HTTP capacity storage are not replica-safe; capability
-  telemetry has a bounded local JSONL sink but shared replica-wide collection
-  remains open;
+- A2A task state, HTTP capacity storage, and replica-wide telemetry collection
+  are not distributed-safe;
 - translated locales, deployment-specific browser OIDC, package publication,
   and the first public release remain open; Kubernetes follow-up is paused.
+
+## Pending work and gates
+
+The following are the current blockers or decision gates:
+
+- **Infrastructure-gated:** real Kind/Kubernetes acceptance and multi-process
+  deployment-operation ownership require a cluster-capable CI environment;
+  concrete enterprise identity-source acceptance requires a selected provider
+  and test tenant.
+- **Architecture-gated:** distributed A2A task storage/cancellation, shared
+  rate-limit enforcement, and replica-wide capability telemetry require an
+  approved ownership, retention, ordering, and deduplication design.
+- **Product-gated:** translated locales, browser OIDC issuer/client/redirect
+  semantics, package registry publication, and the first public release need
+  explicit product decisions.
+- **Requirement-gated:** the deferred section below remains intentionally
+  paused until a concrete product or integration requirement exists.
 
 ## Recommended next task
 
 Run the real Kind/Kubernetes acceptance workflow and define distributed
-operation ownership. The next gated product decisions are distributed A2A task
-state, shared capacity storage, translated locales, browser OIDC contracts,
-package publication, and the first public release.
-
----
-
-# P1 — Runtime durability
-
-## Persistent runtime sessions — COMPLETE
-
-`SessionProvider` defaults to the in-memory `SessionManager`; persistent
-bundles select the versioned PostgreSQL provider explicitly.
-
-- [x] Select the persistent-provider contract and configuration semantics for
-  `spec.session.persistence`, including database lifecycle and migration
-  ownership.
-- [x] Implement and wire a durable provider without weakening ownership,
-  expiry, bounded history, or metadata redaction.
-- [x] Add restart, expiry, ownership, concurrent-update, and cross-process
-  tests; document backup, upgrade, and recovery behavior.
-
-## Memory schema ownership — COMPLETE
-
-`PostgresMemoryProvider` uses the independent versioned memory migration path.
-
-- [x] Select migration ownership and operational commands for the independent
-  memory database.
-- [x] Replace runtime bootstrap DDL with an explicit versioned migration path.
-- [x] Add upgrade/rollback coverage and document backup and startup ordering.
+operation ownership. The next decision gates are distributed A2A task state,
+shared capacity storage, shared telemetry collection, translated locales,
+browser OIDC contracts, package publication, and the first public release.
 
 ---
 
@@ -75,29 +66,16 @@ bundles select the versioned PostgreSQL provider explicitly.
 ## Kubernetes deployment provider — PAUSED
 
 Deployment/Service generation, bundle ConfigMaps, Secret references, probes,
-hardened pod security, scale/restart/rollback/status/log operations, and OSA
-identity labels exist. Resume only when explicitly reprioritized.
+hardened pod security, scale/restart/rollback/status/log operations, provider
+selection, and OSA identity labels exist. Resume the real-cluster work when a
+cluster-capable CI environment is available or this item is explicitly
+reprioritized.
 
-- [x] Wire packaged Control Plane provider selection/configuration.
 - [ ] Validate deploy/readiness/scale/restart/rollback/recovery against Kind or
   another real cluster in CI.
 - [ ] Add status-watch and recovery behavior for Control Plane restarts and
-  already-running workloads.
-- [ ] Document RBAC, namespaces, image-pull secrets, network policy, resource
-  limits, and upgrades.
+  already-running workloads in a real cluster.
 - [ ] Keep OpenShift-specific behavior separate from generic Kubernetes code.
-
-## Packaged Control Plane deployment launcher — COMPLETE
-
-The management image packages `osa-runtime` for the local development
-topology; durable Control Planes require an explicitly selected Kubernetes
-provider and separately published runtime image.
-
-- [x] Decide whether to package the launcher, require an external provider, or
-  make provider selection explicit.
-- [x] Add image-level integration proving launch, probe, stop, and observation.
-- [x] Document split-image and colocated-process topologies and command-template
-  security boundaries.
 
 ---
 
@@ -105,14 +83,12 @@ provider and separately published runtime image.
 
 ## Enterprise identity lifecycle — PARTIALLY COMPLETE
 
-Claim-driven lifecycle semantics and opaque-token introspection validation are
-implemented; contract-level lifecycle coverage exists, while concrete
+Claim-driven lifecycle semantics, OIDC/JWKS validation, RFC 7662 opaque-token
+introspection, and contract-level lifecycle tests are implemented. Concrete
 identity-source acceptance remains open.
 
-- [x] Add introspection liveness, key rotation, disabled-identity, and
-  role-change propagation tests for the RFC 7662/OIDC contract.
-- [ ] Run the same lifecycle acceptance suite against a selected enterprise
-  identity source.
+- [ ] Run the lifecycle acceptance suite against a selected enterprise
+  identity source and test tenant.
 
 ## Distributed A2A task state — PENDING
 
@@ -127,25 +103,22 @@ The runtime A2A executor and SDK task store are process-local.
 ## Capability-level audit telemetry — PARTIALLY COMPLETE
 
 Management, runtime-boundary, and auth-denial audits exist. Model/native-tool/
-MCP capability metrics and an optional payload-free, bounded JSONL sink are
+MCP capability metrics and a bounded payload-free local JSONL sink are
 implemented for a single process.
 
-- [x] Define taxonomy, redaction, retention, sampling, and performance policy.
-- [x] Implement optional local sink and durable bounded persistence without
-  prompts, outputs, credentials, or unbounded tool payloads.
-- [x] Add model/tool/MCP success, failure, timeout, and isolation tests/docs.
 - [ ] Select a shared collector or durable replica-wide sink contract with
   ordering, deduplication, and tenant-retention ownership.
 
 ## Rate limiting and quotas — PARTIALLY COMPLETE
 
 Both HTTP applications expose an opt-in bounded fixed-window request budget and
-`429`/`Retry-After` contract. The built-in store is process-local.
+`429`/`Retry-After` contract, with isolation and streaming/A2A coverage. The
+built-in store is process-local.
 
-- [x] Define route, principal, tenant, burst, retry, and response-header rules.
 - [ ] Select replica-safe enforcement/storage for streaming and long-running
   A2A/deployment operations.
-- [ ] Add isolation, burst, streaming, A2A, metrics, and documentation tests.
+- [ ] Add integration coverage for the selected shared store, including
+  metrics and multi-replica race behavior.
 
 ---
 
@@ -192,29 +165,3 @@ and digest rollback automation exist.
 - [ ] General human approval beyond management operations.
 - [ ] Advanced memory extraction/consolidation and vector retrieval.
 - [ ] Enterprise external policy engine until P2 identity work selects a need.
-
----
-
-# Active review findings
-
-Resolved findings are recorded in `CHANGELOG.md` and git history. Only
-unresolved findings remain here.
-
-## BF17 — Local-provider reconciliation — RESOLVED
-
-The local provider is explicitly development-only. Durable Control Planes must
-select the Kubernetes provider, whose status/list paths rehydrate workloads
-from OSA identity labels after restart. Local shutdown stops only provider-owned
-children.
-
-- [x] Define shutdown, orphan cleanup, restart/reconciliation, and ownership
-  semantics, or make an external provider mandatory for production.
-- [x] Cover graceful shutdown, restart recovery, and persisted running records.
-
-## BF19 — Resource-catalog cross-replica acceptance
-
-Resource reads, activation, and deployment reconcile each tenant's local
-catalog from durable storage. An acceptance test covers create/update/delete,
-activation, and deployment across independently created app instances.
-
-- [x] Run that acceptance test against PostgreSQL in CI and retain the evidence.

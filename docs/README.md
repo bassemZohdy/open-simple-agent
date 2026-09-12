@@ -18,6 +18,9 @@ Use the shortest document that answers the question:
 For implementation status, start with the README. For unfinished work, use
 `TODO.md`; it contains only open, deferred, or deliberately gated tasks. The
 changelog records completed changes and review resolutions.
+The backlog also classifies pending work as infrastructure-, architecture-,
+product-, or requirement-gated so an unavailable environment is not mistaken
+for an implementation failure.
 
 ## Documentation rule
 

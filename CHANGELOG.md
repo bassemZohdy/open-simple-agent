@@ -41,6 +41,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Completed local-provider shutdown wiring, LangGraph checkpointer ownership,
   terminal ADK stream auditing, and an honest Control Panel not-found page.
 
+### Documentation
+- Cleaned `TODO.md` to retain only active, deferred, and gated work; completed
+  tasks and resolved review findings remain in this changelog and git history.
+
 ### Added — Hardening coverage
 - Added focused tests for outbound policy, tenant isolation, external-agent
   persistence, atomic resource imports, deployment retry/rollback/export
