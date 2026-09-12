@@ -126,6 +126,6 @@ health probe; startup failures carry the captured logs in the record detail.
 
 ## Remaining operational work
 
-- Complete true multi-process A2A active-task replica acceptance for streaming
-  and late-event ordering (P2.4)
+- Integrate the accepted durable A2A relay with public streaming routes and
+  complete route-level acceptance (P2.4)
 - Gateway-level quota policy

@@ -37,8 +37,10 @@ OSA_CAPABILITY_TELEMETRY_DATABASE_URL=... uv run osa-capability-telemetry-migrat
 - Run `osa-a2a-migrate` when durable inbound A2A task state is configured;
   it provisions the SDK task table, OSA ownership table, and schema-version-2
   append-only event table before any runtime replica is rolled out. The
-  bounded polling relay reads that table by resumable cursor, but is not a
-  public route yet. Runtime startup validates the schema and does not
+  bounded polling relay reads that table by resumable cursor, with
+  independent-worker PostgreSQL acceptance for takeover fencing and late
+  events, but is not a public route yet. Runtime startup validates the schema
+  and does not
   auto-create it. Existing schema version-1 installations must run this
   command before starting the upgraded runtime.
 - Apply migrations **before** rolling out the new replicas — the policy is

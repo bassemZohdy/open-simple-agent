@@ -50,9 +50,10 @@ Production-readiness limits are:
   terminal replay, terminal-event drain-before-release, and fail-closed
   owner-loss handling are implemented. Migration-owned event-cursor storage is
   provisioned as schema version 2 and a bounded cursor-relay foundation is
-  available, but public multi-process streaming/late-event acceptance remains
-  incomplete; replica-wide capability telemetry now has an optional
-  migration-owned PostgreSQL sink
+  available; independent PostgreSQL workers now accept takeover fencing,
+  late-event rejection, ordered terminal delivery, and cursor replay. Public
+  multi-process streaming route acceptance remains incomplete; replica-wide
+  capability telemetry now has an optional migration-owned PostgreSQL sink
   with deduplication, ordering, and tenant-retention controls;
   deployment-operation ownership now has a migration-owned PostgreSQL lease,
   fencing, and stale-write guard for exposed mutations; independent-worker
@@ -98,9 +99,10 @@ enable a gated feature.
 
 ## Recommended next task
 
-Return to the architecture-gated A2A streaming and late-event acceptance after
-the ADR review; the durable cursor relay is ready to support that handler
-integration. Deployment-operation ownership is implemented and its
+Return to the architecture-gated public A2A streaming and late-event route
+acceptance after the ADR review; the durable cursor relay and independent-worker
+acceptance are ready to support that handler integration. Deployment-operation
+ownership is implemented and its
 independent-worker PostgreSQL acceptance passes in CI for the exposed
 deploy/stop/restart/rollback paths, including takeover, stale-result fencing,
 tenant isolation, and recovery.
@@ -176,8 +178,10 @@ up shared active tasks, wait for a remote owner to publish cancellation, and
 safely take over an expired owner lease; terminal snapshots are replayed through
 read-only SDK events so a second handler does not write duplicate task history.
 Process-boundary PostgreSQL acceptance covers task creation, lookup, remote
-cancellation, and crash/lease-expiry recovery. Multi-process streaming and
-late-event acceptance remain open; owner loss is fail-closed by default.
+cancellation, and crash/lease-expiry recovery. Independent PostgreSQL-worker
+acceptance also covers durable relay takeover fencing, late-event rejection,
+ordered terminal delivery, and cursor replay. Public multi-process streaming
+route integration remains open; owner loss is fail-closed by default.
 
 - [x] Fence SDK task mutations and add explicit owner-loss handling. The
   database adapter rejects missing, expired, or superseded fences without
@@ -197,8 +201,12 @@ late-event acceptance remain open; owner loss is fail-closed by default.
   active-task registry remains local to each process.
 - [x] Add a migration-owned event cursor and bounded polling relay foundation
   with tenant-scoped reconnect cursors and terminal-event handling.
-- [ ] Add multi-process/multi-worker PostgreSQL acceptance for streaming and
-  late events; the SDK active-task registry remains local to each process.
+- [x] Add multi-process/multi-worker PostgreSQL acceptance for durable relay
+  streaming, takeover fencing, late-event rejection, and cursor replay; the
+  SDK active-task registry remains local to each process.
+- [ ] Integrate the durable relay with public `SubscribeToTask` /
+  `message/stream` handler routes and enable the Agent Card capability only
+  after ADR-011 approval and route-level acceptance.
 - [x] Decide and implement the non-idempotent owner-loss/retry policy: an
   expired owner is fenced out, the durable task is finalized as failed with a
   stable owner-loss message, and the replacement never replays unknown

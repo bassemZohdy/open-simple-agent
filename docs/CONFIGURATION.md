@@ -327,15 +327,19 @@ write. The SDK active-task registry is still process-local. Durable SDK task
 saves carry the ownership fence and hold the ownership-row lock through the
 write, so an expired or superseded worker cannot persist a late task mutation.
 The event table and bounded polling relay are migration-owned foundations for
-the future cross-process A2A stream handler; the relay supports resumable
-sequence cursors but is not attached to a public route. Inbound A2A streaming
-remains disabled until the architecture-gated acceptance suite passes.
+the future cross-process A2A stream handler. Independent PostgreSQL-worker
+acceptance covers takeover fencing, late-event rejection, ordered terminal
+delivery, and resumable sequence cursors, but the relay is not attached to a
+public route. Inbound A2A streaming remains disabled until ADR-011 is accepted
+and route-level acceptance passes.
 Terminal events drain through the SDK consumer before the owner releases its
 lease. Process-boundary PostgreSQL acceptance covers shared task creation,
 lookup, cancellation, and crash recovery. Expired-owner retries finalize
 non-terminal tasks as failed with a stable owner-loss message and do not replay
-unknown model/tool side effects. Multi-process streaming/late-event acceptance
-remains open. Deployment owners should
+unknown model/tool side effects. Independent PostgreSQL-worker relay acceptance
+covers takeover fencing, late-event rejection, ordered terminal delivery, and
+cursor replay; public multi-process streaming-route acceptance remains open.
+Deployment owners should
 provision a dedicated database/schema and back it up according to their
 operational policy.
 

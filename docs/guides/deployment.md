@@ -140,9 +140,10 @@ them. Run the A2A command when `OSA_A2A_TASK_DATABASE_URL` is configured and
 any enabled runtime serves inbound A2A tasks; it provisions the SDK task table
 and OSA's versioned ownership and append-only event tables. Runtime startup
 validates those tables but never creates or alters them. The event table and
-bounded polling relay are storage foundations only; relay route integration
-and cross-process A2A streaming remain disabled pending the ADR-011 acceptance
-suite.
+bounded polling relay are storage foundations with independent PostgreSQL-worker
+acceptance for takeover fencing, late-event rejection, ordered terminal
+delivery, and cursor replay. Relay route integration and cross-process A2A
+streaming remain disabled pending ADR-011 approval and route-level acceptance.
 
 Run `osa-capability-telemetry-migrate` when
 `OSA_CAPABILITY_TELEMETRY_DATABASE_URL` is configured. It provisions the
@@ -185,8 +186,10 @@ coordination.
   expiry; terminal replay is read-only. The SDK active-task registry and
   process-boundary acceptance for creation/lookup/cancellation/recovery are
   covered; terminal events drain before lease release, and expired-owner
-  retries fail closed without replaying unknown side effects. Multi-process
-  streaming/late-event acceptance remains open P2.4 work. Tune
+  retries fail closed without replaying unknown side effects. Independent
+  PostgreSQL-worker relay acceptance covers takeover fencing, late-event
+  rejection, ordered terminal delivery, and cursor replay; public multi-process
+  streaming-route acceptance remains open P2.4 work. Tune
   `OSA_A2A_TASK_CANCEL_WAIT_SECONDS` when owner shutdown routinely exceeds the
   default wait, keeping it bounded for client retries.
 - Optional HTTP rate limits are available in-process. For replica-safe
@@ -218,5 +221,5 @@ never accepts process commands.
   PostgreSQL workers are also accepted in CI for provider-side-effect
   serialization, lease expiry/takeover, late-result rejection, tenant
   isolation, and restart/reconciliation recovery of the covered operations.
-- Complete true multi-process A2A active-task replica acceptance for streaming
-  and late-event ordering (P2.4)
+- Integrate the accepted durable A2A relay with public streaming routes and
+  complete route-level acceptance (P2.4)

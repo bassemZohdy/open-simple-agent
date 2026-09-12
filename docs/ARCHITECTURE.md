@@ -357,8 +357,10 @@ durable cancellation flag. Only the current lease holder invokes the agent;
 healthy workers heartbeat, while retries may reclaim an expired lease or replay
 a durable terminal task. Run `osa-a2a-migrate` before startup; runtime startup
 only validates the task, ownership, and schema-version-2 event tables.
-The bounded polling relay reads those events by tenant-scoped cursor, but is
-not attached to a public A2A route yet. PostgreSQL is the
+The bounded polling relay reads those events by tenant-scoped cursor, and
+independent PostgreSQL workers are accepted for takeover fencing, late-event
+rejection, ordered terminal delivery, and cursor replay. It is not attached to
+a public route yet; PostgreSQL is the
 shared-production choice; SQLite is an explicit local-only option where the
 SDK supports it. The SDK active-task registry remains process-local. Its
 durable task saves carry the ownership snapshot through the SDK call context
@@ -440,10 +442,12 @@ Streaming tests cover the SSE contract, disconnect-triggered cancellation,
 timeouts, concurrent load, and cross-replica session consistency over a
 shared provider. Live-model acceptance is covered by an opt-in test that uses
 the LiteLLM adapter and can run only when its repository secret is enabled;
-there is no live-identity-provider or multi-process A2A streaming/late-event
-test yet. The Kind Kubernetes lifecycle and independent-worker PostgreSQL
+there is no live-identity-provider or public multi-process A2A streaming-route
+test yet. Durable relay takeover/late-event acceptance is covered by an
+independent-worker PostgreSQL test. The Kind Kubernetes lifecycle and
+independent-worker PostgreSQL
 deployment-operation acceptance pass in CI. CI enforces an 84% coverage
-threshold; live identity-provider acceptance and A2A streaming/late-event
+threshold; live identity-provider acceptance and public A2A streaming-route
 acceptance remain backlog work. The opt-in live-provider job is available when
 its repository secret is configured, but it is intentionally skipped in offline
 CI runs.

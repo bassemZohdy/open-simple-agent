@@ -12,6 +12,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added — Multi-process A2A relay acceptance
+- Added PostgreSQL independent-worker acceptance for durable event relay
+  takeover fencing, late-event rejection, ordered terminal delivery, and
+  resumable cursor replay. Public A2A streaming route integration remains
+  gated by ADR-011.
+
 ### Hardened — A2A persisted identity bounds
 - A2A task, context, tenant, caller-scope, session, and worker-owner values
   now reject inputs over the shared 255-character database-column bound before
@@ -114,8 +120,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   owner-loss, terminal-event drain, and unmigrated-startup tests.
   Independent-handler lookup, remote cancellation waiting, expired-owner
   cancellation takeover, read-only terminal replay, and fail-closed
-  non-idempotent owner-loss handling are now covered; multi-process
-  streaming/late-event acceptance remains open P2.4 work.
+  non-idempotent owner-loss handling are now covered; public multi-process
+  streaming-route integration and late-event route acceptance remain open
+  P2.4 work.
 - Added a PostgreSQL-gated replica task-store acceptance covering creation,
   completion, failure, lookup, recovery, and tenant/caller isolation across
   independent ownership workers.

@@ -236,7 +236,7 @@ with status `429` and a `Retry-After` header in seconds. The built-in limiter
 is process-local and bounded. Set `OSA_RATE_LIMIT_DATABASE_URL` to use the
 atomic PostgreSQL-compatible shared window store across replicas; its table
 is created by `osa-rate-limit-migrate` (and validated/initialized at service
-startup). A2A multi-process streaming/late-event ownership and gateway-level
+startup). Public A2A streaming/late-event route ownership and gateway-level
 quotas remain deployment policy; exposed Control Plane deployment mutations
 use the migration-owned ownership contract documented above.
 
@@ -358,8 +358,10 @@ owner-loss message and never replays unknown model/tool side effects. The
 bounded polling relay can read migration-owned events after a tenant-scoped
 sequence cursor for future reconnects. Before each tenant-indexed event-page
 read, it verifies the full tenant-and-subject ownership scope for the task.
-No public A2A route uses it yet. Multi-process streaming/late-event acceptance
-remains open distributed-runtime work.
+No public A2A route uses it yet. Independent PostgreSQL-worker relay acceptance
+covers takeover fencing, late-event rejection, ordered terminal delivery, and
+cursor replay; public multi-process streaming-route acceptance remains open
+distributed-runtime work.
 
 External agents are A2A servers outside OSA, tracked as records distinct
 from managed agents (they are never deployed). The PostgreSQL-backed registry
@@ -461,8 +463,10 @@ a shared provider. File-backed SQLite remains local-only.
 
 Inbound A2A currently advertises non-streaming JSON-RPC capabilities. Durable
 task lookup, cancellation, terminal replay, and owner-loss fencing work across
-replicas; intermediate A2A stream fan-out and late-event ordering remain
-explicitly gated until a durable event/fan-out contract is accepted.
+replicas. The migration-owned relay now has independent PostgreSQL-worker
+acceptance for takeover fencing, late-event rejection, ordered terminal
+delivery, and cursor replay; public `SubscribeToTask` / `message/stream` route
+integration remains explicitly gated until ADR-011 is accepted.
 
 ### Invoke request
 

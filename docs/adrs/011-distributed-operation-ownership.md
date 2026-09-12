@@ -36,8 +36,10 @@ through the SDK consumer before lease release. Expired-owner retries fail
 closed with a stable terminal failure and never replay unknown model/tool side
 effects. Schema version 2 now provisions the migration-owned append-only event
 cursor and bounded polling-relay foundations; the relay consumes durable
-events by cursor but is not attached to a runtime stream route yet. The SDK
-active-task registry and multi-process streaming/late-event acceptance are
+events by cursor but is not attached to a runtime stream route yet. Independent
+PostgreSQL-worker acceptance now covers durable relay takeover fencing,
+late-event rejection, ordered terminal delivery, and cursor replay. The SDK
+active-task registry and public multi-process streaming route integration are
 still open, so this ADR remains proposed until the full
 acceptance criteria and open review questions are resolved.
 
@@ -50,9 +52,9 @@ writes lock and validate the current owner/fence before updating state. The
 provider-only Kubernetes `scale()` capability is not exposed through
 `DeploymentService` yet. The independent-worker PostgreSQL acceptance passes
 in CI for provider-side-effect serialization, expiry/takeover, late-result
-rejection, tenant isolation, and restart/reconciliation recovery. A2A
-streaming/late-event acceptance and the open review questions still prevent
-accepting this ADR as a whole.
+rejection, tenant isolation, and restart/reconciliation recovery. Public A2A
+streaming route integration/acceptance and the open review questions still
+prevent accepting this ADR as a whole.
 
 ## Decision drivers
 
@@ -168,7 +170,8 @@ concrete without silently enabling a weaker distributed contract.
   contract; do not put bearer tokens, credentials, or unrelated telemetry
   payloads in the row. The current implementation provides the fenced storage
   primitive, and the bounded polling relay now provides resumable cursor reads;
-  route integration and acceptance remain gated.
+  independent-worker relay acceptance covers takeover/late-event ordering;
+  public route integration and full acceptance remain gated.
 - The owner appends an event only while holding its current fence. The append
   and the ownership check share one transaction. A stale or terminal owner
   receives a conflict, and its HTTP stream must stop forwarding new events.

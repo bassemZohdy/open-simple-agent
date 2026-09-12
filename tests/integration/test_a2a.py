@@ -322,6 +322,154 @@ def _a2a_process_worker(
         raise
 
 
+async def _run_a2a_relay_process_worker(
+    role: str,
+    database_url: str,
+    task_table_name: str,
+    ownership_table_name: str,
+    command_queue: Any,
+    result_queue: Any,
+) -> None:
+    """Exercise durable relay events from one independent worker process."""
+    os.environ["OSA_A2A_OWNER_ID"] = f"relay-process-{role}"
+    from a2a.types import Task, TaskState, TaskStatus, TaskStatusUpdateEvent
+    from sqlalchemy.ext.asyncio import create_async_engine
+
+    from osa.runtimes.adk.a2a_event_relay import A2aTaskEventRelay
+    from osa.runtimes.adk.a2a_event_store import A2aTaskEventStore, event_table_name
+    from osa.runtimes.adk.a2a_ownership import A2aTaskOwnershipStore
+
+    engine = create_async_engine(database_url, pool_pre_ping=True)
+    ownership_store = A2aTaskOwnershipStore(
+        engine,
+        table_name=ownership_table_name,
+        lease_seconds=5,
+    )
+    event_store = A2aTaskEventStore(
+        engine,
+        table_name=event_table_name(task_table_name),
+    )
+    event_relay = A2aTaskEventRelay(
+        event_store,
+        ownership_store,
+        poll_interval_seconds=0.01,
+        timeout_seconds=10,
+    )
+    leases: dict[str, Any] = {}
+    result_queue.put({"event": "ready", "role": role})
+
+    try:
+        while True:
+            command = await asyncio.to_thread(command_queue.get)
+            operation = command.get("op")
+            if operation == "acquire":
+                task_id = str(command["task_id"])
+                ownership = await ownership_store.acquire(
+                    task_id,
+                    str(command["context_id"]),
+                    str(command["scope_key"]),
+                )
+                if ownership is None:
+                    raise AssertionError(f"{role} could not acquire {task_id}")
+                leases[task_id] = ownership
+                result_queue.put({"event": "acquired", "fence": ownership.fence})
+            elif operation == "append":
+                task_id = str(command["task_id"])
+                ownership = leases.get(task_id)
+                if ownership is None:
+                    raise AssertionError(f"{role} has no lease for {task_id}")
+                context_id = str(command["context_id"])
+                state_name = str(command["state"])
+                if command["kind"] == "Task":
+                    event = Task(
+                        id=task_id,
+                        context_id=context_id,
+                        status=TaskStatus(state=TaskState.TASK_STATE_SUBMITTED),
+                    )
+                else:
+                    state = {
+                        "working": TaskState.TASK_STATE_WORKING,
+                        "completed": TaskState.TASK_STATE_COMPLETED,
+                        "failed": TaskState.TASK_STATE_FAILED,
+                    }.get(state_name)
+                    if state is None:
+                        raise AssertionError(f"unknown relay event state: {state_name}")
+                    event = TaskStatusUpdateEvent(
+                        task_id=task_id,
+                        context_id=context_id,
+                        status=TaskStatus(state=state),
+                    )
+                sequence = await event_store.append_if_owned(
+                    ownership,
+                    event_type=type(event).__name__,
+                    payload=event.SerializeToString(deterministic=True),
+                    ownership_store=ownership_store,
+                )
+                result_queue.put(
+                    {
+                        "event": "appended",
+                        "accepted": sequence is not None,
+                        "sequence": sequence,
+                    }
+                )
+            elif operation == "stream":
+                event_types: list[str] = []
+                states: list[int] = []
+                async for event in event_relay.stream(
+                    scope_key=str(command["scope_key"]),
+                    task_id=str(command["task_id"]),
+                    after_sequence=int(command.get("after_sequence", 0)),
+                    timeout_seconds=10,
+                ):
+                    event_types.append(type(event).__name__)
+                    if isinstance(event, (Task, TaskStatusUpdateEvent)):
+                        states.append(int(event.status.state))
+                result_queue.put(
+                    {
+                        "event": "streamed",
+                        "event_types": event_types,
+                        "states": states,
+                    }
+                )
+            elif operation == "release":
+                task_id = str(command["task_id"])
+                ownership = leases.get(task_id)
+                if ownership is None:
+                    raise AssertionError(f"{role} has no lease for {task_id}")
+                assert await ownership_store.release(ownership, str(command["state"]))
+                result_queue.put({"event": "released"})
+            elif operation == "shutdown":
+                return
+            else:
+                raise AssertionError(f"unknown A2A relay process command: {operation!r}")
+    finally:
+        await engine.dispose()
+
+
+def _a2a_relay_process_worker(
+    role: str,
+    database_url: str,
+    task_table_name: str,
+    ownership_table_name: str,
+    command_queue: Any,
+    result_queue: Any,
+) -> None:
+    try:
+        asyncio.run(
+            _run_a2a_relay_process_worker(
+                role,
+                database_url,
+                task_table_name,
+                ownership_table_name,
+                command_queue,
+                result_queue,
+            )
+        )
+    except Exception as exc:
+        result_queue.put({"event": "error", "error": f"{type(exc).__name__}: {exc}"})
+        raise
+
+
 class TestAgentCardGeneration:
     def test_card_from_definition_and_skills(self) -> None:
         definition = AgentDefinition(
@@ -1245,6 +1393,172 @@ class TestA2aPostgresProcessAcceptance:
                 if process.is_alive():
                     process.terminate()
                     process.join(timeout=10)
+
+    @pytest.mark.skipif(
+        not os.environ.get("OSA_TEST_DATABASE_URL"),
+        reason="OSA_TEST_DATABASE_URL not configured; PostgreSQL process acceptance skipped",
+    )
+    async def test_independent_process_workers_reject_late_events_and_replay_cursor(self) -> None:
+        """Prove takeover fencing and resumable event reads across processes."""
+        from a2a.server.tasks import DatabaseTaskStore
+        from a2a.types import TaskState
+        from sqlalchemy import update
+        from sqlalchemy.ext.asyncio import create_async_engine
+
+        from osa.runtimes.adk.a2a import _a2a_task_owner
+        from osa.runtimes.adk.a2a_event_store import A2aTaskEventStore, event_table_name
+        from osa.runtimes.adk.a2a_migrations import migrate_a2a_schema
+        from osa.runtimes.adk.a2a_ownership import A2aTaskOwnershipStore
+        from osa.runtimes.adk.a2a_task_store import FencedDatabaseTaskStore
+
+        suffix = uuid4().hex[:12]
+        task_table_name = f"osa_a2a_relay_{suffix}"
+        ownership_table_name = f"{task_table_name}_ownership"
+        database_url = os.environ["OSA_TEST_DATABASE_URL"]
+        setup_engine = create_async_engine(database_url, pool_pre_ping=True)
+        setup_ownership = A2aTaskOwnershipStore(
+            setup_engine,
+            table_name=ownership_table_name,
+            lease_seconds=5,
+        )
+        setup_sdk_store = DatabaseTaskStore(
+            setup_engine,
+            create_table=False,
+            table_name=task_table_name,
+            owner_resolver=_a2a_task_owner,
+        )
+        setup_event_store = A2aTaskEventStore(
+            setup_engine,
+            table_name=event_table_name(task_table_name),
+        )
+        setup_task_store = FencedDatabaseTaskStore(setup_sdk_store, setup_ownership, setup_event_store)
+        await migrate_a2a_schema(
+            setup_engine,
+            task_table_name=task_table_name,
+            task_store=setup_task_store,
+            ownership_store=setup_ownership,
+            event_store=setup_event_store,
+        )
+        await setup_task_store.initialize()
+        await setup_engine.dispose()
+
+        process_context = mp.get_context("spawn")
+        writer_a_commands = process_context.Queue()
+        writer_a_results = process_context.Queue()
+        writer_b_commands = process_context.Queue()
+        writer_b_results = process_context.Queue()
+        reader_commands = process_context.Queue()
+        reader_results = process_context.Queue()
+        worker_args = (database_url, task_table_name, ownership_table_name)
+        writer_a = process_context.Process(
+            target=_a2a_relay_process_worker,
+            args=("writer-a", *worker_args, writer_a_commands, writer_a_results),
+        )
+        writer_b = process_context.Process(
+            target=_a2a_relay_process_worker,
+            args=("writer-b", *worker_args, writer_b_commands, writer_b_results),
+        )
+        reader = process_context.Process(
+            target=_a2a_relay_process_worker,
+            args=("reader", *worker_args, reader_commands, reader_results),
+        )
+        processes = [writer_a, writer_b, reader]
+        task_id = f"relay-process-{suffix}"
+        context_id = f"relay-context-{suffix}"
+        scope_key = "tenant:relay-tenant:subject:relay-user"
+        started_processes: list[Any] = []
+
+        try:
+            for process, results in (
+                (writer_a, writer_a_results),
+                (writer_b, writer_b_results),
+                (reader, reader_results),
+            ):
+                process.start()
+                started_processes.append(process)
+                assert (await _read_process_result(results))["event"] == "ready"
+
+            writer_a_commands.put(
+                {"op": "acquire", "task_id": task_id, "context_id": context_id, "scope_key": scope_key}
+            )
+            first_lease = await _read_process_result(writer_a_results)
+            assert first_lease == {"event": "acquired", "fence": 1}
+            for kind, state in (("Task", "submitted"), ("TaskStatusUpdateEvent", "working")):
+                writer_a_commands.put(
+                    {
+                        "op": "append",
+                        "kind": kind,
+                        "state": state,
+                        "task_id": task_id,
+                        "context_id": context_id,
+                    }
+                )
+                appended = await _read_process_result(writer_a_results)
+                assert appended["accepted"] is True
+
+            from datetime import UTC, datetime, timedelta
+
+            expiry_engine = create_async_engine(database_url, pool_pre_ping=True)
+            async with expiry_engine.begin() as connection:
+                await connection.execute(
+                    update(setup_ownership._table)  # noqa: SLF001 - test controls lease expiry
+                    .where(setup_ownership._table.c.task_id == task_id)
+                    .values(lease_until=datetime.now(UTC) - timedelta(seconds=1))
+                )
+            await expiry_engine.dispose()
+
+            writer_b_commands.put(
+                {"op": "acquire", "task_id": task_id, "context_id": context_id, "scope_key": scope_key}
+            )
+            second_lease = await _read_process_result(writer_b_results)
+            assert second_lease == {"event": "acquired", "fence": 2}
+            writer_b_commands.put(
+                {
+                    "op": "append",
+                    "kind": "TaskStatusUpdateEvent",
+                    "state": "completed",
+                    "task_id": task_id,
+                    "context_id": context_id,
+                }
+            )
+            completed = await _read_process_result(writer_b_results)
+            assert completed == {"event": "appended", "accepted": True, "sequence": 3}
+
+            writer_a_commands.put(
+                {
+                    "op": "append",
+                    "kind": "TaskStatusUpdateEvent",
+                    "state": "failed",
+                    "task_id": task_id,
+                    "context_id": context_id,
+                }
+            )
+            late = await _read_process_result(writer_a_results)
+            assert late == {"event": "appended", "accepted": False, "sequence": None}
+
+            reader_commands.put({"op": "stream", "task_id": task_id, "scope_key": scope_key})
+            streamed = await _read_process_result(reader_results)
+            assert streamed["event_types"] == ["Task", "TaskStatusUpdateEvent", "TaskStatusUpdateEvent"]
+            assert streamed["states"][-1] == int(TaskState.TASK_STATE_COMPLETED)
+
+            reader_commands.put({"op": "stream", "task_id": task_id, "scope_key": scope_key, "after_sequence": 2})
+            replayed = await _read_process_result(reader_results)
+            assert replayed["event_types"] == ["TaskStatusUpdateEvent"]
+            assert replayed["states"] == [int(TaskState.TASK_STATE_COMPLETED)]
+
+            writer_b_commands.put({"op": "release", "task_id": task_id, "state": "completed"})
+            assert (await _read_process_result(writer_b_results))["event"] == "released"
+        finally:
+            for commands in (writer_a_commands, writer_b_commands, reader_commands):
+                commands.put({"op": "shutdown"})
+            for process in processes:
+                if process.pid is None:
+                    continue
+                process.join(timeout=15)
+                if process.is_alive():
+                    process.terminate()
+                    process.join(timeout=10)
+            assert all(process.exitcode == 0 for process in started_processes)
 
 
 class TestA2aServer:
