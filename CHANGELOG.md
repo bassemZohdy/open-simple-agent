@@ -12,6 +12,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Hardened — A2A cancellation takeover
+- An expired owner now preserves a previously recorded durable cancellation
+  request when a replacement worker finalizes the task, rather than converting
+  the cancellation into a generic owner-loss failure.
+
 ### Hardened — A2A table-name portability
 - Durable A2A configuration now rejects oversized task/ownership/event table
   identifiers before startup. The task-table limit leaves room for derived

@@ -965,6 +965,44 @@ class TestA2aDistributedHandlerAcceptance:
             assert recovered.status.state == TaskState.TASK_STATE_CANCELED
             assert agent_two.call_count == 0
 
+            canceled_owner_loss_task = Task(
+                id="handler-acceptance-canceled-owner-loss",
+                context_id="handler-acceptance-canceled-owner-loss-context",
+                status=TaskStatus(state=TaskState.TASK_STATE_WORKING),
+            )
+            canceled_owner_loss_lease = await ownership_one.acquire(
+                canceled_owner_loss_task.id,
+                canceled_owner_loss_task.context_id,
+                "anonymous",
+            )
+            assert canceled_owner_loss_lease is not None
+            canceled_owner_loss_context = ServerCallContext()
+            bind_task_ownership(canceled_owner_loss_context, canceled_owner_loss_lease)
+            await store_one.save(canceled_owner_loss_task, canceled_owner_loss_context)
+            assert await ownership_one.request_cancel(canceled_owner_loss_task.id, "anonymous")
+            async with engine_one.begin() as connection:
+                await connection.execute(
+                    update(ownership_one._table)  # noqa: SLF001 - expiry is acceptance setup
+                    .where(ownership_one._table.c.task_id == canceled_owner_loss_task.id)
+                    .values(lease_until=datetime.now(UTC) - timedelta(seconds=1))
+                )
+
+            canceled_owner_loss_result = await handler_two.on_message_send(
+                SendMessageRequest(
+                    message=Message(
+                        message_id="handler-acceptance-canceled-owner-loss-message",
+                        role=Role.ROLE_USER,
+                        task_id=canceled_owner_loss_task.id,
+                        context_id=canceled_owner_loss_task.context_id,
+                        parts=[Part(text="recover canceled abandoned task")],
+                    ),
+                ),
+                ServerCallContext(),
+            )
+            assert isinstance(canceled_owner_loss_result, Task)
+            assert canceled_owner_loss_result.status.state == TaskState.TASK_STATE_CANCELED
+            assert agent_two.call_count == 0
+
             owner_loss_task = Task(
                 id="handler-acceptance-owner-loss",
                 context_id="handler-acceptance-owner-loss-context",

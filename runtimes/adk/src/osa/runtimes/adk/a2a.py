@@ -405,12 +405,15 @@ class OsaA2aAgentExecutor:
             await self._enqueue_replayed_task(context, event_queue, task)
             return
 
-        task.status.state = TaskState.TASK_STATE_FAILED
+        cancellation_won = ownership.cancel_requested
+        task.status.state = TaskState.TASK_STATE_CANCELED if cancellation_won else TaskState.TASK_STATE_FAILED
         task.status.timestamp.FromDatetime(datetime.now(UTC))
-        task.status.message.CopyFrom(_failure_message(A2A_OWNER_LOST_MESSAGE))
+        if not cancellation_won:
+            task.status.message.CopyFrom(_failure_message(A2A_OWNER_LOST_MESSAGE))
         bind_task_ownership(context.call_context, ownership)
         await self._task_store.save(task, context.call_context)
-        if not await self._ownership_store.release(ownership, "failed"):
+        terminal_state = "canceled" if cancellation_won else "failed"
+        if not await self._ownership_store.release(ownership, terminal_state):
             raise RuntimeError("A2A owner-loss finalization lost its fencing lease")
         await self._enqueue_replayed_task(context, event_queue, task)
 
