@@ -80,9 +80,8 @@ The following are the current blockers or decision gates:
 Complete distributed A2A active-task acceptance. The persistence provider
 hierarchy, shared-policy gate, scoped A2A leases, and fenced SDK task saves are
 implemented and covered by focused local/production-policy tests; the remaining
-architecture gate is full PostgreSQL multi-replica creation/completion/failure
-recovery, cross-replica cancellation ordering, and the non-idempotent replay
-contract.
+architecture gate is full multi-process handler/active-task recovery,
+cross-replica cancellation ordering, and the non-idempotent replay contract.
 
 ---
 
@@ -128,8 +127,12 @@ cross-replica cancellation still need protocol acceptance.
 - [x] Fence SDK task mutations and add explicit owner-loss handling. The
   database adapter rejects missing, expired, or superseded fences without
   publishing a synthetic failure from the stale worker.
-- [ ] Add multi-replica creation, completion, failure, lookup, and recovery
-  acceptance tests without tenant/caller leakage.
+- [x] Add PostgreSQL task-store/ownership acceptance for creation, completion,
+  failure, lookup, recovery, and tenant/caller isolation across two independent
+  ownership workers.
+- [ ] Add end-to-end multi-process/handler acceptance for active-task creation,
+  streaming/lookup, and recovery; the SDK active-task registry remains local to
+  each process.
 - [ ] Complete cross-replica cancellation ordering and protection against late
   events/retries; durable cancellation requests and local terminal emission
   are implemented, but the remote-handler wait/terminal-event contract and

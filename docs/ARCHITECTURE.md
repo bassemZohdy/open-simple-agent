@@ -404,16 +404,17 @@ matrix and service-backed suites:
 Tests use the fake provider, scripted ADK models, in-memory services, a
 deterministic stdio MCP server subprocess, localhost Streamable HTTP and A2A
 servers, and generated JWT/JWKS material — no external network. PostgreSQL
-memory and Control Plane persistence tests run against a real PostgreSQL 16
-service in CI (`OSA_TEST_DATABASE_URL`) and skip locally when unset.
+memory, Control Plane, and A2A task-store/ownership persistence tests run
+against a real PostgreSQL 16 service in CI (`OSA_TEST_DATABASE_URL`) and skip
+locally when unset.
 Streaming tests cover the SSE contract, disconnect-triggered cancellation,
 timeouts, concurrent load, and cross-replica session consistency over a
 shared provider. Live-model acceptance is covered by an opt-in test that uses
 the LiteLLM adapter and can run only when its repository secret is enabled;
-there is no live-identity-provider or multi-process deployment test yet. The
-Kind Kubernetes lifecycle acceptance passes in CI. CI enforces an 84% coverage
-threshold; live identity-provider acceptance and distributed operation
-ownership remain backlog work. The opt-in live-provider job is available when
+there is no live-identity-provider or multi-process handler/deployment test
+yet. The Kind Kubernetes lifecycle acceptance passes in CI. CI enforces an 84%
+coverage threshold; live identity-provider acceptance and full distributed
+operation ownership remain backlog work. The opt-in live-provider job is available when
 its repository secret is configured, but it is intentionally skipped in offline
 CI runs.
 

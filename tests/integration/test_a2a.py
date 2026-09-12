@@ -11,6 +11,7 @@ otherwise so default test runs stay clean without protocol dependencies.
 from __future__ import annotations
 
 import asyncio
+import os
 import socket
 import threading
 import time
@@ -372,6 +373,173 @@ class TestA2aTaskStore:
             await store.save(task, old_context)
         assert await successor_store.release(successor, "completed")
         await close_a2a_task_store(app)
+
+    @pytest.mark.skipif(
+        not os.environ.get("OSA_TEST_DATABASE_URL"),
+        reason="OSA_TEST_DATABASE_URL not configured; PostgreSQL A2A replica acceptance skipped",
+    )
+    async def test_postgres_replica_task_state_and_tenant_isolation(self) -> None:
+        """Two ownership workers share task state without crossing tenants."""
+        from datetime import UTC, datetime, timedelta
+        from uuid import uuid4
+
+        from a2a.server.context import ServerCallContext
+        from a2a.server.tasks import DatabaseTaskStore
+        from a2a.types import Task, TaskState, TaskStatus
+        from sqlalchemy import update
+        from sqlalchemy.ext.asyncio import create_async_engine
+
+        from osa.generic_agent import (
+            AuthenticatedPrincipal,
+            reset_current_principal,
+            set_current_principal,
+        )
+        from osa.runtimes.adk.a2a import _a2a_task_owner
+        from osa.runtimes.adk.a2a_migrations import migrate_a2a_schema
+        from osa.runtimes.adk.a2a_ownership import A2aTaskOwnershipStore
+        from osa.runtimes.adk.a2a_task_store import (
+            A2aTaskOwnershipLostError,
+            FencedDatabaseTaskStore,
+            bind_task_ownership,
+        )
+
+        suffix = uuid4().hex[:12]
+        task_table_name = f"osa_a2a_replica_{suffix}"
+        engine = create_async_engine(
+            os.environ["OSA_TEST_DATABASE_URL"],
+            pool_pre_ping=True,
+        )
+        ownership_one = A2aTaskOwnershipStore(
+            engine,
+            table_name=f"{task_table_name}_ownership",
+            lease_seconds=5,
+        )
+        ownership_two = A2aTaskOwnershipStore(
+            engine,
+            table_name=f"{task_table_name}_ownership",
+            lease_seconds=5,
+        )
+        # The SDK's dynamic ORM registry cannot define the same table twice in
+        # one Python process; two fenced adapters still model independent
+        # workers against the same durable task table.
+        sdk_store = DatabaseTaskStore(
+            engine,
+            create_table=False,
+            table_name=task_table_name,
+            owner_resolver=_a2a_task_owner,
+        )
+        store_one = FencedDatabaseTaskStore(sdk_store, ownership_one)
+        store_two = FencedDatabaseTaskStore(sdk_store, ownership_two)
+
+        try:
+            await migrate_a2a_schema(
+                engine,
+                task_table_name=task_table_name,
+                task_store=store_one,
+                ownership_store=ownership_one,
+            )
+            await store_one.initialize()
+
+            principal_a = AuthenticatedPrincipal(
+                subject="replica-user",
+                issuer="https://issuer.example.test",
+                audience=("osa",),
+                scopes=frozenset(),
+                tenant_id="tenant-a",
+            )
+            token_a = set_current_principal(principal_a)
+            try:
+                context = ServerCallContext()
+                scope_key = _a2a_task_owner(context)
+                task = Task(
+                    id=f"task-complete-{suffix}",
+                    context_id=f"context-complete-{suffix}",
+                    status=TaskStatus(state=TaskState.TASK_STATE_SUBMITTED),
+                )
+                lease = await ownership_one.acquire(task.id, task.context_id, scope_key)
+                assert lease is not None
+                assert await ownership_two.acquire(task.id, task.context_id, scope_key) is None
+                bind_task_ownership(context, lease)
+                await store_one.save(task, context)
+                task.status.state = TaskState.TASK_STATE_COMPLETED
+                await store_one.save(task, context)
+                assert await ownership_one.release(lease, "completed")
+
+                replica_task = await store_two.get(task.id, context)
+                assert replica_task is not None
+                assert replica_task.status.state == TaskState.TASK_STATE_COMPLETED
+
+                principal_b = AuthenticatedPrincipal(
+                    subject="replica-user",
+                    issuer="https://issuer.example.test",
+                    audience=("osa",),
+                    scopes=frozenset(),
+                    tenant_id="tenant-b",
+                )
+                token_b = set_current_principal(principal_b)
+                try:
+                    assert await store_two.get(task.id, ServerCallContext()) is None
+                finally:
+                    reset_current_principal(token_b)
+
+                failed_task = Task(
+                    id=f"task-failed-{suffix}",
+                    context_id=f"context-failed-{suffix}",
+                    status=TaskStatus(state=TaskState.TASK_STATE_WORKING),
+                )
+                failed_lease = await ownership_two.acquire(
+                    failed_task.id,
+                    failed_task.context_id,
+                    scope_key,
+                )
+                assert failed_lease is not None
+                failed_context = ServerCallContext()
+                bind_task_ownership(failed_context, failed_lease)
+                await store_two.save(failed_task, failed_context)
+                failed_task.status.state = TaskState.TASK_STATE_FAILED
+                await store_two.save(failed_task, failed_context)
+                assert await ownership_two.release(failed_lease, "failed")
+                failed_replica_task = await store_one.get(failed_task.id, context)
+                assert failed_replica_task is not None
+                assert failed_replica_task.status.state == TaskState.TASK_STATE_FAILED
+
+                recovery_task = Task(
+                    id=f"task-recovery-{suffix}",
+                    context_id=f"context-recovery-{suffix}",
+                    status=TaskStatus(state=TaskState.TASK_STATE_WORKING),
+                )
+                old_context = ServerCallContext()
+                old_lease = await ownership_one.acquire(
+                    recovery_task.id,
+                    recovery_task.context_id,
+                    scope_key,
+                )
+                assert old_lease is not None
+                bind_task_ownership(old_context, old_lease)
+                await store_one.save(recovery_task, old_context)
+                async with engine.begin() as connection:
+                    await connection.execute(
+                        update(ownership_one._table)  # noqa: SLF001 - expiry is acceptance setup
+                        .where(ownership_one._table.c.task_id == recovery_task.id)
+                        .values(lease_until=datetime.now(UTC) - timedelta(seconds=1))
+                    )
+                new_lease = await ownership_two.acquire(
+                    recovery_task.id,
+                    recovery_task.context_id,
+                    scope_key,
+                )
+                assert new_lease is not None
+                new_context = ServerCallContext()
+                bind_task_ownership(new_context, new_lease)
+                recovery_task.status.state = TaskState.TASK_STATE_COMPLETED
+                await store_two.save(recovery_task, new_context)
+                with pytest.raises(A2aTaskOwnershipLostError):
+                    await store_one.save(recovery_task, old_context)
+                assert await ownership_two.release(new_lease, "completed")
+            finally:
+                reset_current_principal(token_a)
+        finally:
+            await engine.dispose()
 
     def test_database_task_table_name_is_validated(self, monkeypatch: pytest.MonkeyPatch) -> None:
         from fastapi import FastAPI

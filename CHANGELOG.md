@@ -70,6 +70,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Added focused conflict, expiry, fencing, cancellation, terminal-state, and
   unmigrated-startup tests. End-to-end multi-replica recovery/cancellation and
   non-idempotent owner-loss replay remain open P2.4 work.
+- Added a PostgreSQL-gated replica task-store acceptance covering creation,
+  completion, failure, lookup, recovery, and tenant/caller isolation across
+  independent ownership workers.
 
 ### Added — Runtime durability, capacity, and deployment hardening
 - Added an explicit, versioned PostgreSQL runtime-session provider with strict
