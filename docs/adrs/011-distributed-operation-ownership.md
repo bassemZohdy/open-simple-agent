@@ -134,6 +134,55 @@ ADR does not make A2A/deployment operation telemetry part of that capability
 sink: those operation events still need the stable operation/fencing metadata
 and retention contract described here before they are persisted.
 
+## Review-ready implementation defaults
+
+The following defaults are recommended for review. They are deliberately not
+accepted by this ADR yet; they make the remaining architecture decision
+concrete without silently enabling a weaker distributed contract.
+
+### A2A streaming and late events
+
+- Keep inbound A2A streaming disabled in the Agent Card until the acceptance
+  suite proves the full cross-replica path.
+- Add a migration-owned append-only task-event table keyed by tenant, task,
+  fencing epoch, and a monotonically increasing per-task sequence. Store the
+  protocol event under the existing A2A task-persistence contract; do not put
+  bearer tokens, credentials, or unrelated telemetry payloads in the row.
+- The owner appends an event only while holding its current fence. The append
+  and the ownership check share one transaction. A stale or terminal owner
+  receives a conflict, and its HTTP stream must stop forwarding new events.
+- A handler on another replica reads events after a client cursor with bounded
+  polling. PostgreSQL `LISTEN/NOTIFY` may reduce latency, but notifications are
+  only wake-ups; the durable table and cursor are the source of truth.
+- Reconnects replay from the last acknowledged sequence. Active-task rows are
+  retained while running and through a bounded terminal replay window; event
+  cleanup must not remove data needed by an in-flight cursor.
+- Per-connection queues are bounded. Slow clients receive a resumable cursor
+  boundary or a stable retryable error rather than unbounded memory growth.
+  Events already delivered before a lease loss are not retracted, but no late
+  event from a fenced owner may be delivered afterward.
+
+### Deployment-operation ownership
+
+- Use one ownership key for all mutating operations on a deployment. This is
+  the conservative default because stop/restart/rollback/scale can otherwise
+  interfere through provider state even when their operation names differ.
+  Read-only status, logs, and provider observations remain concurrent.
+- Generate a stable `operation_id` per accepted command and carry its tenant,
+  deployment, owner, and fencing epoch through the provider call and every
+  persisted result. API input must not supply a process owner or fencing value.
+- Heartbeat during long provider calls. If the fence is lost, the worker must
+  stop persisting results and must not blindly retry an unknown side effect.
+  The replacement first performs read-only reconciliation; retry requires an
+  explicit provider idempotency guarantee.
+- Where a provider supports idempotency, use a provider-owned operation key
+  derived from the deployment and operation IDs. Where it does not, preserve
+  an explicit `unknown` outcome requiring reconciliation instead of claiming
+  success or failure from a stale worker.
+- Reconciliation may refresh observed status but cannot clear a newer intent
+  or release another worker's fence. Acceptance must cover concurrent commands,
+  expiry, late provider results, tenant isolation, and restart recovery.
+
 ## Acceptance criteria
 
 Implementation is not complete until a PostgreSQL-backed acceptance suite
