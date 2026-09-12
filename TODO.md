@@ -77,8 +77,6 @@ workloads after Control Plane restarts. The real Kind lifecycle acceptance
 workflow passes in CI; this workstation cannot execute it locally while Docker
 is unavailable.
 
-- [x] Validate deploy/readiness/scale/restart/rollback/recovery against Kind in
-  CI.
 - [ ] Keep OpenShift-specific behavior separate from generic Kubernetes code.
 
 ---
