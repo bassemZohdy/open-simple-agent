@@ -85,9 +85,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   tasks and resolved review findings remain in this changelog and git history.
 - Added proposed ADR-011 to make distributed A2A/deployment ownership,
   fencing, cancellation, recovery, and telemetry review questions explicit.
-- Reviewed the stable MCP 2.x SDK line. OSA remains intentionally pinned to
-  MCP 1.x because the current client/fixture APIs and the tested Google ADK
-  MCP dependency boundary still require a dedicated compatibility port.
+
+### Changed — MCP SDK major-version compatibility
+- Ported the OSA MCP client and deterministic server fixtures across the
+  official MCP 1.x/2.x API differences, including timeouts, wire-model fields,
+  the v2 Streamable HTTP client, shutdown cancellation, and server imports.
+- Widened the runtime dependency to `mcp>=1.24,<3`; the offline protocol and
+  ADK Runner/toolset suites run against `mcp==1.29.1` and `mcp==2.2.0` in CI.
+- Documented that OSA does not select Google ADK's optional MCP extra because
+  its metadata remains constrained to MCP 1.x.
 
 ### Added — Hardening coverage
 - Added focused tests for outbound policy, tenant isolation, external-agent

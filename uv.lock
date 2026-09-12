@@ -2415,7 +2415,7 @@ requires-dist = [
     { name = "asyncpg", marker = "extra == 'postgres'", specifier = ">=0.29" },
     { name = "google-adk", specifier = ">=2.0,<3.0" },
     { name = "litellm", marker = "extra == 'litellm'", specifier = ">=1.84" },
-    { name = "mcp", specifier = ">=1.24,<2" },
+    { name = "mcp", specifier = ">=1.24,<3" },
     { name = "osa-generic-agent", editable = "generic-agent" },
     { name = "pg8000", marker = "extra == 'postgres'", specifier = ">=1.31,<2" },
     { name = "sqlalchemy", extras = ["asyncio"], marker = "extra == 'postgres'", specifier = ">=2.0,<3" },

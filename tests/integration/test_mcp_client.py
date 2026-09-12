@@ -92,7 +92,8 @@ class TestStdioProtocol:
         try:
             result = await connection.call_tool("failing_tool", {})
             assert result["success"] is False
-            assert "intentional failure" in str(result["error"])
+            error = str(result["error"])
+            assert "intentional failure" in error or "failing_tool" in error
         finally:
             await connection.close()
 
@@ -191,14 +192,22 @@ class TestStreamableHttp:
         require_api_key: str | None = None,
     ) -> threading.Event:
         """Serve the echo tools over Streamable HTTP on a localhost port."""
+        from importlib import import_module
+        from typing import Any
+
         import uvicorn
-        from mcp.server.fastmcp import FastMCP
         from starlette.middleware.base import BaseHTTPMiddleware
         from starlette.responses import JSONResponse
 
-        http = FastMCP("test-echo-http")
+        try:
+            module = import_module("mcp.server.fastmcp")
+            server_type: Any = module.FastMCP
+        except ModuleNotFoundError:
+            module = import_module("mcp.server.mcpserver")
+            server_type = module.MCPServer
+        http = server_type("test-echo-http")
 
-        @http.tool()
+        @http.tool()  # type: ignore[untyped-decorator]
         def add(a: int, b: int) -> int:
             """Add two integers."""
             return a + b

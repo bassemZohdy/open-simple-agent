@@ -519,10 +519,11 @@ definition without an available implementation fails at construction.
 MCP servers referenced by an agent connect lazily at invocation time
 (`osa.runtimes.adk.mcp_client`, ADR-002) using the official `mcp` SDK.
 
-The runtime currently uses the SDK 1.x compatibility line
-(`mcp>=1.24,<2`). MCP 2.x is an active migration task: do not override the
-lock to 2.x until the OSA client, deterministic fixtures, and ADK Runner path
-have passed their compatibility suite.
+The runtime supports the official SDK 1.x and 2.x compatibility lines
+(`mcp>=1.24,<3`). OSA normalizes the SDK-major differences in timeout values,
+wire-model field names, and the Streamable HTTP client. The checked-in lock is
+authoritative for normal installs; CI also runs the MCP protocol and ADK Runner
+suites against representative versions of both supported majors.
 
 - **Transports:** `stdio` (uses `command`/`args`/`env`) and
   `streamable_http` (uses `endpoint`). Legacy `sse` is not supported at

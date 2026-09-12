@@ -17,6 +17,7 @@ import re
 from contextlib import AsyncExitStack
 from dataclasses import dataclass
 from datetime import timedelta
+from importlib.metadata import PackageNotFoundError, version
 from typing import Any
 
 import mcp.types as mcp_types
@@ -46,6 +47,46 @@ logger = logging.getLogger(__name__)
 
 SUPPORTED_TRANSPORTS = ("stdio", "streamable_http")
 _HTTP_HEADERS_KEY = "Authorization"
+
+
+def _mcp_sdk_major() -> int:
+    """Return the installed official MCP SDK major, defaulting to v1."""
+    try:
+        return int(version("mcp").split(".", 1)[0])
+    except (PackageNotFoundError, ValueError):
+        # The import above already proves an SDK is present. Keep the v1
+        # behavior if a non-standard packaging environment omits metadata.
+        return 1
+
+
+_MCP_SDK_MAJOR = _mcp_sdk_major()
+
+
+def _read_model_field(model: Any, *names: str) -> Any:
+    """Read a wire-model field across the MCP 1.x and 2.x spellings."""
+    for name in names:
+        value = getattr(model, name, None)
+        if value is not None:
+            return value
+    return None
+
+
+def _read_timeout_value(seconds: float) -> Any:
+    """Adapt OSA seconds to the MCP SDK major's session timeout contract."""
+    if _MCP_SDK_MAJOR >= 2:
+        return seconds
+    return timedelta(seconds=seconds)
+
+
+def _mcp_httpx() -> Any:
+    """Return the HTTP client module required by the installed MCP major."""
+    if _MCP_SDK_MAJOR >= 2:
+        import httpx2
+
+        return httpx2
+    import httpx
+
+    return httpx
 
 
 def sanitize_tool_name(name: str) -> str:
@@ -147,8 +188,7 @@ class McpConnection:
 
     async def _build_httpx_client(self) -> Any:
         """HTTP client with TLS, timeout, and credential settings resolved."""
-        import httpx
-
+        httpx = _mcp_httpx()
         options = self._definition.connection_options
         material = await self._resolve_credentials()
         verify: str | bool = options.tls_verify
@@ -250,7 +290,7 @@ class McpConnection:
                     ClientSession(
                         read_stream,
                         write_stream,
-                        read_timeout_seconds=timedelta(seconds=self._definition.connection_options.timeout_seconds),
+                        read_timeout_seconds=_read_timeout_value(self._definition.connection_options.timeout_seconds),
                     )
                 )
                 await asyncio.wait_for(
@@ -272,7 +312,7 @@ class McpConnection:
         if keeper is None:
             return
         self._stop.set()
-        with contextlib.suppress(Exception):
+        with contextlib.suppress(Exception, asyncio.CancelledError):
             await keeper
 
     async def close(self) -> None:
@@ -281,7 +321,7 @@ class McpConnection:
             keeper, self._keeper = self._keeper, None
         if keeper is not None:
             self._stop.set()
-            with contextlib.suppress(Exception):
+            with contextlib.suppress(Exception, asyncio.CancelledError):
                 await keeper
             logger.info("Disconnected from MCP server '%s'", self.name)
 
@@ -301,7 +341,7 @@ class McpConnection:
                     server_tool_name=tool.name,
                     server_name=self.name,
                     description=tool.description or "",
-                    parameters_schema=dict(tool.inputSchema) if tool.inputSchema else {},
+                    parameters_schema=dict(_read_model_field(tool, "inputSchema", "input_schema") or {}),
                 )
             )
         return handles
@@ -374,7 +414,7 @@ class McpConnection:
                 len(text.encode("utf-8")),
                 self._definition.connection_options.max_response_bytes,
             )
-        if result.isError:
+        if _read_model_field(result, "isError", "is_error"):
             return {"success": False, "output": "", "error": text or "tool reported an error"}
         return {"success": True, "output": text, "error": None}
 

@@ -8,31 +8,45 @@ offline and deterministic.
 from __future__ import annotations
 
 import time
-
-from mcp.server.fastmcp import FastMCP
-
-mcp = FastMCP("test-echo")
+from importlib import import_module
+from typing import Any
 
 
-@mcp.tool()
+def _create_mcp_server(name: str) -> Any:
+    """Create a server across the MCP 1.x and 2.x server module layouts."""
+    try:
+        module = import_module("mcp.server.fastmcp")
+        server_type = module.FastMCP
+    except ModuleNotFoundError:
+        # MCP 2 renamed FastMCP to MCPServer; keeping this fixture dual-major
+        # lets the compatibility suite exercise the same protocol behavior.
+        module = import_module("mcp.server.mcpserver")
+        server_type = module.MCPServer
+    return server_type(name)
+
+
+mcp = _create_mcp_server("test-echo")
+
+
+@mcp.tool()  # type: ignore[untyped-decorator]
 def add(a: int, b: int) -> int:
     """Add two integers."""
     return a + b
 
 
-@mcp.tool()
+@mcp.tool()  # type: ignore[untyped-decorator]
 def greet(name: str) -> str:
     """Greet someone by name."""
     return f"hello {name}"
 
 
-@mcp.tool()
+@mcp.tool()  # type: ignore[untyped-decorator]
 def failing_tool() -> str:
     """Always raises an error."""
     raise RuntimeError("intentional failure")
 
 
-@mcp.tool()
+@mcp.tool()  # type: ignore[untyped-decorator]
 def slow_tool() -> str:
     """Takes about 12 seconds; used to trigger client timeouts.
 
@@ -43,7 +57,7 @@ def slow_tool() -> str:
     return "finally done"
 
 
-@mcp.tool()
+@mcp.tool()  # type: ignore[untyped-decorator]
 def big_text() -> str:
     """Returns a large payload; used to trigger response-size limits."""
     return "x" * 10_000

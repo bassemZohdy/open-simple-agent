@@ -149,9 +149,10 @@ retaining their source metadata.
 MCP is first-class because an MCP server may expose tools, resources, and
 prompts. The MCP Catalog stores connection definitions. The runtime owns
 connection lifecycle, discovery, filtering, invocation, limits, and errors.
-The current runtime uses the official MCP SDK 1.x compatibility line; the
-MCP 2.x client/fixture port and ADK validation are tracked separately in
-`TODO.md` and ADR-002.
+The current runtime supports the official MCP SDK 1.x and 2.x compatibility
+lines through a normalized OSA client boundary. Deterministic protocol and ADK
+Runner validation run against both major lines; resources/prompts exposure and
+legacy SSE remain deferred in `TODO.md` and ADR-002.
 
 ### Skills
 
