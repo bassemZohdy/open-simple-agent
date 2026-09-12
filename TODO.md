@@ -17,6 +17,9 @@ coverage, opt-in HTTP rate limiting (including a PostgreSQL shared store), and
 English/Arabic Control Panel locale coverage are implemented and covered by
 tests/CI.
 
+The MCP runtime remains pinned to the official SDK 1.x compatibility line while
+the MCP 2.x port and ADK Runner validation are worked through explicitly.
+
 Production-readiness limits are:
 
 - runtime sessions remain in-memory unless the bundle opts into the durable
@@ -52,6 +55,9 @@ The following are the current blockers or decision gates:
   and replica-wide capability telemetry require approval of the proposed
   ownership contract in `docs/adrs/011-distributed-operation-ownership.md`,
   plus the telemetry retention/ordering decision.
+- **Active compatibility work:** MCP 2.x has landed upstream, but the OSA
+  client and deterministic fixtures still use v1 APIs. The current safe pin is
+  documented in ADR-002 until the port and ADK integration validation pass.
 - **Product-gated:** browser OIDC issuer/client/redirect semantics, package
   registry publication, and the first public release need explicit product
   decisions. English and Arabic are the currently supported Control Panel
@@ -61,15 +67,31 @@ The following are the current blockers or decision gates:
 
 ## Recommended next task
 
-Review and approve the proposed distributed operation ownership contract in
-`docs/adrs/011-distributed-operation-ownership.md`. The next decision gates
-after that review are distributed A2A active-task state, shared telemetry
-collection, browser OIDC contracts, package publication, and the first public
-release.
+Continue the active MCP 2.x compatibility slice and validate the ADK Runner
+path after the client/fixture port. The next decision gate after that work is
+review and approval of the distributed operation ownership contract in
+`docs/adrs/011-distributed-operation-ownership.md`.
 
 ---
 
 # P1 — Managed platform
+
+## MCP SDK major-version compatibility — IN PROGRESS
+
+The upstream Python SDK now has a stable 2.x line. An isolated `mcp==2.2.0`
+canary against the current OSA sources exposed two migration requirements:
+`ClientSession` no longer accepts OSA's v1 `timedelta` timeout value, and the
+deterministic fixture's v1 `mcp.server.fastmcp.FastMCP` import is removed.
+Google ADK 2.8.0 also declares `mcp<2` in its MCP extra. OSA therefore keeps
+`mcp>=1.24,<2` until both the direct client and the ADK Runner path are
+validated on v2.
+
+- [x] Review the MCP 2.x release and record the compatibility decision in
+  `docs/adrs/002-mcp-runtime-client.md`; retain the v1 pin while migration
+  work is incomplete.
+- [ ] Port the OSA MCP client and deterministic fixtures/tests to MCP 2.x,
+  validate the ADK Runner/toolset path, then revise the dependency lock and
+  ADR-002.
 
 ## Kubernetes deployment provider — CI VALIDATED
 
@@ -154,8 +176,6 @@ and digest rollback automation exist.
 
 # Deferred until a concrete requirement
 
-- [ ] Track upstream MCP SDK major changes and revisit the pin when MCP 2.x
-  lands.
 - [ ] MCP resources/prompts exposure and legacy SSE transport support.
 - [ ] Configurable custom model-adapter registration after a second production
   adapter is required.

@@ -394,6 +394,11 @@ CI runs.
 - `google-adk>=2.0,<3.0` pins the tested major line; ADK still emits its own
   `BaseAgentConfig` deprecation warning at import time (filtered in pytest,
   documented there).
+- The MCP runtime is currently pinned to `mcp>=1.24,<2`. MCP 2.x is now a
+  stable upstream line, but an isolated 2.2.0 canary exposed v1-specific OSA
+  timeout and fixture APIs, while google-adk 2.8.0 still declares `<2` for its
+  MCP extra. The client/fixture port and ADK Runner validation are tracked in
+  ADR-002 and `TODO.md`; the lock must not be overridden to MCP 2.x meanwhile.
 - `litellm>=1.84` is optional (`osa-adk-runtime[litellm]`); configuring a
   litellm model without the extra fails fast (ADR-001).
 - `langchain>=1.0,<2.0` and `langgraph>=1.0,<2.0` are isolated in

@@ -25,8 +25,8 @@ catalog/schema types (`osa.generic_agent.mcp`).
   without hand-rolling JSON-RPC transports.
 - Test environments must stay offline and deterministic (a local stdio server
   is a plain subprocess).
-- `google-adk` itself pins `mcp>=1.24,<2` for its MCP support, so aligning
-  avoids version conflicts.
+- The tested `google-adk` 2.8.0 MCP extra declares `mcp>=1.24,<2`, so aligning
+  avoids version conflicts while the MCP 2.x compatibility surface is assessed.
 - `McpDefinition` (transports, timeouts, retries, TLS, response caps,
   credential references) must remain the single configuration surface.
 
@@ -46,9 +46,9 @@ catalog/schema types (`osa.generic_agent.mcp`).
 - Use the **official `mcp` Python SDK**, pinned `mcp>=1.24,<2` (matching
   google-adk's own extra) as a core dependency of `osa-adk-runtime`.
 - **Protocol-version policy:** OSA follows the SDK's negotiated protocol
-  versions; the SDK major (1.x) is the compatibility boundary. Upgrades
-  within the pin are covered by CI; a protocol bump requires a major pin
-  change and an ADR revision.
+  versions; the SDK major (currently 1.x) is the compatibility boundary.
+  Upgrades within the pin are covered by CI; a protocol bump requires a major
+  pin change and an ADR revision.
 - **Transports:** `stdio` (subprocess) and `streamable_http` (the current
   MCP standard). **Legacy `sse` is not supported at runtime** — definitions
   remain schema-valid, but the client rejects them with a deterministic
@@ -84,6 +84,21 @@ catalog/schema types (`osa.generic_agent.mcp`).
   changes) — mitigated by the pin matching google-adk's extra.
 - Legacy SSE deployments need migration to Streamable HTTP.
 
+## MCP 2.x compatibility assessment — 2026-09-12
+
+The upstream Python SDK has released a stable 2.x line. OSA deliberately did
+not widen the dependency range based on that release alone. A clean isolated
+canary using `mcp==2.2.0` and `google-adk==2.8.0` fails the current OSA protocol
+tests before the server can be exercised: MCP 2.x expects a numeric
+`read_timeout_seconds` value rather than the v1 `timedelta`, and its v1
+`mcp.server.fastmcp.FastMCP` fixture import is removed. The ADK package metadata
+also still advertises `mcp<2` for its MCP extra.
+
+The follow-up is now active rather than deferred: port the client and fixtures,
+run the complete ADK Runner/toolset acceptance path, then update the pin and
+lock only if the supported ADK combination is verified. Until then, manually
+overriding the lock to MCP 2.x is unsupported.
+
 ## Validation
 
 - Protocol-level integration tests run a deterministic stdio MCP server
@@ -98,6 +113,8 @@ catalog/schema types (`osa.generic_agent.mcp`).
 
 ## Follow-up
 
-- [ ] Track upstream SDK majors; revisit the pin when MCP 2.x lands.
+- [x] Review the MCP 2.x release and record the compatibility hold above.
+- [ ] Port OSA to MCP 2.x and validate the supported google-adk combination
+      before widening the dependency pin.
 - [ ] Consider resource/prompt exposure (list_resources, prompts) once a
       concrete requirement exists.

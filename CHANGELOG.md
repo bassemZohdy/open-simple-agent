@@ -85,6 +85,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   tasks and resolved review findings remain in this changelog and git history.
 - Added proposed ADR-011 to make distributed A2A/deployment ownership,
   fencing, cancellation, recovery, and telemetry review questions explicit.
+- Reviewed the stable MCP 2.x SDK line. OSA remains intentionally pinned to
+  MCP 1.x because the current client/fixture APIs and the tested Google ADK
+  MCP dependency boundary still require a dedicated compatibility port.
 
 ### Added — Hardening coverage
 - Added focused tests for outbound policy, tenant isolation, external-agent
