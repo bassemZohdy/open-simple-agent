@@ -436,10 +436,15 @@ consumer with no server-side buffering, so a slow consumer applies natural
 backpressure.
 
 **Replicas:** sessions and conversation context live in the
-`SessionProvider`. Replicas configured with the same shared provider
-(persistent provider; tracked in the backlog) share session state, keep
-ownership enforced identically, and stream without leaking another caller's
-events — verified by cross-replica tests over a shared provider.
+`SessionProvider`. Replicas configured with the same shared PostgreSQL
+provider share session state, keep ownership enforced identically, and stream
+without leaking another caller's events — verified by cross-replica tests over
+a shared provider. File-backed SQLite remains local-only.
+
+Inbound A2A currently advertises non-streaming JSON-RPC capabilities. Durable
+task lookup, cancellation, terminal replay, and owner-loss fencing work across
+replicas; intermediate A2A stream fan-out and late-event ordering remain
+explicitly gated until a durable event/fan-out contract is accepted.
 
 ### Invoke request
 
