@@ -49,8 +49,9 @@ The following are the current blockers or decision gates:
   The real Kind lifecycle workflow passes in CI; OpenShift behavior remains a
   separate provider gate.
 - **Architecture-gated:** distributed A2A active-task ownership/cancellation
-  and replica-wide capability telemetry require an approved ownership,
-  retention, ordering, and deduplication design.
+  and replica-wide capability telemetry require approval of the proposed
+  ownership contract in `docs/adrs/011-distributed-operation-ownership.md`,
+  plus the telemetry retention/ordering decision.
 - **Product-gated:** translated locales, browser OIDC issuer/client/redirect
   semantics, package registry publication, and the first public release need
   explicit product decisions.
@@ -59,9 +60,11 @@ The following are the current blockers or decision gates:
 
 ## Recommended next task
 
-Define distributed operation ownership. The next decision gates are distributed
-A2A active-task state, shared telemetry collection, translated locales,
-browser OIDC contracts, package publication, and the first public release.
+Review and approve the proposed distributed operation ownership contract in
+`docs/adrs/011-distributed-operation-ownership.md`. The next decision gates
+after that review are distributed A2A active-task state, shared telemetry
+collection, translated locales, browser OIDC contracts, package publication,
+and the first public release.
 
 ---
 

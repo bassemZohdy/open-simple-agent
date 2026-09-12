@@ -13,6 +13,7 @@ Use the shortest document that answers the question:
 | [Changelog](../CHANGELOG.md) | Development history and milestone snapshots |
 | [Guides](guides/) | Task-oriented operations, deployment, security, and upgrade walkthroughs |
 | [ADRs](adrs/) | Architectural decisions and their consequences |
+| [ADR-011](adrs/011-distributed-operation-ownership.md) | Proposed lease, fencing, cancellation, and recovery contract for replica-safe operations |
 | [DAR-001](DAR-001-adk-vs-langchain-langgraph.md) | Weighted comparison of ADK, LangChain, and LangGraph for OSA |
 
 For implementation status, start with the README. For unfinished work, use

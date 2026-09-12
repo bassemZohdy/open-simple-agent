@@ -59,6 +59,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ### Documentation
 - Cleaned `TODO.md` to retain only active, deferred, and gated work; completed
   tasks and resolved review findings remain in this changelog and git history.
+- Added proposed ADR-011 to make distributed A2A/deployment ownership,
+  fencing, cancellation, recovery, and telemetry review questions explicit.
 
 ### Added — Hardening coverage
 - Added focused tests for outbound policy, tenant isolation, external-agent
