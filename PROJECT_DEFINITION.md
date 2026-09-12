@@ -263,8 +263,8 @@ API and is development-only. Durable Control Plane deployments select the
 generic `kubectl`-backed Kubernetes provider, which supports
 Deployment/Service/config/secret/probe/lifecycle behavior and rehydrates
 status from OSA identity labels after a Control Plane restart. Real Kind
-acceptance and distributed operation ownership remain gated. OpenShift-specific
-behavior remains separately deferred.
+acceptance passes in CI; distributed operation ownership remains gated.
+OpenShift-specific behavior remains separately deferred.
 
 ### Control Panel
 

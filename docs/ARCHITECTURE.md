@@ -303,8 +303,8 @@ version snapshot but its stop/relaunch/persist consistency remains open.
 Durable Control Plane deployments select the Kubernetes provider. Deployed
 runtimes are external processes: no ADK internals are imported. Kubernetes
 status/list operations rehydrate workloads from OSA identity labels after a
-Control Plane restart; real Kind validation and distributed operation
-ownership remain open in `TODO.md`.
+Control Plane restart; real Kind validation passes in CI, while distributed
+operation ownership remains open in `TODO.md`.
 OpenShift-specific provider work is intentionally deferred.
 
 Deployment records expose an optional public runtime invoke URL synthesized

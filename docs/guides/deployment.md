@@ -144,7 +144,7 @@ never accepts process commands.
 
 ## Remaining deployment work
 
-- The real Kind-cluster lifecycle acceptance job is committed to CI; Control
-  Plane restart recovery and distributed deployment-operation ownership remain
-  gated by the Kubernetes CI environment.
+- The real Kind-cluster lifecycle acceptance job passes in CI; Control Plane
+  restart recovery is covered by provider reconciliation tests, while
+  distributed deployment-operation ownership remains a deployment gate.
 - Distributed A2A task state and cancellation semantics (P2.4)

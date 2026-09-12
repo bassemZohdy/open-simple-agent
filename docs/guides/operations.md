@@ -89,7 +89,6 @@ health probe; startup failures carry the captured logs in the record detail.
 
 ## Remaining operational work
 
-- Real Kind-cluster recovery acceptance and replica-safe deployment operation
-  ownership
+- Replica-safe deployment-operation ownership
 - Distributed A2A active-task state and cancellation semantics (P2.4)
 - Replica-wide capability telemetry and gateway-level quota policy

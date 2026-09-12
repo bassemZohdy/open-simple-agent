@@ -35,19 +35,19 @@ Production-readiness limits are:
   telemetry collection are not distributed-safe; long-running operation
   ownership and global gateway quotas remain deployment concerns;
 - translated locales, deployment-specific browser OIDC, package publication,
-  and the first public release remain open; Kubernetes lifecycle acceptance is
-  wired into CI but has not been run from this workstation because Docker is
+  and the first public release remain open; the Kubernetes lifecycle acceptance
+  passes in CI, while this workstation cannot run it locally because Docker is
   unavailable.
 
 ## Pending work and gates
 
 The following are the current blockers or decision gates:
 
-- **Infrastructure-gated:** the real Kind/Kubernetes workflow and multi-process
-  deployment-operation ownership require a cluster-capable CI environment;
-  concrete enterprise identity-source acceptance requires a selected provider
-  and test tenant. The Kind lifecycle workflow is now present in CI; the
-  remaining real-cluster recovery acceptance still needs to pass there.
+- **Infrastructure-gated:** multi-process deployment-operation ownership
+  requires a cluster-capable CI environment; concrete enterprise
+  identity-source acceptance requires a selected provider and test tenant.
+  The real Kind lifecycle workflow passes in CI; OpenShift behavior remains a
+  separate provider gate.
 - **Architecture-gated:** distributed A2A active-task ownership/cancellation
   and replica-wide capability telemetry require an approved ownership,
   retention, ordering, and deduplication design.
@@ -59,27 +59,26 @@ The following are the current blockers or decision gates:
 
 ## Recommended next task
 
-Run the real Kind/Kubernetes acceptance workflow and define distributed
-operation ownership. The next decision gates are distributed A2A active-task state,
-shared telemetry collection, translated locales,
+Define distributed operation ownership. The next decision gates are distributed
+A2A active-task state, shared telemetry collection, translated locales,
 browser OIDC contracts, package publication, and the first public release.
 
 ---
 
 # P1 — Managed platform
 
-## Kubernetes deployment provider — CI GATED
+## Kubernetes deployment provider — CI VALIDATED
 
 Deployment/Service generation, bundle ConfigMaps, Secret references, probes,
 hardened pod security, scale/restart/rollback/status/log operations, provider
 selection, and OSA identity labels exist. Startup reconciliation and a
 cancellable polling watcher now refresh persisted records from provider-owned
-workloads after Control Plane restarts. A real Kind lifecycle acceptance
-workflow is committed, but this workstation cannot execute it while Docker is
-unavailable.
+workloads after Control Plane restarts. The real Kind lifecycle acceptance
+workflow passes in CI; this workstation cannot execute it locally while Docker
+is unavailable.
 
-- [ ] Validate deploy/readiness/scale/restart/rollback/recovery against Kind or
-  another real cluster in CI.
+- [x] Validate deploy/readiness/scale/restart/rollback/recovery against Kind in
+  CI.
 - [ ] Keep OpenShift-specific behavior separate from generic Kubernetes code.
 
 ---

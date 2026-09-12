@@ -71,14 +71,14 @@ Deployment revision for `rollback`. The Control Plane image and runtime image
 are released separately; durable runtime sessions require a shared migrated
 session database.
 
-## Remaining validation
+## Further validation
 
-Before marking the Kubernetes follow-up complete:
+The generic Kubernetes lifecycle is validated by the CI acceptance job:
 
-1. Keep deploy/readiness/scale/restart/rollback/stop passing against a real Kind
-   cluster in CI; local execution requires Docker to be running.
-2. Confirm Control Plane restart recovery with persisted deployment records and
-   Kubernetes labels, including status-watch behavior for already-running
-   workloads.
+1. Deploy/readiness/scale/restart/rollback/stop pass against a real Kind cluster
+   in CI; local execution requires Docker to be running.
+2. Continue validating Control Plane restart recovery with persisted deployment
+   records and Kubernetes labels, including status-watch behavior for
+   already-running workloads.
 
 OpenShift-specific behavior remains deferred; the provider targets standard Kubernetes APIs first.
