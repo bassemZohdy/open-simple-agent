@@ -68,8 +68,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   ownership-row lock during mutation; expired or superseded workers fail
   closed without publishing synthetic failures.
 - Added focused conflict, expiry, fencing, cancellation, terminal-state, and
-  unmigrated-startup tests. End-to-end multi-replica recovery/cancellation and
-  non-idempotent owner-loss replay remain open P2.4 work.
+  unmigrated-startup tests. Independent-handler lookup, remote cancellation
+  waiting, expired-owner cancellation takeover, and read-only terminal replay
+  are now covered; true multi-process handler recovery and non-idempotent
+  owner-loss replay remain open P2.4 work.
 - Added a PostgreSQL-gated replica task-store acceptance covering creation,
   completion, failure, lookup, recovery, and tenant/caller isolation across
   independent ownership workers.
@@ -89,8 +91,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   bounded JSONL capability sink with sanitization and compaction.
 - Added PostgreSQL session and cross-replica resource acceptance coverage.
 - Added opt-in PostgreSQL-backed A2A task records using the pinned SDK store,
-  tenant/subject ownership, startup initialization, and runtime shutdown
-  disposal; active in-flight task ownership remains a follow-up.
+  tenant/subject ownership, startup schema validation, and runtime shutdown
+  disposal; active in-flight ownership is now coordinated by the OSA lease and
+  fencing layer.
 - Added local A2A cancellation handling that emits a canceled terminal task
   state, with coverage for the executor event contract.
 - Added a Docker-backed Kind CI acceptance job covering Kubernetes deployment

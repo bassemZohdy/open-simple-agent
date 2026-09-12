@@ -27,10 +27,13 @@ primitive, explicit schema validation, and a fence-aware SDK task-store adapter
 described below. Every durable SDK task save carries the ownership snapshot
 through the call context and holds the ownership row lock through the save; a
 worker that loses its lease fails closed without publishing a synthetic
-failure. The SDK active-task registry, end-to-end replica recovery, and safe
-replay policy for non-idempotent work are still open, so this ADR remains
-proposed until the full acceptance criteria and open review questions are
-resolved.
+failure. Independent handlers can look up shared active tasks, wait for a
+remote owner to publish cancellation, and safely finalize cancellation after
+an owner lease expires. Terminal replay is read-only and does not duplicate
+task history. The SDK active-task registry, true multi-process handler
+recovery, and safe replay policy for non-idempotent work are still open, so
+this ADR remains proposed until the full acceptance criteria and open review
+questions are resolved.
 
 ## Decision drivers
 
@@ -96,6 +99,10 @@ concurrency rules.
   non-terminal. The owner observes that flag, cancels its local producer, and
   publishes exactly one terminal `canceled` state under the current fencing
   epoch.
+- A remote cancel requester waits for the durable terminal task. If the owner
+  lease expires first, it may acquire the next fencing epoch and finalize the
+  task as `canceled` without invoking the agent or replaying its side effects.
+  The terminal snapshot is then delivered through read-only protocol events.
 - If the owner disappears, the next lease holder may finalize the task as
   `failed` with a stable owner-loss error. It must not replay an agent call
   whose tool/model side effects have no idempotency guarantee. Safe replay is a
@@ -135,8 +142,8 @@ proves all of the following with two independent app/worker instances:
    and prevents the old owner from writing a terminal result.
 3. A2A completion, failure, lookup, and owner-loss recovery are durable and
    tenant/subject isolated across replicas.
-4. Cancellation is idempotent, has one terminal event, and wins over a late
-   completion from a fenced owner.
+4. Cancellation is idempotent, has one durable terminal state and one terminal
+   event per handler, and wins over a late completion from a fenced owner.
 5. Deployment lifecycle commands serialize per deployment and stale commands
    cannot overwrite newer intent.
 6. Telemetry event ids deduplicate across retries and retention/tenant filters
@@ -163,7 +170,8 @@ implementations only.
 - Non-idempotent in-flight agent work may end in an owner-loss failure instead
   of automatic replay.
 - Cross-replica request waiting consumes database/read capacity and needs
-  bounded polling, backpressure, and gateway quotas.
+  bounded polling, backpressure, and gateway quotas; OSA bounds remote cancel
+  waiting with `OSA_A2A_TASK_CANCEL_WAIT_SECONDS`.
 - The design still requires a selected shared telemetry sink and a CI runtime
   capable of exercising multiple workers.
 

@@ -269,7 +269,7 @@ files on a shared filesystem or use them as a replica coordination mechanism.
 
 Inbound A2A task state is process-local unless `OSA_A2A_TASK_DATABASE_URL` is
 set. With that variable, the runtime uses the A2A SDK's SQLAlchemy
-`DatabaseTaskStore` and creates the configured table before readiness. The
+`DatabaseTaskStore` and validates the migrated schema before readiness. The
 default table is `osa_a2a_tasks`; operators may set `OSA_A2A_TASK_TABLE` to a
 simple SQL identifier when multiple runtime databases share a schema. The DSN
 must use an async SQLAlchemy driver, for example:
@@ -295,12 +295,15 @@ ownership table `<task_table>_ownership`. Startup validates all three without
 creating or altering them. The ownership row uses the same bounded tenant /
 caller scope as task lookup, a worker lease, heartbeats, a fencing token on
 takeover, and a durable cancellation request. A retry can replay a durable
-terminal task or reclaim an expired lease. The SDK active-task registry is
-still process-local. Durable SDK task saves carry the ownership fence and hold
-the ownership-row lock through the write, so an expired or superseded worker
-cannot persist a late task mutation. A safe contract for replaying
-non-idempotent model/tool side effects, complete cross-replica cancellation
-ordering, and replica-failure recovery remains open. Deployment owners should
+terminal task or reclaim an expired lease. Remote cancellation waits for the
+durable owner or safely finalizes cancellation after the owner lease expires;
+terminal snapshots replay through read-only SDK events without a duplicate
+write. The SDK active-task registry is still process-local. Durable SDK task
+saves carry the ownership fence and hold the ownership-row lock through the
+write, so an expired or superseded worker cannot persist a late task mutation.
+True multi-process handler/active-task recovery, late-event acceptance, and a
+safe contract for replaying non-idempotent model/tool side effects remain open.
+Deployment owners should
 provision a dedicated database/schema and back it up according to their
 operational policy.
 
@@ -332,6 +335,7 @@ The runtime also accepts these service-level controls:
 | `OSA_A2A_TASK_DATABASE_URL` | Async SQLAlchemy DSN for durable A2A task records | unset (in-memory) |
 | `OSA_A2A_TASK_TABLE` | SQL identifier used by the A2A SDK task store | `osa_a2a_tasks` |
 | `OSA_A2A_TASK_LEASE_SECONDS` | Ownership lease duration before takeover; must be at least 5 seconds | `30` |
+| `OSA_A2A_TASK_CANCEL_WAIT_SECONDS` | Maximum time a remote cancellation waits for the owner before returning a retryable cancellation error | `30` |
 | `OSA_RATE_LIMIT_REQUESTS` | Per-route, per-caller fixed-window request budget; `0` disables | `0` |
 | `OSA_RATE_LIMIT_WINDOW_SECONDS` | Rate-limit window length | `60` |
 | `OSA_RATE_LIMIT_BURST` | Optional per-window burst capacity | request budget |

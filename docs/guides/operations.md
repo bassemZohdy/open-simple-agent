@@ -86,7 +86,10 @@ health probe; startup failures carry the captured logs in the record detail.
   `OSA_A2A_TASK_DATABASE_URL=... uv run osa-a2a-migrate` before rollout. The
   runtime validates the SDK task table and OSA ownership table at startup;
   it does not create them. Set `OSA_A2A_TASK_LEASE_SECONDS` consistently across
-  replicas when tuning takeover behavior.
+  replicas when tuning takeover behavior. Remote cancellation waits up to
+  `OSA_A2A_TASK_CANCEL_WAIT_SECONDS` for the current owner, then returns a
+  retryable cancellation error unless the owner lease has expired and safe
+  cancellation takeover is possible.
 
 ## Upgrades
 
@@ -106,6 +109,6 @@ health probe; startup failures carry the captured logs in the record detail.
 ## Remaining operational work
 
 - Replica-safe deployment-operation ownership
-- Complete distributed A2A active-task replica acceptance, cancellation
-  ordering, non-idempotent replay policy, and owner-loss recovery (P2.4)
+- Complete true multi-process A2A active-task replica acceptance, streaming and
+  late-event ordering, and the non-idempotent owner-loss/replay policy (P2.4)
 - Replica-wide capability telemetry and gateway-level quota policy

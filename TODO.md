@@ -45,12 +45,13 @@ Production-readiness limits are:
   required as defense in depth;
 - A2A task records can be durable/shareable with the opt-in SDK PostgreSQL
   store. Tenant/caller-scoped ownership leases, fencing, durable cancellation,
-  expired-lease takeover, explicit schema migration, fenced SDK task saves, and
-  fail-closed owner-loss handling are implemented, but the SDK active-task
-  registry, end-to-end replica recovery/cancellation acceptance,
-  non-idempotent owner-loss policy, and replica-wide telemetry collection are
-  not complete; long-running deployment-operation ownership and global gateway
-  quotas remain deployment concerns;
+  expired-lease takeover, explicit schema migration, fenced SDK task saves,
+  remote-handler cancellation waiting, expired-owner cancellation, read-only
+  terminal replay, and fail-closed owner-loss handling are implemented. The SDK
+  active-task registry, true multi-process handler acceptance, non-idempotent
+  owner-loss policy, and replica-wide telemetry collection are not complete;
+  long-running deployment-operation ownership and global gateway quotas remain
+  deployment concerns;
 - deployment-specific browser OIDC, package publication, and the first public
   release remain open; the Kubernetes lifecycle acceptance passes in CI, while
   this workstation cannot run it locally because Docker is unavailable.
@@ -64,10 +65,11 @@ The following are the current blockers or decision gates:
   identity-source acceptance requires a selected provider and test tenant.
   The real Kind lifecycle workflow passes in CI; OpenShift behavior remains a
   separate provider gate.
-- **Architecture-gated:** completing distributed A2A active-task fencing,
-  cancellation, and owner-loss recovery requires approval of the remaining
-  contract in `docs/adrs/011-distributed-operation-ownership.md`; replica-wide
-  capability telemetry additionally needs a retention/ordering decision.
+- **Architecture-gated:** completing the remaining distributed A2A
+  multi-process/active-task and non-idempotent owner-loss contract requires
+  approval of `docs/adrs/011-distributed-operation-ownership.md`;
+  replica-wide capability telemetry additionally needs a retention/ordering
+  decision.
 - **Product-gated:** browser OIDC issuer/client/redirect semantics, package
   registry publication, and the first public release need explicit product
   decisions. English and Arabic are the currently supported Control Panel
@@ -77,11 +79,13 @@ The following are the current blockers or decision gates:
 
 ## Recommended next task
 
-Complete distributed A2A active-task acceptance. The persistence provider
-hierarchy, shared-policy gate, scoped A2A leases, and fenced SDK task saves are
-implemented and covered by focused local/production-policy tests; the remaining
-architecture gate is full multi-process handler/active-task recovery,
-cross-replica cancellation ordering, and the non-idempotent replay contract.
+Complete true multi-process A2A active-task acceptance. The persistence
+provider hierarchy, shared-policy gate, scoped A2A leases, fenced SDK task
+saves, independent-handler lookup/cancellation acceptance, expired-owner
+cancellation, and terminal read-only replay are implemented and covered by
+focused tests. The remaining architecture gate is PostgreSQL-backed
+multi-process handler/active-task recovery, streaming/late-event acceptance,
+and the non-idempotent replay contract.
 
 ---
 
@@ -121,8 +125,12 @@ with tenant/caller scope, leases, fencing, durable cancellation, and expired
 lease takeover; run `osa-a2a-migrate` before startup. Durable task mutations
 now carry the acquired ownership snapshot through the SDK call context and
 hold the ownership-row lock while saving, so stale workers fail closed. The
-active executor registry remains process-local, and end-to-end recovery and
-cross-replica cancellation still need protocol acceptance.
+active executor registry remains process-local. Independent handlers can look
+up shared active tasks, wait for a remote owner to publish cancellation, and
+safely take over an expired owner lease; terminal snapshots are replayed through
+read-only SDK events so a second handler does not write duplicate task history.
+True multi-process handler/active-task recovery, streaming/late-event
+acceptance, and non-idempotent replay policy remain open.
 
 - [x] Fence SDK task mutations and add explicit owner-loss handling. The
   database adapter rejects missing, expired, or superseded fences without
@@ -130,13 +138,19 @@ cross-replica cancellation still need protocol acceptance.
 - [x] Add PostgreSQL task-store/ownership acceptance for creation, completion,
   failure, lookup, recovery, and tenant/caller isolation across two independent
   ownership workers.
-- [ ] Add end-to-end multi-process/handler acceptance for active-task creation,
-  streaming/lookup, and recovery; the SDK active-task registry remains local to
-  each process.
-- [ ] Complete cross-replica cancellation ordering and protection against late
-  events/retries; durable cancellation requests and local terminal emission
-  are implemented, but the remote-handler wait/terminal-event contract and
-  late-event acceptance remain open.
+- [x] Add independent-handler acceptance for shared active-task lookup,
+  remote cancellation waiting, and expired-owner cancellation takeover; the
+  SDK active-task registry remains local to each process.
+- [x] Complete the cross-replica cancellation request path: remote handlers
+  wait for the durable terminal task, expired owners can be fenced out and
+  cancellation can be finalized safely, and terminal snapshots replay without
+  a second durable write.
+- [ ] Add true multi-process/multi-worker PostgreSQL acceptance for active-task
+  creation, streaming/lookup, recovery, cancellation, and late events; the SDK
+  active-task registry remains local to each process.
+- [ ] Decide and implement the non-idempotent owner-loss/retry policy; default
+  behavior must remain fail-closed until side-effect replay semantics are
+  explicitly approved.
 
 ## Capability-level audit telemetry — PARTIALLY COMPLETE
 

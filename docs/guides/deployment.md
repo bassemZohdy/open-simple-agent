@@ -33,6 +33,7 @@ Environment variables:
 | `OSA_A2A_TASK_DATABASE_URL` | Async SQLAlchemy DSN for durable A2A tasks and ownership; unset keeps the process-local SDK store |
 | `OSA_A2A_TASK_TABLE` | A2A task table name; ownership uses the `<name>_ownership` companion table |
 | `OSA_A2A_TASK_LEASE_SECONDS` | A2A ownership lease duration; minimum 5 seconds, default 30 |
+| `OSA_A2A_TASK_CANCEL_WAIT_SECONDS` | Maximum remote-handler wait for durable cancellation before a retryable error; default 30 seconds |
 | `OSA_PERSISTENCE_POLICY` | `local` (default) or `shared`; shared requires PostgreSQL for enabled state and Kubernetes for the durable Control Plane |
 | `OSA_MEMORY_DATABASE_URL` | PostgreSQL DSN for shared memory, or file-backed `sqlite+aiosqlite:///...` for local memory (optional; in-memory without it) |
 | `OSA_AUTH_*` | Bearer/OIDC validation for inbound calls (see the security guide) |
@@ -159,9 +160,13 @@ coordination.
 - A2A replicas need a shared, migrated PostgreSQL `OSA_A2A_TASK_DATABASE_URL`.
   OSA ownership leases serialize active execution and durable cancellation;
   expired leases can be reclaimed, and the SDK task store fences each durable
-  save while the ownership row is locked. The SDK active-task registry,
-  cross-replica cancellation ordering, and complete owner-loss recovery remain
-  open P2.4 work.
+  save while the ownership row is locked. Remote cancellation waits for the
+  durable terminal state and can safely finalize cancellation after lease
+  expiry; terminal replay is read-only. The SDK active-task registry, true
+  multi-process handler acceptance, late-event acceptance, and non-idempotent
+  owner-loss recovery remain open P2.4 work. Tune
+  `OSA_A2A_TASK_CANCEL_WAIT_SECONDS` when owner shutdown routinely exceeds the
+  default wait, keeping it bounded for client retries.
 - Optional HTTP rate limits are available in-process; production replicas
   should enforce the same policy at an API gateway or service mesh.
 
@@ -184,5 +189,5 @@ never accepts process commands.
 - The real Kind-cluster lifecycle acceptance job passes in CI; Control Plane
   restart recovery is covered by provider reconciliation tests, while
   distributed deployment-operation ownership remains a deployment gate.
-- Complete distributed A2A active-task replica acceptance, cancellation
-  ordering, non-idempotent replay policy, and owner-loss recovery (P2.4)
+- Complete true multi-process A2A active-task replica acceptance, streaming and
+  late-event ordering, and the non-idempotent owner-loss/replay policy (P2.4)

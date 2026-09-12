@@ -35,7 +35,11 @@ if TYPE_CHECKING:
     from osa.generic_agent import AgentDefinition, AuthSettings, SkillDefinition
 
 from osa.runtimes.adk.a2a_ownership import A2aTaskOwnershipStore, TaskOwnership, heartbeat_loop
-from osa.runtimes.adk.a2a_task_store import FencedDatabaseTaskStore, bind_task_ownership
+from osa.runtimes.adk.a2a_task_store import (
+    FencedDatabaseTaskStore,
+    bind_task_ownership,
+    bind_task_replay,
+)
 
 __all__ = [
     "A2aError",
@@ -44,6 +48,7 @@ __all__ = [
     "A2A_TASK_DATABASE_URL_ENV_VAR",
     "A2A_TASK_TABLE_ENV_VAR",
     "A2A_TASK_LEASE_SECONDS_ENV_VAR",
+    "A2A_TASK_CANCEL_WAIT_SECONDS_ENV_VAR",
     "OsaA2aAgentExecutor",
     "RemoteA2aError",
     "attach_a2a_routes",
@@ -58,8 +63,10 @@ A2A_WELL_KNOWN_PATH = "/.well-known/agent-card.json"
 A2A_TASK_DATABASE_URL_ENV_VAR = "OSA_A2A_TASK_DATABASE_URL"
 A2A_TASK_TABLE_ENV_VAR = "OSA_A2A_TASK_TABLE"
 A2A_TASK_LEASE_SECONDS_ENV_VAR = "OSA_A2A_TASK_LEASE_SECONDS"
+A2A_TASK_CANCEL_WAIT_SECONDS_ENV_VAR = "OSA_A2A_TASK_CANCEL_WAIT_SECONDS"
 DEFAULT_A2A_TASK_TABLE = "osa_a2a_tasks"
 DEFAULT_A2A_TASK_LEASE_SECONDS = 30
+DEFAULT_A2A_TASK_CANCEL_WAIT_SECONDS = 30.0
 DEFAULT_INPUT_MODES = ["text/plain"]
 DEFAULT_OUTPUT_MODES = ["text/plain"]
 
@@ -317,7 +324,7 @@ class OsaA2aAgentExecutor:
         while True:
             task = await self._task_store.get(task_id, context.call_context)
             if task is not None and task.status.state in terminal_states:
-                await event_queue.enqueue_event(task)
+                await self._enqueue_replayed_task(context, event_queue, task)
                 return None
             current = await self._ownership_store.get(task_id, scope_key)
             if current is None or current.state == "released":
@@ -326,9 +333,114 @@ class OsaA2aAgentExecutor:
                     return ownership
             elif current.state in {"completed", "failed", "canceled"}:
                 if task is not None:
-                    await event_queue.enqueue_event(task)
+                    await self._enqueue_replayed_task(context, event_queue, task)
                 return None
             await asyncio.sleep(0.25)
+
+    async def _enqueue_replayed_task(self, context: Any, event_queue: Any, task: Any) -> None:
+        """Replay a terminal snapshot as fenced read-only SDK events."""
+        bind_task_replay(context.call_context, task)
+        from a2a.types import TaskArtifactUpdateEvent, TaskStatusUpdateEvent
+
+        for artifact in task.artifacts:
+            await event_queue.enqueue_event(
+                TaskArtifactUpdateEvent(
+                    task_id=task.id,
+                    context_id=task.context_id,
+                    artifact=artifact,
+                    append=False,
+                    last_chunk=True,
+                )
+            )
+        await event_queue.enqueue_event(
+            TaskStatusUpdateEvent(
+                task_id=task.id,
+                context_id=task.context_id,
+                status=task.status,
+                metadata=task.metadata,
+            )
+        )
+
+    async def _wait_for_remote_cancellation(
+        self,
+        context: Any,
+        event_queue: Any,
+        task_id: str,
+        context_id: str,
+        scope_key: str,
+    ) -> None:
+        """Wait for, or safely finalize, cancellation owned by another worker."""
+        from a2a.types import TaskState
+        from a2a.utils.errors import TaskNotCancelableError
+
+        assert self._ownership_store is not None
+        assert self._task_store is not None
+        terminal_states = {
+            TaskState.TASK_STATE_COMPLETED,
+            TaskState.TASK_STATE_FAILED,
+            TaskState.TASK_STATE_CANCELED,
+        }
+        deadline = asyncio.get_running_loop().time() + _task_cancel_wait_seconds()
+
+        while True:
+            task = await self._task_store.get(task_id, context.call_context)
+            if task is not None and task.status.state in terminal_states:
+                await self._enqueue_replayed_task(context, event_queue, task)
+                return
+
+            current = await self._ownership_store.get(task_id, scope_key)
+            if current is None:
+                raise TaskNotCancelableError(message="A2A task ownership disappeared before cancellation completed")
+
+            lease_expired = current.lease_until is None or current.lease_until <= datetime.now(UTC)
+            if current.owner_id != self._ownership_store.owner_id and (current.state != "running" or lease_expired):
+                takeover = await self._ownership_store.acquire(task_id, context_id, scope_key)
+                if takeover is not None:
+                    await self._finalize_cancelled_task(context, event_queue, takeover)
+                    return
+
+            if asyncio.get_running_loop().time() >= deadline:
+                raise TaskNotCancelableError(
+                    message=(
+                        "Cancellation was recorded, but the owning worker has not "
+                        "published a terminal task; retry tasks/cancel or use tasks/get"
+                    )
+                )
+            await asyncio.sleep(0.1)
+
+    async def _finalize_cancelled_task(
+        self,
+        context: Any,
+        event_queue: Any,
+        ownership: TaskOwnership,
+    ) -> None:
+        """Finalize an abandoned task without replaying model/tool side effects."""
+        from a2a.types import TaskState
+
+        assert self._ownership_store is not None
+        assert self._task_store is not None
+        task = await self._task_store.get(ownership.task_id, context.call_context)
+        if task is None:
+            raise RuntimeError("A2A task disappeared while its expired lease was reclaimed")
+
+        terminal_state_names = {
+            TaskState.TASK_STATE_COMPLETED: "completed",
+            TaskState.TASK_STATE_FAILED: "failed",
+            TaskState.TASK_STATE_CANCELED: "canceled",
+        }
+        existing_terminal_state = terminal_state_names.get(task.status.state)
+        if existing_terminal_state is not None:
+            await self._ownership_store.release(ownership, existing_terminal_state)
+            await self._enqueue_replayed_task(context, event_queue, task)
+            return
+
+        task.status.state = TaskState.TASK_STATE_CANCELED
+        task.status.timestamp.FromDatetime(datetime.now(UTC))
+        bind_task_ownership(context.call_context, ownership)
+        await self._task_store.save(task, context.call_context)
+        if not await self._ownership_store.release(ownership, "canceled"):
+            raise RuntimeError("A2A cancellation owner lost its fencing lease")
+        await self._enqueue_replayed_task(context, event_queue, task)
 
     @staticmethod
     def _build_request(user_text: str, session_id: str | None) -> Any:
@@ -355,9 +467,10 @@ class OsaA2aAgentExecutor:
         the executor; late agent output cannot be published after cancellation.
         With durable ownership, the cancel request is persisted for the active
         worker and takeover path. Local cancellation publishes under the active
-        ownership fence; a remote requester records the flag and the remaining
-        cross-replica terminal-event wait is part of the distributed-runtime
-        acceptance contract.
+        ownership fence; a remote requester records the flag and waits for the
+        durable terminal task. If the owner lease expires, the requester may
+        safely finalize cancellation under a new fence without replaying agent
+        side effects.
         """
         from a2a.server.tasks import TaskUpdater
 
@@ -372,6 +485,15 @@ class OsaA2aAgentExecutor:
                 # under the active worker's fence. A remote requester only
                 # records the durable flag; the owner must publish the event.
                 bind_task_ownership(context.call_context, current)
+            elif current is not None:
+                await self._wait_for_remote_cancellation(
+                    context,
+                    event_queue,
+                    task_id,
+                    context_id,
+                    scope_key,
+                )
+                return
         updater = TaskUpdater(event_queue, task_id, context_id)
         await updater.cancel()
 
@@ -426,6 +548,17 @@ def _task_lease_seconds() -> int:
     if lease_seconds < 5:
         raise ValueError(f"{A2A_TASK_LEASE_SECONDS_ENV_VAR} must be at least 5 seconds")
     return lease_seconds
+
+
+def _task_cancel_wait_seconds() -> float:
+    raw = os.environ.get(A2A_TASK_CANCEL_WAIT_SECONDS_ENV_VAR, str(DEFAULT_A2A_TASK_CANCEL_WAIT_SECONDS))
+    try:
+        wait_seconds = float(raw)
+    except ValueError as exc:
+        raise ValueError(f"{A2A_TASK_CANCEL_WAIT_SECONDS_ENV_VAR} must be a number") from exc
+    if wait_seconds < 1:
+        raise ValueError(f"{A2A_TASK_CANCEL_WAIT_SECONDS_ENV_VAR} must be at least 1 second")
+    return wait_seconds
 
 
 def _task_store_and_engine(app: Any) -> tuple[Any, Any | None]:

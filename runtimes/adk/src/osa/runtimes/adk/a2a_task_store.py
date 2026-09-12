@@ -13,6 +13,7 @@ from typing import Any
 from osa.runtimes.adk.a2a_ownership import A2aTaskOwnershipStore, TaskOwnership
 
 A2A_TASK_OWNERSHIP_CONTEXT_KEY = "osa_a2a_task_ownership"
+A2A_TASK_REPLAY_CONTEXT_KEY = "osa_a2a_task_replay"
 
 
 class A2aTaskOwnershipLostError(RuntimeError):
@@ -25,6 +26,21 @@ def bind_task_ownership(context: Any, ownership: TaskOwnership) -> None:
     if not isinstance(state, dict):
         raise RuntimeError("A2A call context does not expose mutable state")
     state[A2A_TASK_OWNERSHIP_CONTEXT_KEY] = ownership
+
+
+def bind_task_replay(context: Any, task: Any) -> None:
+    """Mark one already-persisted terminal task as a read-only replay.
+
+    The A2A SDK's result aggregator persists every ``Task`` event it consumes.
+    A replica that is returning a terminal snapshot written by another worker
+    must therefore tell the fenced adapter not to write that snapshot again.
+    The adapter verifies the durable row is byte-for-byte identical before
+    accepting the replay, so this is not a write or a fence bypass.
+    """
+    state = getattr(context, "state", None)
+    if not isinstance(state, dict):
+        raise RuntimeError("A2A call context does not expose mutable state")
+    state[A2A_TASK_REPLAY_CONTEXT_KEY] = task
 
 
 class FencedDatabaseTaskStore:
@@ -53,6 +69,14 @@ class FencedDatabaseTaskStore:
 
     async def save(self, task: Any, context: Any) -> None:
         await self._store._ensure_initialized()  # noqa: SLF001 - SDK adapter
+        replay = _context_replay(context)
+        if replay is not None:
+            if replay.id != task.id:
+                raise A2aTaskOwnershipLostError(f"A2A task {task.id} replay does not match its durable snapshot")
+            current = await self._store.get(task.id, context)
+            if current is None or not _same_task(current, replay):
+                raise A2aTaskOwnershipLostError(f"A2A task {task.id} changed before its terminal replay")
+            return
         ownership = _context_ownership(context)
         if ownership is None or ownership.task_id != task.id:
             raise A2aTaskOwnershipLostError(f"A2A task {task.id} has no current ownership fence")
@@ -117,9 +141,23 @@ def _context_ownership(context: Any) -> TaskOwnership | None:
     return ownership if isinstance(ownership, TaskOwnership) else None
 
 
+def _context_replay(context: Any) -> Any | None:
+    state = getattr(context, "state", None)
+    if not isinstance(state, dict):
+        return None
+    return state.get(A2A_TASK_REPLAY_CONTEXT_KEY)
+
+
+def _same_task(left: Any, right: Any) -> bool:
+    """Compare protobuf tasks deterministically without exposing their data."""
+    return bool(left.SerializeToString(deterministic=True) == right.SerializeToString(deterministic=True))
+
+
 __all__ = [
     "A2A_TASK_OWNERSHIP_CONTEXT_KEY",
+    "A2A_TASK_REPLAY_CONTEXT_KEY",
     "A2aTaskOwnershipLostError",
     "FencedDatabaseTaskStore",
+    "bind_task_replay",
     "bind_task_ownership",
 ]

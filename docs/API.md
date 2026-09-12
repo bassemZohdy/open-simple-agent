@@ -326,13 +326,17 @@ without creating or altering them. Records and ownership leases are scoped by
 validated tenant and subject. The ownership table provides one worker lease,
 heartbeats, a monotonically increasing fencing token on takeover, and a
 durable cancellation request. A retry waits for a terminal task, replays that
-terminal record, or reclaims an expired lease. The SDK active-task registry is
-still process-local. Durable SDK task saves carry the acquired ownership
-snapshot through the call context and are committed while the ownership-row
-lock is held; expired or superseded workers therefore fail closed without
-publishing a synthetic failure. End-to-end cancellation ordering,
-non-idempotent replay, and replica-failure recovery remain open
-distributed-runtime work.
+terminal record, or reclaims an expired lease. Remote cancellation waits for
+the durable owner to publish the terminal state; if its lease expires, the
+requester can safely finalize cancellation under a new fence without replaying
+agent side effects. Terminal replay uses read-only SDK events and does not
+write a duplicate task history. The SDK active-task registry is still
+process-local. Durable SDK task saves carry the acquired ownership snapshot
+through the call context and are committed while the ownership-row lock is
+held; expired or superseded workers therefore fail closed without publishing
+a synthetic failure. True multi-process handler/active-task recovery,
+late-event acceptance, and non-idempotent replay remain open distributed-runtime
+work.
 
 External agents are A2A servers outside OSA, tracked as records distinct
 from managed agents (they are never deployed). The PostgreSQL-backed registry

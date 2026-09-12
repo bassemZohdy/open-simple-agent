@@ -16,7 +16,7 @@ import socket
 import threading
 import time
 from importlib.util import find_spec
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, cast
 
 import pytest
 import uvicorn
@@ -550,6 +550,205 @@ class TestA2aTaskStore:
         monkeypatch.setenv("OSA_A2A_TASK_TABLE", "tasks;drop")
         with pytest.raises(ValueError, match="simple SQL identifier"):
             _task_store_and_engine(FastAPI())
+
+
+class TestA2aDistributedHandlerAcceptance:
+    async def test_independent_handlers_lookup_and_cancel_shared_active_task(self, tmp_path: Path) -> None:
+        """A second handler cancels a task owned by the first handler."""
+        from uuid import uuid4
+
+        from a2a.server.context import ServerCallContext
+        from a2a.server.request_handlers import DefaultRequestHandler
+        from a2a.server.tasks import DatabaseTaskStore
+        from a2a.types import (
+            CancelTaskRequest,
+            GetTaskRequest,
+            Message,
+            Part,
+            Role,
+            SendMessageConfiguration,
+            SendMessageRequest,
+            Task,
+            TaskState,
+            TaskStatus,
+        )
+        from sqlalchemy import update
+        from sqlalchemy.ext.asyncio import create_async_engine
+
+        from osa.generic_agent import AgentResponse
+        from osa.runtimes.adk.a2a import (
+            OsaA2aAgentExecutor,
+            _a2a_task_owner,
+            build_agent_card,
+        )
+        from osa.runtimes.adk.a2a_migrations import migrate_a2a_schema
+        from osa.runtimes.adk.a2a_ownership import A2aTaskOwnershipStore
+        from osa.runtimes.adk.a2a_task_store import FencedDatabaseTaskStore
+
+        class ControlledAgent:
+            def __init__(self, name: str) -> None:
+                definition = _make_agent(name).definition
+                self.definition = definition
+                self.skills: list[Any] = []
+                self.started = asyncio.Event()
+                self.release = asyncio.Event()
+                self.call_count = 0
+
+            async def invoke(self, request: object) -> AgentResponse:
+                del request
+                self.call_count += 1
+                self.started.set()
+                await self.release.wait()
+                return AgentResponse(output="controlled response", invocation_id=uuid4())
+
+            async def shutdown(self) -> None:
+                return None
+
+        database_url = f"sqlite+aiosqlite:///{tmp_path / 'shared-a2a.db'}"
+        engine_one = create_async_engine(database_url, pool_pre_ping=True)
+        engine_two = create_async_engine(database_url, pool_pre_ping=True)
+        ownership_one = A2aTaskOwnershipStore(
+            engine_one,
+            table_name="handler_acceptance_ownership",
+            lease_seconds=5,
+        )
+        ownership_two = A2aTaskOwnershipStore(
+            engine_two,
+            table_name="handler_acceptance_ownership",
+            lease_seconds=5,
+        )
+        sdk_store_one = DatabaseTaskStore(
+            engine_one,
+            create_table=False,
+            table_name="tasks",
+            owner_resolver=_a2a_task_owner,
+        )
+        sdk_store_two = DatabaseTaskStore(
+            engine_two,
+            create_table=False,
+            table_name="tasks",
+            owner_resolver=_a2a_task_owner,
+        )
+        store_one = FencedDatabaseTaskStore(sdk_store_one, ownership_one)
+        store_two = FencedDatabaseTaskStore(sdk_store_two, ownership_two)
+        await migrate_a2a_schema(
+            engine_one,
+            task_table_name="tasks",
+            task_store=store_one,
+            ownership_store=ownership_one,
+        )
+        await store_one.initialize()
+        await store_two.initialize()
+
+        agent_one = ControlledAgent("handler-one")
+        agent_two = ControlledAgent("handler-two")
+        card = build_agent_card(agent_one.definition, [], "http://test/a2a")
+        handler_one = DefaultRequestHandler(
+            agent_executor=cast(
+                "Any",
+                OsaA2aAgentExecutor(
+                    agent_one,
+                    ownership_store=ownership_one,
+                    task_store=store_one,
+                ),
+            ),
+            task_store=cast("Any", store_one),
+            agent_card=card,
+        )
+        handler_two = DefaultRequestHandler(
+            agent_executor=cast(
+                "Any",
+                OsaA2aAgentExecutor(
+                    agent_two,
+                    ownership_store=ownership_two,
+                    task_store=store_two,
+                ),
+            ),
+            task_store=cast("Any", store_two),
+            agent_card=card,
+        )
+
+        try:
+            request = SendMessageRequest(
+                message=Message(
+                    message_id="handler-acceptance-message",
+                    role=Role.ROLE_USER,
+                    parts=[Part(text="start long task")],
+                ),
+                configuration=SendMessageConfiguration(return_immediately=True),
+            )
+            initial = await handler_one.on_message_send(request, ServerCallContext())
+            assert isinstance(initial, Task)
+            await asyncio.wait_for(agent_one.started.wait(), timeout=2)
+
+            observed = await handler_two.on_get_task(
+                GetTaskRequest(id=initial.id),
+                ServerCallContext(),
+            )
+            assert observed is not None
+            assert observed.status.state == TaskState.TASK_STATE_SUBMITTED
+
+            cancel_operation = asyncio.create_task(
+                handler_two.on_cancel_task(
+                    CancelTaskRequest(id=initial.id),
+                    ServerCallContext(),
+                )
+            )
+            await asyncio.sleep(0.2)
+            assert not cancel_operation.done()
+            assert agent_two.call_count == 0
+
+            agent_one.release.set()
+            canceled = await asyncio.wait_for(cancel_operation, timeout=5)
+            assert isinstance(canceled, Task)
+            assert canceled.status.state == TaskState.TASK_STATE_CANCELED
+            assert agent_one.call_count == 1
+            assert agent_two.call_count == 0
+
+            final = await handler_two.on_get_task(
+                GetTaskRequest(id=initial.id),
+                ServerCallContext(),
+            )
+            assert final is not None
+            assert final.status.state == TaskState.TASK_STATE_CANCELED
+
+            recovery_task = Task(
+                id="handler-acceptance-recovery",
+                context_id="handler-acceptance-recovery-context",
+                status=TaskStatus(state=TaskState.TASK_STATE_WORKING),
+            )
+            old_context = ServerCallContext()
+            old_lease = await ownership_one.acquire(
+                recovery_task.id,
+                recovery_task.context_id,
+                "anonymous",
+            )
+            assert old_lease is not None
+            from osa.runtimes.adk.a2a_task_store import bind_task_ownership
+
+            bind_task_ownership(old_context, old_lease)
+            await store_one.save(recovery_task, old_context)
+            from datetime import UTC, datetime, timedelta
+
+            async with engine_one.begin() as connection:
+                await connection.execute(
+                    update(ownership_one._table)  # noqa: SLF001 - expiry is acceptance setup
+                    .where(ownership_one._table.c.task_id == recovery_task.id)
+                    .values(lease_until=datetime.now(UTC) - timedelta(seconds=1))
+                )
+
+            recovered = await handler_two.on_cancel_task(
+                CancelTaskRequest(id=recovery_task.id),
+                ServerCallContext(),
+            )
+            assert isinstance(recovered, Task)
+            assert recovered.status.state == TaskState.TASK_STATE_CANCELED
+            assert agent_two.call_count == 0
+        finally:
+            await handler_one.aclose()
+            await handler_two.aclose()
+            await engine_one.dispose()
+            await engine_two.dispose()
 
 
 class TestA2aServer:
