@@ -10,60 +10,63 @@ documentation, and appropriate failure/security behavior are complete.
 ## Current status
 
 The runnable-agent gate, managed-platform foundation, Manager Agent surface,
-Control Plane, runtime images, release automation, and current English
-Control Panel are implemented and covered by CI.
+Control Plane, runtime images, release automation, current English Control
+Panel, durable runtime sessions, migration-owned memory schema,
+operator-selected deployment provider, capability telemetry, and opt-in HTTP
+rate-limit contract are implemented and covered by tests/CI.
 
 Production-readiness limits are:
 
-- runtime sessions are in-memory unless a durable provider is selected and
-  implemented;
-- memory PostgreSQL still uses transitional bootstrap DDL;
+- runtime sessions remain in-memory unless the bundle opts into the durable
+  provider and its migration is applied;
+- memory PostgreSQL requires its independent versioned migration;
 - resource records are durable and route/deployment reads reconcile local
-  catalogs, while live PostgreSQL cross-replica acceptance remains gated;
+  catalogs; the PostgreSQL cross-replica acceptance is covered in CI;
 - PostgreSQL external-agent records are durable, while the default in-memory
   registry and local provider process state remain process-local;
-- local deployment-provider restart reconciliation and multi-replica ownership
-  remain undefined;
+- durable Control Planes require an external workload provider; local-provider
+  state remains process-local by design;
 - outbound A2A, Streamable HTTP MCP, and OAuth token destinations have an
   application-level URL/DNS/redirect policy, with network egress still
   required as defense in depth;
-- A2A task state, capability telemetry, and HTTP capacity controls are not
-  replica-safe or fully defined;
+- A2A task state and HTTP capacity storage are not replica-safe; capability
+  telemetry is defined and payload-free but durable sink selection remains
+  open;
 - translated locales, deployment-specific browser OIDC, package publication,
   and the first public release remain open; Kubernetes follow-up is paused.
 
 ## Recommended next task
 
-Run the PostgreSQL cross-replica acceptance workflow, then define local-provider
-recovery/ownership semantics. The next gated product decisions are durable
-sessions, migration-owned memory schema, packaged deployment topology, and
-distributed A2A task state.
+Run the real Kind/Kubernetes acceptance workflow and define distributed
+operation ownership. The next gated product decisions are distributed A2A task
+state, shared capacity storage, translated locales, browser OIDC contracts,
+package publication, and the first public release.
 
 ---
 
 # P1 — Runtime durability
 
-## Persistent runtime sessions — PENDING
+## Persistent runtime sessions — COMPLETE
 
-`SessionProvider` defaults to the in-memory `SessionManager`. It enforces
-ownership, TTL, and bounded history, but state is lost with a runtime process.
+`SessionProvider` defaults to the in-memory `SessionManager`; persistent
+bundles select the versioned PostgreSQL provider explicitly.
 
-- [ ] Select the persistent-provider contract and configuration semantics for
+- [x] Select the persistent-provider contract and configuration semantics for
   `spec.session.persistence`, including database lifecycle and migration
   ownership.
-- [ ] Implement and wire a durable provider without weakening ownership,
+- [x] Implement and wire a durable provider without weakening ownership,
   expiry, bounded history, or metadata redaction.
-- [ ] Add restart, expiry, ownership, concurrent-update, and cross-process
+- [x] Add restart, expiry, ownership, concurrent-update, and cross-process
   tests; document backup, upgrade, and recovery behavior.
 
-## Memory schema ownership — PENDING
+## Memory schema ownership — COMPLETE
 
-`PostgresMemoryProvider` still creates `osa_memory_entries` with bootstrap DDL.
+`PostgresMemoryProvider` uses the independent versioned memory migration path.
 
-- [ ] Select migration ownership and operational commands for the independent
+- [x] Select migration ownership and operational commands for the independent
   memory database.
-- [ ] Replace runtime bootstrap DDL with an explicit versioned migration path.
-- [ ] Add upgrade/rollback coverage and document backup and startup ordering.
+- [x] Replace runtime bootstrap DDL with an explicit versioned migration path.
+- [x] Add upgrade/rollback coverage and document backup and startup ordering.
 
 ---
 
@@ -75,7 +78,7 @@ Deployment/Service generation, bundle ConfigMaps, Secret references, probes,
 hardened pod security, scale/restart/rollback/status/log operations, and OSA
 identity labels exist. Resume only when explicitly reprioritized.
 
-- [ ] Wire packaged Control Plane provider selection/configuration.
+- [x] Wire packaged Control Plane provider selection/configuration.
 - [ ] Validate deploy/readiness/scale/restart/rollback/recovery against Kind or
   another real cluster in CI.
 - [ ] Add status-watch and recovery behavior for Control Plane restarts and
@@ -84,15 +87,16 @@ identity labels exist. Resume only when explicitly reprioritized.
   limits, and upgrades.
 - [ ] Keep OpenShift-specific behavior separate from generic Kubernetes code.
 
-## Packaged Control Plane deployment launcher — PENDING
+## Packaged Control Plane deployment launcher — COMPLETE
 
-The management image does not package `osa-runtime`, while the default local
-deployment command invokes it.
+The management image packages `osa-runtime` for the local development
+topology; durable Control Planes require an explicitly selected Kubernetes
+provider and separately published runtime image.
 
-- [ ] Decide whether to package the launcher, require an external provider, or
+- [x] Decide whether to package the launcher, require an external provider, or
   make provider selection explicit.
-- [ ] Add image-level integration proving launch, probe, stop, and observation.
-- [ ] Document split-image and colocated-process topologies and command-template
+- [x] Add image-level integration proving launch, probe, stop, and observation.
+- [x] Document split-image and colocated-process topologies and command-template
   security boundaries.
 
 ---
@@ -117,22 +121,22 @@ The runtime A2A executor and SDK task store are process-local.
   acceptance tests without tenant/caller leakage.
 - [ ] Define cancellation ordering and protection against late events/retries.
 
-## Capability-level audit telemetry — PENDING
+## Capability-level audit telemetry — PARTIALLY COMPLETE
 
-Management, runtime-boundary, and auth-denial audits exist; per-capability
-model/native-tool/MCP telemetry does not.
+Management, runtime-boundary, and auth-denial audits exist. Model/native-tool/
+MCP capability metrics and an optional payload-free sink are implemented.
 
-- [ ] Define taxonomy, redaction, retention, sampling, and performance policy.
+- [x] Define taxonomy, redaction, retention, sampling, and performance policy.
 - [ ] Implement optional sink and durable persistence without prompts, outputs,
   credentials, or unbounded tool payloads.
 - [ ] Add model/tool/MCP success, failure, timeout, and isolation tests/docs.
 
-## Rate limiting and quotas — PENDING
+## Rate limiting and quotas — PARTIALLY COMPLETE
 
-Neither HTTP application enforces replica-safe rate limits, concurrency quotas,
-or a `429`/`Retry-After` contract.
+Both HTTP applications expose an opt-in bounded fixed-window request budget and
+`429`/`Retry-After` contract. The built-in store is process-local.
 
-- [ ] Define route, principal, tenant, burst, retry, and response-header rules.
+- [x] Define route, principal, tenant, burst, retry, and response-header rules.
 - [ ] Select replica-safe enforcement/storage for streaming and long-running
   A2A/deployment operations.
 - [ ] Add isolation, burst, streaming, A2A, metrics, and documentation tests.
@@ -190,15 +194,16 @@ and digest rollback automation exist.
 Resolved findings are recorded in `CHANGELOG.md` and git history. Only
 unresolved findings remain here.
 
-## BF17 — Local-provider reconciliation
+## BF17 — Local-provider reconciliation — RESOLVED
 
-The local provider is process-local, and PostgreSQL records cannot rehydrate
-child processes after restart. Graceful shutdown is wired, but recovery and
-multi-replica ownership remain undefined.
+The local provider is explicitly development-only. Durable Control Planes must
+select the Kubernetes provider, whose status/list paths rehydrate workloads
+from OSA identity labels after restart. Local shutdown stops only provider-owned
+children.
 
-- [ ] Define shutdown, orphan cleanup, restart/reconciliation, and ownership
+- [x] Define shutdown, orphan cleanup, restart/reconciliation, and ownership
   semantics, or make an external provider mandatory for production.
-- [ ] Cover graceful shutdown, restart recovery, and persisted running records.
+- [x] Cover graceful shutdown, restart recovery, and persisted running records.
 
 ## BF19 — Resource-catalog cross-replica acceptance
 
@@ -206,4 +211,4 @@ Resource reads, activation, and deployment reconcile each tenant's local
 catalog from durable storage. An acceptance test covers create/update/delete,
 activation, and deployment across independently created app instances.
 
-- [ ] Run that acceptance test against PostgreSQL in CI and retain the evidence.
+- [x] Run that acceptance test against PostgreSQL in CI and retain the evidence.

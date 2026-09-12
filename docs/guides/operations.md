@@ -18,7 +18,8 @@ Kubernetes-style probes: use `/health/live` for liveness and
 ## Observability
 
 - **Metrics**: the runtime exposes Prometheus counters and duration
-  summaries at `GET /metrics` (invocations, model/tool calls, token usage).
+  summaries at `GET /metrics` (invocations, model/tool/MCP calls, capability
+  outcomes, token usage, and rate-limit responses).
 - **Logs**: structured JSON when `OSA_LOG_FORMAT=json`; every invocation log
   line carries `invocation_id`, `session_id`, agent, user/caller, and
   deployment correlation fields. Captured values are redacted and bounded.
@@ -26,6 +27,11 @@ Kubernetes-style probes: use `/health/live` for liveness and
   (`agent.invoke` → `session.resolve` → `model.run` → tool calls).
 - **Audit**: `GET /audit-events?limit=` on the Control Plane returns the
   append-only management/invocation event log (tenant-filtered).
+- **Capacity**: set `OSA_RATE_LIMIT_REQUESTS` and optionally
+  `OSA_RATE_LIMIT_WINDOW_SECONDS`/`OSA_RATE_LIMIT_BURST` to enable bounded
+  route/caller budgets. Exhausted requests return `429` with `Retry-After`.
+  The built-in store is process-local; use a gateway or service mesh for
+  replica-safe production enforcement.
 
 ## Deployments
 
@@ -56,31 +62,29 @@ health probe; startup failures carry the captured logs in the record detail.
   `OSA_CONTROL_PLANE_DATABASE_URL`).
 - The application verifies connectivity at startup but never migrates —
   running migrations from several replicas simultaneously is a race.
-- Control Plane state and runtime memory may each use PostgreSQL, but they are
-  configured by separate DSNs and may be different databases. Back up every
-  configured database; Control Plane schema is migration-owned, while memory
-  currently uses transitional startup bootstrap DDL (migration ownership is
-  tracked in `TODO.md`).
+- Control Plane state, runtime memory, and runtime sessions may each use
+  PostgreSQL, configured by separate DSNs and potentially different databases.
+  Back up every configured database. Apply `osa-cp-migrate`,
+  `osa-memory-migrate`, and `osa-session-migrate` as separate pre-start steps;
+  all three runtimes validate schema versions and do not auto-migrate.
 
 ## Upgrades
 
 1. Bump the version once across the workspace root and the four member
    manifests (lockstep is enforced by `tests/unit/test_versioning.py`).
-2. Run `osa-cp-migrate` against the target database.
-3. Roll images: the runtime and Control Plane images are built separately
+2. Run `osa-cp-migrate` and, when configured, the memory/session migration
+   commands against their target databases.
+3. Roll images: the runtime and Control Plane images are built separately;
+   the Control Plane image includes `osa-runtime` for local development, while
+   Kubernetes uses the separately published runtime image.
    (`Dockerfile`, `Dockerfile.control-plane`).
-4. Rolling restarts of runtime replicas are safe only when sessions use a
-   shared persistent `SessionProvider`; the default in-memory provider is
-   single-process. Control Plane deployment records persist with PostgreSQL,
-   but local child-process shutdown/reconciliation and rollback consistency
-   remain pending in `TODO.md`.
+4. Rolling restarts of runtime replicas are safe when sessions use a shared
+   migrated `PostgresSessionProvider`; the default in-memory provider remains
+   single-process. Durable Control Plane deployments must select Kubernetes;
+   its status/list paths rehydrate labelled workloads after a restart.
 
 ## Remaining operational work
 
-- Durable runtime sessions and migration-owned memory schema (P1 in `TODO.md`)
-- Local-provider shutdown/reconciliation and multi-replica ownership (BF17)
-- PostgreSQL cross-replica resource-catalog acceptance (BF19)
+- Real Kind-cluster acceptance and replica-safe operation ownership
 - Distributed A2A task state and cancellation semantics (P2.4)
-- Replica-safe rate limits and quotas (P2)
-- Packaged Kubernetes provider selection and real Kind acceptance; the first
-  generic provider slice exists but follow-up is paused
+- Shared-store rate limiting and quota enforcement across replicas

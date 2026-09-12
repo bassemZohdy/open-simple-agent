@@ -57,6 +57,7 @@ from osa.generic_agent import (
     JwtAuthenticator,
     Observability,
     SecretResolver,
+    add_rate_limit_middleware,
     configure_structured_logging,
     error_payload,
     log_context,
@@ -432,6 +433,10 @@ def configure_control_plane_app(
     app.state.resource_repository = resource_repository
     app.state.audit_repository = audit_repository if audit_repository is not None else InMemoryAuditEventRepository()
     app.state.external_agent_catalog = ExternalAgentCatalog()
+    add_rate_limit_middleware(
+        app,
+        exempt_paths=frozenset({"/health/live", "/health/ready", "/docs", "/redoc", "/openapi.json"}),
+    )
     _install_authentication(
         app,
         auth_settings or AuthSettings.from_env(),

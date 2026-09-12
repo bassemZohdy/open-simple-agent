@@ -159,7 +159,10 @@ policy, and A2A Agent Cards. A skill is not necessarily executable.
 
 A session represents active conversation/runtime state. It may contain history,
 temporary state, caller identity, and execution metadata. Session isolation and
-expiry are security properties, not optional implementation details.
+expiry are security properties, not optional implementation details. The
+runtime supports an opt-in versioned PostgreSQL provider selected by
+`spec.session.persistence` and `OSA_SESSION_DATABASE_URL`; the default remains
+process-local for development.
 
 ### Memory
 
@@ -256,12 +259,12 @@ Deployment providers own process/container/workload lifecycle and remain
 separate from `AgentRuntime`, which owns in-process behavior.
 
 The local deployment provider is integrated through the Control Plane lifecycle
-API, but its child-process state is local to the Control Plane process and its
-export/retry/rollback/restart guarantees remain under active hardening. A first
-generic `kubectl`-backed Kubernetes provider slice also exists with
-Deployment/Service/config/secret/probe/lifecycle behavior, but further
-Kubernetes/Kind validation and packaged provider selection are deliberately
-paused. OpenShift-specific behavior remains separately deferred.
+API and is development-only. Durable Control Plane deployments select the
+generic `kubectl`-backed Kubernetes provider, which supports
+Deployment/Service/config/secret/probe/lifecycle behavior and rehydrates
+status from OSA identity labels after a Control Plane restart. Real Kind
+acceptance and distributed operation ownership remain gated. OpenShift-specific
+behavior remains separately deferred.
 
 ### Control Panel
 

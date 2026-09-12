@@ -27,11 +27,16 @@ def dsn() -> str:
 
 
 @pytest.fixture(scope="module", autouse=True)
-def applied_migrations() -> None:
+def applied_migrations() -> Any:
     """Apply migrations once per module (idempotent: Alembic tracks state)."""
     from osa.control_plane.backend.db import run_migrations
 
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setenv("OSA_DEPLOY_PROVIDER", "kubernetes")
+    monkeypatch.setenv("OSA_KUBERNETES_IMAGE", "example/osa-runtime:acceptance")
     run_migrations(os.environ["OSA_TEST_DATABASE_URL"])
+    yield
+    monkeypatch.undo()
 
 
 @pytest.fixture()
@@ -372,3 +377,35 @@ class TestResourceDefinitionRepository:
                 assert catalogs.get_model("catalog-model").model_id == "fake-x"
         finally:
             await repo.delete("Model", "catalog-model")
+
+    async def test_resource_catalog_reconciles_across_independent_apps(
+        self, dsn: str, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """BF19: CRUD and catalog reconciliation work across replicas."""
+        monkeypatch.setenv("OSA_DEPLOY_PROVIDER", "kubernetes")
+        monkeypatch.setenv("OSA_KUBERNETES_IMAGE", "example/osa-runtime:acceptance")
+        from httpx import ASGITransport, AsyncClient
+
+        from osa.control_plane.backend.service import create_control_plane_app
+
+        first_app = create_control_plane_app(database_url=dsn)
+        second_app = create_control_plane_app(database_url=dsn)
+        spec: dict[str, str] = {"name": "cross-replica-model", "provider": "fake", "model_id": "v1"}
+        envelope: dict[str, object] = {
+            "apiVersion": "osa/v1alpha1",
+            "kind": "Model",
+            "spec": spec,
+        }
+        async with (
+            first_app.router.lifespan_context(first_app),
+            second_app.router.lifespan_context(second_app),
+            AsyncClient(transport=ASGITransport(app=first_app), base_url="http://first") as first,
+            AsyncClient(transport=ASGITransport(app=second_app), base_url="http://second") as second,
+        ):
+            assert (await first.post("/resources/Model", json=envelope)).status_code == 201
+            assert (await second.get("/resources/Model/cross-replica-model")).status_code == 200
+            updated = {**envelope, "spec": {**spec, "model_id": "v2"}}
+            assert (await second.put("/resources/Model/cross-replica-model", json=updated)).status_code == 200
+            assert (await first.get("/resources/Model/cross-replica-model")).json()["spec"]["model_id"] == "v2"
+            assert (await first.delete("/resources/Model/cross-replica-model")).status_code == 204
+            assert (await second.get("/resources/Model/cross-replica-model")).status_code == 404

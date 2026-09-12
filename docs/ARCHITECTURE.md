@@ -189,8 +189,8 @@ Caller-supplied unknown IDs are rejected (`session_not_found`), identity
 changes are access violations (`session_access_denied`), and IDs are
 server-issued UUIDs. `OsaAdkSessionService` maps ADK session operations onto
 the provider, so model context stays bounded by the OSA history limit. The
-in-memory provider is single-replica; multi-replica deployments need a shared
-persistent provider (P1).
+in-memory provider is single-replica; bundles opt into the shared PostgreSQL
+provider through `spec.session.persistence` and `OSA_SESSION_DATABASE_URL`.
 
 Memory context is loaded only when `spec.memory.enabled` is true and a
 memory provider is configured. Search is a case-insensitive substring match;
@@ -206,10 +206,9 @@ IDs.
 
 Persistence is externalized: `OSA_MEMORY_DATABASE_URL` selects
 `PostgresMemoryProvider` (SQLAlchemy async over asyncpg, ILIKE search,
-SQL-enforced limits/retention). The provider currently bootstraps its table
-with `CREATE TABLE IF NOT EXISTS`; explicit versioned migration ownership and
-upgrade ordering remain pending in `TODO.md`. Without the DSN, memory is
-in-memory and single-process.
+SQL-enforced limits/retention). Its independent schema is versioned by
+`osa-memory-migrate`; runtime startup validates the migration and never
+creates tables. Without the DSN, memory is in-memory and single-process.
 
 ## HTTP applications
 
@@ -225,8 +224,8 @@ managed by Alembic (`osa-cp-migrate`, explicit ops step — the app verifies
 connectivity and never migrates, avoiding multi-replica races). Records and
 version history survive restarts, and agent records/version history share state
 across replicas. Resource records are durable, and route/activation/deployment
-reads reconcile the process-local catalogs from them; live PostgreSQL
-cross-replica acceptance remains open in `TODO.md`.
+reads reconcile the process-local catalogs from them; PostgreSQL cross-replica
+acceptance is covered by the CI integration suite.
 
 Routes enforce create/transition validation, cumulative list filters with
 pagination/sorting, immutable version snapshots, optimistic concurrency, and
@@ -235,8 +234,9 @@ the stable error envelope (`{"error": {"code", "message"}}`). Resource APIs
 policies with tenant-scoped write-through persistence, reference-usage checks
 before deletion (a resource used by an agent in the same tenant cannot be
 deleted), credential redaction, and bundle import/export. Deployment provider
-routes are available for the local provider; Kubernetes scheduling remains
-open (P1.5).
+routes support the local development provider and the operator-selected
+Kubernetes provider; real-cluster acceptance and distributed operation
+ownership remain open in `TODO.md`.
 
 The runtime application owns one module-level runtime and agent. The
 production path is the `osa-runtime` CLI (or `create_runtime_app`), which
@@ -289,9 +289,8 @@ execution. `LocalDeploymentProvider` launches a server-owned command as a
 subprocess, captures bounded logs per deployment, probes a health URL during
 startup (early exit or a missed probe window fails the deployment with the
 captured logs), detects dead processes on status, and can recognize idempotent
-re-deploys of the same running command. Service-level retry identity, rollback
-consistency, and Control Plane shutdown/reconciliation remain open. Provider
-cleanup occurs when the provider's shutdown path is explicitly called.
+re-deploys of the same running command. The local provider is explicitly
+development-only, and provider cleanup occurs when its shutdown path is called.
 
 The Control Plane exposes deployment APIs (P1.5) through
 `DeploymentService`: deploying an active agent exports its definition plus
@@ -301,11 +300,11 @@ never accepted from API input. Intent and observed state persist through the
 `DeploymentRecordRepository` (in-memory, or PostgreSQL when the Control
 Plane uses a database); rollback currently relaunches an earlier immutable
 version snapshot but its stop/relaunch/persist consistency remains open.
-Record persistence does not currently reconcile the local provider's subprocess
-state across Control Plane restarts or replicas. Deployed runtimes are external
-processes: no ADK internals are imported. The first generic Kubernetes provider
-slice exists; packaged provider selection and real Kind validation remain open
-in `TODO.md`.
+Durable Control Plane deployments select the Kubernetes provider. Deployed
+runtimes are external processes: no ADK internals are imported. Kubernetes
+status/list operations rehydrate workloads from OSA identity labels after a
+Control Plane restart; real Kind validation and distributed operation
+ownership remain open in `TODO.md`.
 OpenShift-specific provider work is intentionally deferred.
 
 Deployment records expose an optional public runtime invoke URL synthesized
@@ -347,8 +346,8 @@ attributes.
 
 ## Tests and CI
 
-The current baseline is 567 collected tests: 544 pass locally and 23
-PostgreSQL/A2A tests are skipped when their optional dependencies or
+The current baseline is 601 collected tests: 574 pass locally and 27
+PostgreSQL/A2A/provider tests are skipped when their optional dependencies or
 `OSA_TEST_DATABASE_URL` are unavailable. CI runs:
 
 - `ruff format --check .`;
@@ -369,9 +368,9 @@ Streaming tests cover the SSE contract, disconnect-triggered cancellation,
 timeouts, concurrent load, and cross-replica session consistency over a
 shared provider. Live-model acceptance is covered by an opt-in test that uses
 the LiteLLM adapter and can run only when its repository secret is enabled;
-there is no Kubernetes, live-identity-provider, or multi-process deployment
-test yet. CI enforces an 84% coverage threshold; identity-provider and
-Kubernetes tests remain backlog work. The opt-in live-provider job is available
+there is no real Kubernetes, live-identity-provider, or multi-process deployment
+test yet. CI enforces an 84% coverage threshold; live identity-provider and
+real-cluster Kubernetes acceptance remain backlog work. The opt-in live-provider job is available
 when its repository secret is configured, but it is intentionally skipped in
 offline CI runs.
 

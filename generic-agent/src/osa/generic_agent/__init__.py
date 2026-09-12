@@ -103,6 +103,9 @@ from osa.generic_agent.memory import (
 from osa.generic_agent.model import ModelCapabilities, ModelCatalog, ModelDefinition, ModelRuntimeSettings
 from osa.generic_agent.model_provider import FakeModelProvider, ModelProvider, ModelResponse, TokenUsage
 from osa.generic_agent.observability import (
+    CapabilityTelemetryEvent,
+    CapabilityTelemetrySink,
+    InMemoryCapabilityTelemetrySink,
     JsonFormatter,
     MetricsRegistry,
     Observability,
@@ -121,6 +124,13 @@ from osa.generic_agent.outbound import (
     outbound_trust_env,
     validate_outbound_url,
 )
+from osa.generic_agent.rate_limit import (
+    InMemoryRateLimiter,
+    RateLimitConfig,
+    RateLimitDecision,
+    RateLimitMiddleware,
+    add_rate_limit_middleware,
+)
 from osa.generic_agent.runtime import AgentFactory, AgentRuntime, RuntimeDependencies
 from osa.generic_agent.secret import (
     EnvironmentSecretResolver,
@@ -132,6 +142,8 @@ from osa.generic_agent.secret import (
 from osa.generic_agent.session import (
     Session,
     SessionAccessError,
+    SessionConcurrencyError,
+    SessionConfigurationError,
     SessionError,
     SessionId,
     SessionManager,
@@ -171,6 +183,11 @@ __all__ = [
     "AgentRuntime",
     "AgentStreamEvent",
     "RuntimeDependencies",
+    "RateLimitConfig",
+    "RateLimitDecision",
+    "RateLimitMiddleware",
+    "InMemoryRateLimiter",
+    "add_rate_limit_middleware",
     "AgentSpec",
     "AgentStatus",
     "AuthMode",
@@ -185,6 +202,8 @@ __all__ = [
     "BundleError",
     "BundleMetadata",
     "CalculatorTool",
+    "CapabilityTelemetryEvent",
+    "CapabilityTelemetrySink",
     "ConfigurationError",
     "DeploymentBundle",
     "DuplicateResourceError",
@@ -192,6 +211,7 @@ __all__ = [
     "FakeModelProvider",
     "InMemoryProvider",
     "InMemoryAuditEventSink",
+    "InMemoryCapabilityTelemetrySink",
     "InvalidBundleError",
     "InvocationTimeoutError",
     "IterationLimitExceededError",
@@ -263,6 +283,8 @@ __all__ = [
     "resolve_outbound_credential",
     "Session",
     "SessionAccessError",
+    "SessionConcurrencyError",
+    "SessionConfigurationError",
     "SessionConfig",
     "SessionError",
     "SessionId",

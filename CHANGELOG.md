@@ -12,6 +12,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added — Runtime durability, capacity, and deployment hardening
+- Added an explicit, versioned PostgreSQL runtime-session provider with strict
+  ownership, TTL, bounded history, optimistic concurrency, and the
+  `osa-session-migrate` command.
+- Replaced memory bootstrap DDL with the independently owned versioned
+  `osa-memory-migrate` schema path; runtime startup now validates instead of
+  mutating schemas.
+- Added operator-selected Kubernetes deployment wiring, packaged
+  `osa-runtime` launcher coverage in the Control Plane image, and durable
+  Control Plane rejection of process-local deployments.
+- Added payload-free model/native-tool/MCP capability telemetry and opt-in
+  bounded HTTP rate-limit responses with retry headers.
+- Added PostgreSQL session and cross-replica resource acceptance coverage.
+
 ### Fixed — Control Plane safety and state coherence
 - Hardened deployment bundle export with opaque staging paths, containment
   checks, hashed resource filenames, atomic publication, and cleanup on

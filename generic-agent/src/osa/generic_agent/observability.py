@@ -8,6 +8,7 @@ package to remain usable in minimal offline environments.
 
 from __future__ import annotations
 
+import contextlib
 import importlib
 import json
 import logging
@@ -19,7 +20,7 @@ from contextlib import asynccontextmanager, contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass
 from threading import Lock
-from typing import Any
+from typing import Any, Protocol
 
 _SENSITIVE_KEY = re.compile(r"(?:token|secret|password|credential|authorization|api[_-]?key|prompt|input|output)", re.I)
 _SAFE_IDENTIFIER = re.compile(r"^[A-Za-z0-9._:/-]{1,128}$")
@@ -173,6 +174,46 @@ class MetricsRegistry:
         return "\n".join(lines) + ("\n" if lines else "")
 
 
+@dataclass(frozen=True)
+class CapabilityTelemetryEvent:
+    """Redaction-safe outcome for one model, native-tool, or MCP capability."""
+
+    kind: str
+    name: str
+    outcome: str
+    error_code: str | None
+    duration_seconds: float
+
+
+class CapabilityTelemetrySink(Protocol):
+    """Optional sink for bounded capability outcomes."""
+
+    def record(self, event: CapabilityTelemetryEvent) -> None:
+        """Persist or forward a telemetry event without payload data."""
+        ...
+
+
+class InMemoryCapabilityTelemetrySink:
+    """Bounded sink useful for tests and local diagnostics."""
+
+    def __init__(self, *, max_events: int = 1000) -> None:
+        if max_events < 1:
+            raise ValueError("max_events must be positive")
+        self._events: list[CapabilityTelemetryEvent] = []
+        self._max_events = max_events
+        self._lock = Lock()
+
+    def record(self, event: CapabilityTelemetryEvent) -> None:
+        with self._lock:
+            self._events.append(event)
+            del self._events[: -self._max_events]
+
+    def events(self) -> list[CapabilityTelemetryEvent]:
+        """Return a snapshot of the bounded event list."""
+        with self._lock:
+            return list(self._events)
+
+
 def _format_labels(labels: tuple[tuple[str, str], ...]) -> str:
     if not labels:
         return ""
@@ -205,8 +246,13 @@ def _tracer() -> Any:
 class Observability:
     """Metrics + tracing facade used by API and runtime boundaries."""
 
-    def __init__(self, metrics: MetricsRegistry | None = None) -> None:
-        self.metrics = metrics or MetricsRegistry()
+    def __init__(
+        self,
+        metrics: MetricsRegistry | None = None,
+        capability_sink: CapabilityTelemetrySink | None = None,
+    ) -> None:
+        self.metrics = metrics if metrics is not None else MetricsRegistry()
+        self.capability_sink = capability_sink
         self._tracer = _tracer()
 
     @asynccontextmanager
@@ -221,6 +267,7 @@ class Observability:
         safe_labels = redact_fields(labels or {})
         start = time.perf_counter()
         outcome = "success"
+        error_code: str | None = None
         span = _NoopSpan()
         try:
             if self._tracer is None:
@@ -234,9 +281,11 @@ class Observability:
                     yield span
         except Exception as exc:
             outcome = "error"
+            error_code = getattr(exc, "code", None)
             span.record_exception(exc)
             raise
         finally:
+            self._record_capability(operation, safe_labels, outcome, time.perf_counter() - start, error_code)
             metric_labels = {"operation": operation, **safe_labels, "outcome": outcome}
             self.metrics.increment("osa_operations_total", metric_labels)
             self.metrics.observe("osa_operation_duration", time.perf_counter() - start, {"operation": operation})
@@ -253,6 +302,7 @@ class Observability:
         safe_labels = redact_fields(labels or {})
         start = time.perf_counter()
         outcome = "success"
+        error_code: str | None = None
         span = _NoopSpan()
         try:
             if self._tracer is None:
@@ -266,9 +316,11 @@ class Observability:
                     yield span
         except Exception as exc:
             outcome = "error"
+            error_code = getattr(exc, "code", None)
             span.record_exception(exc)
             raise
         finally:
+            self._record_capability(operation, safe_labels, outcome, time.perf_counter() - start, error_code)
             metric_labels = {"operation": operation, **safe_labels, "outcome": outcome}
             self.metrics.increment("osa_operations_total", metric_labels)
             self.metrics.observe("osa_operation_duration", time.perf_counter() - start, {"operation": operation})
@@ -287,8 +339,38 @@ class Observability:
         self.metrics.increment("osa_model_tokens_total", {**labels, "kind": "completion"}, completion_tokens)
         self.metrics.increment("osa_model_tokens_total", {**labels, "kind": "total"}, total_tokens)
 
+    def _record_capability(
+        self,
+        operation: str,
+        labels: Mapping[str, object],
+        outcome: str,
+        duration_seconds: float,
+        error_code: str | None,
+    ) -> None:
+        operation_kind, _, operation_name = operation.partition(".")
+        if operation_kind not in {"model", "tool", "mcp"}:
+            return
+        name = str(labels.get("model") or labels.get("tool") or labels.get("server") or operation_name)
+        self.metrics.increment(
+            "osa_capability_events_total",
+            {"kind": operation_kind, "capability": name, "outcome": outcome},
+        )
+        if self.capability_sink is not None:
+            event = CapabilityTelemetryEvent(
+                kind=operation_kind,
+                name=bounded_text(name),
+                outcome=outcome,
+                error_code=bounded_text(error_code) if error_code is not None else None,
+                duration_seconds=duration_seconds,
+            )
+            with contextlib.suppress(Exception):
+                self.capability_sink.record(event)
+
 
 __all__ = [
+    "CapabilityTelemetryEvent",
+    "CapabilityTelemetrySink",
+    "InMemoryCapabilityTelemetrySink",
     "JsonFormatter",
     "MetricsRegistry",
     "Observability",

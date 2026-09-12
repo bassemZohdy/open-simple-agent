@@ -48,9 +48,9 @@ SQLAlchemy 2.0 async, Alembic.
   agent), `osa_resource_definitions` (tenant owner, unique
   `(tenant_id, kind, name)`, JSONB spec; migration 0005). Existing rows use
   the empty-string shared scope, which the application exposes as no tenant.
-  Timestamps are UTC. The runtime-owned `osa_memory_entries` table stays
-  bootstrap-created by the runtime (`IF NOT EXISTS`, ADR-003) because the
-  runtime deploys independently; the two schemas coexist idempotently.
+  Timestamps are UTC. The runtime-owned `osa_memory_entries` table is managed
+  by its independent `osa-memory-migrate` history (ADR-003) because the
+  runtime deploys independently; the two schemas coexist.
 - **Startup migration policy.** Migrations are an explicit operational step
   (`osa-cp-migrate` console script wrapping `alembic upgrade head`),
   not auto-run at app startup — auto-migrating from several replicas
@@ -89,7 +89,8 @@ SQLAlchemy 2.0 async, Alembic.
 - Operations must run migrations before/with rollouts (explicit policy).
 - Resource definition records are durable, and route/activation/deployment
   reads reconcile the process-local catalogs from them; live cross-replica
-  PostgreSQL acceptance remains tracked separately in `TODO.md` (BF19).
+  PostgreSQL cross-replica resource acceptance is exercised in CI; real
+  Kubernetes/workload acceptance remains tracked separately in `TODO.md`.
 - External A2A agent records are durable in the PostgreSQL repository; the
   in-memory default remains process-local.
 

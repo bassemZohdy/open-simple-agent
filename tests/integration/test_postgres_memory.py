@@ -39,7 +39,7 @@ async def clean_provider(dsn: str) -> Any:
     from osa.runtimes.adk.postgres_memory import PostgresMemoryProvider
 
     provider = PostgresMemoryProvider(dsn)
-    await provider.ensure_schema()
+    await provider.migrate()
     scope_id = f"test-{uuid4().hex[:12]}"
     yield provider, scope_id
     # Cleanup: remove entries created under the test's scope id.

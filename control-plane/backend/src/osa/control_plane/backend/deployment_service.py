@@ -1,13 +1,13 @@
 """Deployment orchestration for the Control Plane (P1.5).
 
-``DeploymentService`` deploys a versioned agent **locally**: it exports the
-agent's definition plus its referenced catalog resources to a bundle
-directory, then launches a runtime process through a server-owned command
-template. Commands are synthesized here — never accepted from API input.
+``DeploymentService`` deploys a versioned agent through the selected provider:
+it exports the agent's definition plus its referenced catalog resources to a
+bundle directory, then asks the provider to launch or schedule the runtime.
+Local commands are synthesized here — never accepted from API input.
 
 Every transition persists intent/observed state through the
-``DeploymentRecordRepository``; the process itself runs under the (hardened)
-``LocalDeploymentProvider``, which captures bounded logs and probes health.
+``DeploymentRecordRepository``; the selected provider owns the workload and
+its lifecycle. The local provider captures bounded logs and probes health.
 No ADK internals are imported: the runtime is an external process.
 """
 
@@ -31,6 +31,7 @@ from osa.control_plane.backend.agent_catalog import AgentRecord, AgentRecordStat
 from osa.control_plane.backend.deployment import (
     DeploymentProvider,
     DeploymentSpec,
+    LocalDeploymentProvider,
 )
 from osa.control_plane.backend.repositories import (
     AgentRepository,
@@ -53,6 +54,52 @@ DEPLOY_ROOT_ENV_VAR = "OSA_DEPLOY_ROOT"
 INVOKE_URL_TEMPLATE_ENV_VAR = "OSA_DEPLOY_INVOKE_URL_TEMPLATE"
 RUNTIME_CORS_ENV_VAR = "OSA_DEPLOY_RUNTIME_ALLOWED_ORIGINS"
 RUNTIME_CORS_PASSTHROUGH_ENV_VAR = "OSA_RUNTIME_ALLOWED_ORIGINS"
+DEPLOY_PROVIDER_ENV_VAR = "OSA_DEPLOY_PROVIDER"
+KUBERNETES_IMAGE_ENV_VAR = "OSA_KUBERNETES_IMAGE"
+
+
+def create_deployment_provider(*, require_shared: bool = False) -> DeploymentProvider:
+    """Create the operator-selected deployment provider.
+
+    ``local`` remains the safe development default. Kubernetes is explicit and
+    requires an image so a production Control Plane cannot accidentally start
+    process-local workloads when the operator expected cluster scheduling.
+    """
+    provider_name = os.environ.get(DEPLOY_PROVIDER_ENV_VAR, "local").strip().lower()
+    if require_shared and provider_name != "kubernetes":
+        raise DeploymentError(
+            "A durable Control Plane requires OSA_DEPLOY_PROVIDER=kubernetes; "
+            "the local provider is process-local and development-only"
+        )
+    if provider_name == "local":
+        return LocalDeploymentProvider()
+    if provider_name == "kubernetes":
+        image = os.environ.get(KUBERNETES_IMAGE_ENV_VAR, "").strip()
+        if not image:
+            raise DeploymentError(f"{KUBERNETES_IMAGE_ENV_VAR} is required when {DEPLOY_PROVIDER_ENV_VAR}=kubernetes")
+        from osa.control_plane.backend.kubernetes_deployment import KubernetesDeploymentProvider
+
+        return KubernetesDeploymentProvider(
+            image=image,
+            namespace=os.environ.get("OSA_KUBERNETES_NAMESPACE", "default"),
+            replicas=_positive_env_int("OSA_KUBERNETES_REPLICAS", 1),
+            kubectl=os.environ.get("OSA_KUBECTL", "kubectl"),
+            rollout_timeout_seconds=_positive_env_int("OSA_KUBERNETES_ROLLOUT_TIMEOUT_SECONDS", 60),
+        )
+    raise DeploymentError(f"Unsupported {DEPLOY_PROVIDER_ENV_VAR} value: {provider_name}")
+
+
+def _positive_env_int(name: str, default: int) -> int:
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    try:
+        value = int(raw)
+    except ValueError as exc:
+        raise DeploymentError(f"{name} must be a positive integer") from exc
+    if value < 1:
+        raise DeploymentError(f"{name} must be a positive integer")
+    return value
 
 
 @dataclass
@@ -124,7 +171,7 @@ def deploy_root() -> Path:
 
 
 class DeploymentService:
-    """Deploys versioned agents as local runtime processes."""
+    """Deploys versioned agents through a configured runtime provider."""
 
     def __init__(
         self,

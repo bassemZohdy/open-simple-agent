@@ -117,11 +117,12 @@ authorization-surface decision, not a convenience flag: list only origins that
 must call the runtime directly, and keep the runtime's authentication
 enforcement on (`OSA_AUTH_MODE=required`) whenever any origin is allowed.
 
-Neither the Control Plane nor runtime currently enforces per-principal or
-per-tenant request rate limits, concurrency quotas, or `429` retry semantics.
-Until that contract is implemented, enforce capacity limits at the API
-gateway or service mesh; the planned OSA-side controls are tracked in
-`TODO.md`.
+The Control Plane and runtime expose an opt-in per-route/caller fixed-window
+request budget through `OSA_RATE_LIMIT_REQUESTS` and return `429` plus
+`Retry-After` when exhausted. The built-in store is process-local and does not
+provide replica-safe concurrency quotas; production deployments must enforce
+the same policy at an API gateway or service mesh until a shared OSA store is
+selected.
 
 ## Provider-dependent verification still open
 

@@ -31,11 +31,14 @@ from osa.generic_agent import (
     EnvironmentSecretResolver,
     FakeModelProvider,
     InMemoryProvider,
+    MemoryConfigurationError,
     MemoryProvider,
     Observability,
     SecretError,
     SecretResolver,
+    SessionConfigurationError,
     SessionManager,
+    SessionProvider,
     Tool,
     ToolCatalog,
     build_catalogs,
@@ -48,6 +51,7 @@ _TRUTHY_VALUES = {"1", "true", "yes", "on"}
 DEFAULT_BUNDLE_ENV_VAR = "OSA_BUNDLE"
 ALLOW_FAKE_PROVIDER_ENV_VAR = "OSA_ALLOW_FAKE_PROVIDER"
 MEMORY_DATABASE_URL_ENV_VAR = "OSA_MEMORY_DATABASE_URL"
+SESSION_DATABASE_URL_ENV_VAR = "OSA_SESSION_DATABASE_URL"
 
 # Native tool implementations shipped with the runtime image. A bundle
 # declares tools as definitions; an agent referencing a definition without an
@@ -69,8 +73,8 @@ async def create_memory_provider() -> MemoryProvider | None:
     """Build the memory provider from external configuration.
 
     ``OSA_MEMORY_DATABASE_URL`` selects the PostgreSQL provider (ADR-003);
-    the schema is ensured — and connectivity verified — at startup so an
-    unreachable database aborts boot before readiness. Without the variable,
+    the schema is validated — and connectivity verified — at startup so an
+    unreachable or unmigrated database aborts boot before readiness. Without the variable,
     the in-memory provider is used (single-process deployments only).
     """
     dsn = os.environ.get(MEMORY_DATABASE_URL_ENV_VAR)
@@ -80,6 +84,27 @@ async def create_memory_provider() -> MemoryProvider | None:
 
     provider = PostgresMemoryProvider(dsn)
     await provider.ensure_schema()
+    return provider
+
+
+def create_session_provider(*, persistence: bool) -> SessionProvider:
+    """Select the session store from the agent contract and operator DSN.
+
+    Persistence is opt-in per agent. A persistent agent must point at an
+    operator-migrated PostgreSQL database; silently falling back to memory
+    would violate session continuity and ownership expectations.
+    """
+    if not persistence:
+        return SessionManager()
+    dsn = os.environ.get(SESSION_DATABASE_URL_ENV_VAR)
+    if not dsn:
+        raise SessionConfigurationError(
+            "spec.session.persistence is enabled but OSA_SESSION_DATABASE_URL is not configured"
+        )
+    from osa.runtimes.adk.postgres_session import PostgresSessionProvider
+
+    provider = PostgresSessionProvider(dsn)
+    provider.ensure_schema()
     return provider
 
 
@@ -117,6 +142,7 @@ async def build_runtime(
         observability=observability,
     )
     memory_provider = await create_memory_provider()
+    session_provider = create_session_provider(persistence=bundle.agent.spec.session.persistence)
 
     runtime = AdkRuntime(
         model_catalog=catalogs.model_catalog,
@@ -125,7 +151,7 @@ async def build_runtime(
         mcp_catalog=catalogs.mcp_catalog,
         memory_policies=catalogs.memory_policies,
         memory_provider=memory_provider if memory_provider is not None else InMemoryProvider(),
-        session_provider=SessionManager(),
+        session_provider=session_provider,
         model_adapters=adapters,
         secret_resolver=resolver,
         observability=observability,
@@ -161,7 +187,7 @@ def create_runtime_app(
                 allow_fake_provider=allow_fake,
                 observability=service_observability,
             )
-        except (BundleError, SecretError) as exc:
+        except (BundleError, MemoryConfigurationError, SecretError, SessionConfigurationError) as exc:
             runtime_api.set_start_error(str(exc))
             raise
         runtime_api.maybe_attach_a2a(agent, app=app)
@@ -172,6 +198,10 @@ def create_runtime_app(
         close = getattr(provider, "close", None)
         if close is not None:
             await close()
+        session_provider = runtime.session_provider
+        close_session = getattr(session_provider, "close", None)
+        if close_session is not None:
+            close_session()
         runtime_api.reset_runtime()
 
     try:

@@ -132,9 +132,9 @@ spec:
 
 Allow/deny overlap is invalid. The policy is independent of the prompt;
 enterprise policy evaluation remains open. Inbound A2A security is enforced by
-the shared OIDC/OAuth boundary. Kubernetes provider selection and Kind
-validation are deployment concerns and remain paused; OpenShift-specific
-behavior is deferred.
+the shared OIDC/OAuth boundary. Kubernetes provider selection is available via
+operator configuration; real Kind validation remains gated and OpenShift-
+specific behavior is deferred.
 
 | Path | Type | Default | Current behavior |
 |---|---|---:|---|
@@ -142,7 +142,7 @@ behavior is deferred.
 | `spec.memory.policy` | string or null | null | Must resolve in the bundle when memory is enabled; an attached policy is authoritative for scope, limits, and retention, and `enabled: false` on the policy disables memory |
 | `spec.memory.scope` | enum | `user` | `user`, `agent`, `tenant`, or `application` (used when no policy is attached) |
 | `spec.memory.max_entries` | integer or null | null | Per-scope cap; oldest entries are evicted beyond it (used when no policy is attached) |
-| `spec.session.persistence` | boolean | false | Stored; persistent session providers pending (P1) |
+| `spec.session.persistence` | boolean | false | Selects the durable PostgreSQL session provider; startup fails closed when its DSN or migrated schema is absent |
 | `spec.session.ttl_seconds` | integer or null | null | Must be > 0 when set; expired sessions are deleted on access |
 | `spec.session.max_history_messages` | integer | 20 | Bounds the per-session conversation history |
 | `spec.a2a.enabled` | boolean | false | Enables ADK runtime Agent Card and JSON-RPC A2A routes when the optional A2A extra is installed; not exposed by the current LangGraph slice |
@@ -170,13 +170,32 @@ opt-in extraction pipeline (ADR-003).
 ## Memory persistence
 
 By default memory is in-memory (single process, lost on restart). Setting
-`OSA_MEMORY_DATABASE_URL` (e.g. `postgresql+asyncpg://user:pass@host/db`)
-selects the PostgreSQL provider (ADR-003, `osa-adk-runtime[postgres]` extra):
-entries survive restarts, are shared across replicas, and the runtime
-verifies connectivity and its schema at startup — an unreachable database
-aborts boot before readiness. The current provider uses transitional
-`CREATE TABLE IF NOT EXISTS` bootstrap DDL; explicit versioned memory
-migrations and their operational ownership remain pending in `TODO.md`.
+`OSA_MEMORY_DATABASE_URL` (for example,
+`postgresql+asyncpg://user:pass@host/db`) selects the PostgreSQL provider
+(ADR-003, `osa-adk-runtime[postgres]` extra). Entries survive restarts and are
+shared across replicas. The independent memory schema is owned by the
+versioned `osa-memory-migrate` command; runtime startup validates connectivity
+and refuses to serve an unmigrated database:
+
+```bash
+OSA_MEMORY_DATABASE_URL=postgresql+asyncpg://... uv run osa-memory-migrate
+```
+
+Back up the memory database before applying a new migration. Migrations are
+forward-only in this release; rollback means restoring the last database
+backup, then starting the runtime with the previous package version. The
+Control Plane Alembic history does not manage this independent database.
+
+Persistent sessions are opt-in per agent. Set `spec.session.persistence: true`
+and run the separate session migration before starting the runtime:
+
+```bash
+OSA_SESSION_DATABASE_URL=postgresql://... uv run osa-session-migrate
+```
+
+The runtime then uses `OSA_SESSION_DATABASE_URL` for ownership-checked,
+bounded-history sessions with optimistic concurrent-update protection. If the
+flag is false, sessions remain process-local even when a DSN is present.
 
 Timeouts, TTLs, limits, and iterations carry positive/range validation
 (`timeout_seconds > 0`, `ttl_seconds > 0`, `max_iterations >= 1`,
@@ -195,6 +214,28 @@ These environment variables override fields in an agent definition:
 | `OSA_MODEL_REF` | `spec.model.ref` | string |
 | `OSA_MEMORY_ENABLED` | `spec.memory.enabled` | boolean |
 | `OSA_SESSION_PERSISTENCE` | `spec.session.persistence` | boolean |
+
+The runtime also accepts these service-level controls:
+
+| Variable | Purpose | Default |
+|---|---|---:|
+| `OSA_MEMORY_DATABASE_URL` | PostgreSQL DSN for durable runtime memory | unset (in-memory) |
+| `OSA_SESSION_DATABASE_URL` | PostgreSQL DSN for durable sessions when persistence is enabled | required only for persistent agents |
+| `OSA_RATE_LIMIT_REQUESTS` | Per-route, per-caller fixed-window request budget; `0` disables | `0` |
+| `OSA_RATE_LIMIT_WINDOW_SECONDS` | Rate-limit window length | `60` |
+| `OSA_RATE_LIMIT_BURST` | Optional per-window burst capacity | request budget |
+
+When enabled, the HTTP services expose rate-limit headers (`X-RateLimit-Limit`,
+`X-RateLimit-Remaining`, and `X-RateLimit-Reset`) and return `429` with
+`Retry-After` when the route/caller window is exhausted. The built-in store is
+bounded and process-local; use a gateway or service mesh for replica-safe
+enforcement until a shared application store is selected.
+
+Capability telemetry is emitted for model, native-tool, and MCP spans as
+bounded Prometheus counters. An optional `Observability` capability sink can
+receive only the capability kind/name, success or failure, stable error code,
+and duration; prompts, inputs, outputs, credentials, and tool arguments are
+never included.
 
 Boolean values are case-insensitive. Accepted true values are `1`, `true`,
 `yes`, and `on`; false values are `0`, `false`, `no`, and `off`.

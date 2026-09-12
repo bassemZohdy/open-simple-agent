@@ -245,6 +245,28 @@ jobs:
             echo "::error::control plane exited with $exit_code on SIGTERM"; docker logs osa-cp-smoke; exit 1
           fi
           echo "Control Plane image smoke test passed."
+      - name: Packaged runtime launcher smoke test
+        run: |
+          docker run -d --name osa-cp-runtime-smoke -p 8082:8080 \
+            -e OSA_ALLOW_FAKE_PROVIDER=1 \
+            -v "$PWD/examples/smoke-bundle:/app/config:ro" \
+            osa-control-plane:ci osa-runtime --config /app/config --host 0.0.0.0 --port 8080
+          ready=0
+          for i in $(seq 1 30); do
+            if curl -fsS http://localhost:8082/health/ready >/dev/null 2>&1; then ready=1; break; fi
+            sleep 1
+          done
+          if [ "$ready" != "1" ]; then
+            echo "::error::packaged runtime launcher never became ready"; docker logs osa-cp-runtime-smoke; exit 1
+          fi
+          curl -fsS -X POST http://localhost:8082/v1/invoke \
+            -H 'Content-Type: application/json' -d '{"input":"hello"}' | grep -q '"output"'
+          docker stop --time 10 osa-cp-runtime-smoke >/dev/null
+          exit_code=$(docker inspect osa-cp-runtime-smoke --format '{{.State.ExitCode}}')
+          if [ "$exit_code" != "0" ]; then
+            echo "::error::packaged runtime exited with $exit_code"; docker logs osa-cp-runtime-smoke; exit 1
+          fi
+          echo "Packaged runtime launcher smoke test passed."
       - uses: actions/upload-artifact@v7
         with:
           name: sbom-images-cyclonedx

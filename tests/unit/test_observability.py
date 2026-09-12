@@ -7,7 +7,15 @@ import logging
 
 import pytest
 
-from osa.generic_agent import JsonFormatter, MetricsRegistry, Observability, redact_fields, redact_text
+from osa.generic_agent import (
+    CapabilityTelemetryEvent,
+    InMemoryCapabilityTelemetrySink,
+    JsonFormatter,
+    MetricsRegistry,
+    Observability,
+    redact_fields,
+    redact_text,
+)
 
 
 def test_redaction_bounds_values_and_never_keeps_sensitive_fields() -> None:
@@ -56,6 +64,27 @@ async def test_observability_counts_success_and_error() -> None:
     assert 'operation="invoke"' in rendered
     assert 'operation="tool"' in rendered
     assert 'outcome="error"' in rendered
+
+
+@pytest.mark.asyncio
+async def test_capability_telemetry_is_bounded_and_payload_free() -> None:
+    sink = InMemoryCapabilityTelemetrySink(max_events=2)
+    observation = Observability(MetricsRegistry(), capability_sink=sink)
+
+    async with observation.span("model.run", labels={"model": "default"}):
+        pass
+    with pytest.raises(RuntimeError):
+        async with observation.span("tool.execute", labels={"tool": "calculator", "input": "secret"}):
+            raise RuntimeError("failed")
+    async with observation.span("mcp.call", labels={"server": "partner", "tool": "lookup"}):
+        pass
+
+    events = sink.events()
+    assert len(events) == 2
+    assert events[0] == CapabilityTelemetryEvent("tool", "calculator", "error", None, events[0].duration_seconds)
+    assert events[1].kind == "mcp"
+    assert "secret" not in repr(events)
+    assert "osa_capability_events_total" in observation.metrics.render_prometheus()
 
 
 def test_json_formatter_emits_structured_redacted_fields() -> None:

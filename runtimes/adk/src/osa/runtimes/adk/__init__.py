@@ -21,6 +21,7 @@ from osa.runtimes.adk.model_adapter import (
     ModelAdapterRegistry,
     default_registry,
 )
+from osa.runtimes.adk.postgres_session import PostgresSessionProvider
 from osa.runtimes.adk.runtime import AdkAgentFactory, AdkRuntime, GenericAdkAgent
 from osa.runtimes.adk.service import build_runtime, create_runtime_app
 from osa.runtimes.adk.session_service import OsaAdkSessionService
@@ -38,6 +39,7 @@ __all__ = [
     "ModelAdapter",
     "ModelAdapterRegistry",
     "OsaAdkSessionService",
+    "PostgresSessionProvider",
     "OsaFunctionTool",
     "OsaMcpToolset",
     "ProviderBackedLlm",

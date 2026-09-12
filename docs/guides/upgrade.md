@@ -10,8 +10,9 @@ schema is Alembic-owned, and migrations are an explicit operational step.
    breaking changes are listed there.
 2. Back up every configured PostgreSQL database. Control Plane records,
    resource definitions, deployment records, and audit events use
-   `OSA_CONTROL_PLANE_DATABASE_URL`; memory entries use the independent
-   `OSA_MEMORY_DATABASE_URL` database when configured.
+   `OSA_CONTROL_PLANE_DATABASE_URL`; memory entries and persistent sessions use
+   the independent `OSA_MEMORY_DATABASE_URL` and `OSA_SESSION_DATABASE_URL`
+   databases when configured.
 3. Confirm the new images build in CI (the container job smoke-tests both
    images on every commit, so a green main implies buildable images).
 
@@ -26,6 +27,8 @@ the same version.
 
 ```
 OSA_CONTROL_PLANE_DATABASE_URL=... uv run osa-cp-migrate
+OSA_MEMORY_DATABASE_URL=... uv run osa-memory-migrate
+OSA_SESSION_DATABASE_URL=... uv run osa-session-migrate
 ```
 
 - Migrations are forward-only in normal operation; each has a `downgrade()`.
@@ -34,9 +37,8 @@ OSA_CONTROL_PLANE_DATABASE_URL=... uv run osa-cp-migrate
 - Migrations are additive-first: new columns/tables land with server
   defaults so the previous version keeps working against the migrated
   schema (enabling rolling rollbacks).
-- Runtime memory currently bootstraps its table with `CREATE TABLE IF NOT
-  EXISTS`; explicit versioned memory migrations and their upgrade/rollback
-  contract remain pending in `TODO.md`.
+- Runtime memory and sessions have independent versioned migration histories;
+  startup validates them and never auto-migrates.
 
 ## Runtime replicas
 
@@ -54,9 +56,10 @@ OSA_CONTROL_PLANE_DATABASE_URL=... uv run osa-cp-migrate
   bad agent-definition rollout independently of image rollouts.
 
 Deployment retry identity, rollback stop/relaunch/persist ordering, and bundle
-publication are hardened. Control Plane restart reconciliation for local
-child processes remains open; treat Control Plane-managed local deployments as
-a single-process topology until BF17 in `TODO.md` is complete.
+publication are hardened. Durable Control Plane deployments must select the
+Kubernetes provider; its status/list paths rehydrate labelled workloads after
+a Control Plane restart. The local provider remains a single-process
+development topology.
 
 ## Agent definitions
 

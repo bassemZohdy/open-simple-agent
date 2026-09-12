@@ -54,6 +54,7 @@ from osa.generic_agent import (
     SessionAccessError,
     SessionError,
     SessionNotFoundError,
+    add_rate_limit_middleware,
     configure_structured_logging,
     error_payload,
     log_context,
@@ -304,6 +305,10 @@ def configure_runtime_app(
     """
 
     settings = auth_settings or AuthSettings.from_env()
+    add_rate_limit_middleware(
+        app,
+        exempt_paths=frozenset({"/health/live", "/health/ready", "/docs", "/redoc", "/openapi.json"}),
+    )
     _install_authentication(app, settings, authenticator, secret_resolver)
     allowed_origins = _allowed_origins_from_env()
     if allowed_origins:

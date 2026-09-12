@@ -18,10 +18,11 @@ slice for backend evaluation and coexistence.
 > production-oriented images, release supply-chain automation, and the
 > React/TypeScript Control Panel are implemented. JWT bearer authentication,
 > opt-in role/permission enforcement, and runtime tenant binding are available.
-> The remaining production-readiness work is tracked in `TODO.md`: durable
-> sessions and migration-owned memory schema, local-provider recovery and
-> PostgreSQL cross-replica acceptance, distributed A2A/task state, capability
-> telemetry, capacity controls, locale/OIDC decisions, and release decisions.
+> The remaining production-readiness work is tracked in `TODO.md`: real
+> Kubernetes acceptance and distributed operation ownership, distributed
+> A2A/task state, shared capacity storage, locale/OIDC decisions, and release
+> decisions. Durable sessions, migration-owned memory schema, capability
+> telemetry, and the opt-in HTTP rate-limit contract are implemented.
 > Kubernetes follow-up is intentionally paused; live-provider CI acceptance is
 > opt-in.
 
@@ -34,14 +35,14 @@ slice for backend evaluation and coexistence.
 | Native tools | Catalog, declared parameter schemas, ADK-native function calling, timeout enforcement | Built-in implementations only (`calculator`); custom toolsets need code |
 | MCP | Runtime client (stdio + Streamable HTTP), lazy pooled connections, filtered namespaced tools bridged to ADK, bounded results, API-key/OAuth2/mTLS outbound credentials | Resources/prompts exposure and legacy SSE transport are deferred until a concrete requirement |
 | Skills | Catalog, search, runtime metadata resolution, A2A Agent Card mapping | Definition policy can allow/deny referenced skills |
-| Sessions | `SessionProvider` contract, ownership (agent/user/tenant), TTL, bounded history fed back to the model | In-memory only; not replica-safe |
-| Memory | Policy catalog resolution (authoritative scope/limits/retention), scope-id isolation (user/agent/tenant/application), enforcement after every write, explicit writes, PostgreSQL persistence (ADR-003) | Extraction pipeline (auto-extract) reserved; vector search deferred |
+| Sessions | `SessionProvider` contract, ownership (agent/user/tenant), TTL, bounded history fed back to the model, versioned PostgreSQL provider with optimistic concurrency and explicit `osa-session-migrate` schema ownership | In-memory remains the default; persistent sessions are opt-in per agent |
+| Memory | Policy catalog resolution (authoritative scope/limits/retention), scope-id isolation (user/agent/tenant/application), enforcement after every write, explicit writes, PostgreSQL persistence (ADR-003), explicit `osa-memory-migrate` schema ownership | Extraction pipeline (auto-extract) reserved; vector search deferred |
 | ADK runtime | Invocation through the ADK `Runner`; timeouts, iteration limits, stable error types; SSE streaming (`/v1/invoke/stream`) with stable OSA events and disconnect cancellation; A2A Agent Card + JSON-RPC server (ADR-005) | Token-level streaming requires a streaming model; A2A task state is in-memory per runtime |
 | LangChain/LangGraph runtime | `osa-langgraph-runtime` uses LangChain chat models/tools and a LangGraph `StateGraph` model/tool loop; shares OSA catalogs, policies, sessions, memory, timeouts, stable responses, and streaming events | Programmatic backend only; MCP, A2A, and a framework-neutral HTTP service adapter are not yet included |
-| Control Plane | Agent CRUD, lifecycle transitions, immutable versions, optimistic concurrency, validated contracts; tenant-owned agent CRUD/lifecycle routes; tenant-scoped resource CRUD/list/search APIs with reference checks and bundle import/export; tenant-owned deployment APIs (deploy/status/stop/restart/logs/rollback); durable external A2A agent registry with card validation, health, and outbound credential adapters; append-only tenant-filtered audit events; in-memory default or PostgreSQL repositories via `OSA_CONTROL_PLANE_DATABASE_URL` (ADR-004), Alembic schema (`osa-cp-migrate`); shared JWT bearer authentication and opt-in route permissions | PostgreSQL records are durable and resource reads reconcile their local catalogs; local provider processes still need restart/replica recovery semantics; definition resource policy is enforced by the runtime and enterprise policy remains open |
+| Control Plane | Agent CRUD, lifecycle transitions, immutable versions, optimistic concurrency, validated contracts; tenant-owned agent CRUD/lifecycle routes; tenant-scoped resource CRUD/list/search APIs with reference checks and bundle import/export; tenant-owned deployment APIs (deploy/status/stop/restart/logs/rollback); durable external A2A agent registry with card validation, health, and outbound credential adapters; append-only tenant-filtered audit events; in-memory default or PostgreSQL repositories via `OSA_CONTROL_PLANE_DATABASE_URL` (ADR-004), Alembic schema (`osa-cp-migrate`); shared JWT bearer authentication, opt-in route permissions, and operator-selected local/Kubernetes deployment providers | Durable Control Plane deployments require Kubernetes; local provider is development-only; definition resource policy is enforced by the runtime and enterprise policy remains open |
 | Control Panel | React/TypeScript/Vite shell; session-scoped Bearer token support; typed Control Plane client; agents, templates, tenant-scoped resources, readiness, agent detail/version history, safe immutable snapshot inspection, deployments, audit/metrics, authoring, A2A console, managed-runtime invocation, and responsive/loading/empty/error states | Broader translated-locale coverage and deployment-specific OIDC login remain deployment concerns |
-| Deployment | Local provider with bounded logs, health probing, startup-failure capture, identity-aware retry, safe bundle export, and persisted deploy/status/stop/restart/logs/rollback APIs; first generic Kubernetes provider slice retained | Persisted records do not make the local process provider restart- or replica-safe; further Kubernetes/Kind work is intentionally paused |
-| Runtime API | Invoke, capabilities, liveness, readiness, optional A2A Agent Card/JSON-RPC, shared JWT/OIDC bearer authentication including RFC 7662 opaque-token introspection, opt-in route permissions, tenant-claim binding, request IDs, Prometheus metrics, redaction-safe structured logs and runtime/A2A audit events; SSE streaming (`/v1/invoke/stream`) with stable OSA events; `osa-runtime` CLI with bundle bootstrap; shared outbound URL/DNS/redirect policy | No built-in rate limiting or quotas; use an API gateway or service mesh; network egress controls remain defense in depth |
+| Deployment | Local provider with bounded logs, health probing, startup-failure capture, identity-aware retry, safe bundle export, and persisted deploy/status/stop/restart/logs/rollback APIs; operator-selected Kubernetes provider with labelled status rehydration, probes, scaling, rollback, logs, bundle ConfigMaps, Secret references, and hardened pod security | Real Kind acceptance and distributed operation ownership remain gated |
+| Runtime API | Invoke, capabilities, liveness, readiness, optional A2A Agent Card/JSON-RPC, shared JWT/OIDC bearer authentication including RFC 7662 opaque-token introspection, opt-in route permissions, tenant-claim binding, request IDs, Prometheus metrics including model/tool/MCP capability outcomes, redaction-safe structured logs and runtime/A2A audit events; SSE streaming (`/v1/invoke/stream`) with stable OSA events; `osa-runtime` CLI with bundle bootstrap; shared outbound URL/DNS/redirect policy; opt-in bounded HTTP rate-limit contract | Rate limiting is process-local; use an API gateway or service mesh for replica-safe enforcement; network egress controls remain defense in depth |
 | CI | Ruff format/lint, strict mypy, full Python suite with PostgreSQL + A2A services and an 84% coverage gate, Control Panel typecheck/test/build, both image smoke tests, dependency/license scanning, CycloneDX SBOMs, and a gated live-provider acceptance job | Live-provider execution requires the opt-in repository secret |
 | Release | Lockstep release validation; four Python distributions; GHCR runtime/Control Plane images; SBOM/provenance attestations; keyless Cosign image signing; GitHub Releases with checksums; immutable-digest channel rollback | First public release and optional package-registry publication remain open |
 
@@ -368,10 +369,11 @@ open-simple-agent/
 The P0 runnable-agent gate, managed-platform foundation, current Control Panel,
 and production images are implemented. Release automation can build validated
 Python artifacts and signed/attested GHCR images from an intentional
-version/tag. The next recommended work is PostgreSQL cross-replica acceptance
-and local-provider recovery/ownership semantics; the remaining work is listed
-in [TODO.md](TODO.md) by priority. Live-provider acceptance is available when
-its repository secret is intentionally enabled.
+version/tag. The remaining gated work is listed in [TODO.md](TODO.md), notably
+real-cluster acceptance, distributed A2A task state, shared capacity controls,
+translated locales, deployment-specific browser OIDC, and the first public
+release decision. Live-provider acceptance is available when its repository
+secret is intentionally enabled.
 
 ## License
 

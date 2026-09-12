@@ -137,11 +137,10 @@ def create_control_plane_app(
 
         configured.state.external_agent_repository = PostgresExternalAgentRepository(engine)
     if deployment_records is not None:
-        from osa.control_plane.backend.deployment import LocalDeploymentProvider
-        from osa.control_plane.backend.deployment_service import DeploymentService
+        from osa.control_plane.backend.deployment_service import DeploymentService, create_deployment_provider
 
         configured.state.deployment_service = DeploymentService(
-            provider=LocalDeploymentProvider(),
+            provider=create_deployment_provider(require_shared=True),
             record_repository=deployment_records,
             agent_repository=agents,
             resource_catalogs=resource_catalogs,

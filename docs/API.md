@@ -5,9 +5,10 @@ in-memory repositories by default and can use PostgreSQL; the runtime keeps
 session state in its configured provider and memory can use PostgreSQL. With a
 Control Plane DSN, agents, resources, deployment records, audit events, and
 external-agent records are shared through PostgreSQL; route and deployment
-reads reconcile local resource catalogs. Local provider processes remain
-process-local and cross-replica PostgreSQL acceptance is still gated in
-`TODO.md` (BF17/BF19). Neither application currently provides rate limiting.
+reads reconcile local resource catalogs. Durable Control Planes require the
+Kubernetes provider; local provider processes remain process-local by design.
+Cross-replica resource acceptance runs in the PostgreSQL CI suite. Both
+applications provide an opt-in process-local rate-limit contract.
 Both use the stable OSA error envelope `{"error": {"code", "message"}}`
 and share the optional JWT Bearer authentication boundary described below.
 
@@ -202,9 +203,26 @@ names, statuses, versions, and changed-field names; request payloads,
 definitions, prompts, credentials, and remote outputs are never recorded.
 The in-memory repository is the default; PostgreSQL persistence uses migration
 0006. Runtime and A2A boundary invocations plus authentication/authorization
-denials are emitted through the optional runtime audit sink. Internal
-capability-level events remain open; durable runtime sessions, memory schema
-migrations, and distributed A2A task state are tracked in `TODO.md`.
+denials are emitted through the optional runtime audit sink. Runtime metrics
+also include bounded `osa_capability_events_total` series for model,
+native-tool, and MCP outcomes; optional capability sinks receive the same
+payload-free fields. Durable runtime sessions and memory schema migrations
+are selected through their separate migration commands.
+
+### Rate limits
+
+When `OSA_RATE_LIMIT_REQUESTS` is greater than zero, every non-health HTTP
+route is budgeted independently per method, route, and caller. The response
+includes `X-RateLimit-Limit`, `X-RateLimit-Remaining`, and
+`X-RateLimit-Reset`; an exhausted window returns:
+
+```json
+{"error":{"code":"rate_limit_exceeded","message":"Request rate limit exceeded"}}
+```
+
+with status `429` and a `Retry-After` header in seconds. The built-in limiter
+is process-local and bounded; production replicas must enforce the same policy
+at a replica-safe gateway or service mesh.
 
 ### Definition resource policy
 
@@ -265,10 +283,11 @@ when the template is unset.
 
 Every transition persists intent and observed state through the
 `DeploymentRecordRepository` (in-memory by default, PostgreSQL when the
-Control Plane is configured with a database). This record durability does not
-make the local subprocess provider restart- or replica-safe; provider
-reconciliation and multi-replica ownership remain open as BF17. The Kubernetes
-provider and multi-host scheduling also remain open (see `TODO.md`).
+Control Plane is configured with a database). The local provider is explicitly
+development-only and stops its owned children on graceful shutdown. Kubernetes
+status/list operations rehydrate workloads from OSA identity labels after a
+Control Plane restart; multi-replica operation ownership remains an external
+provider responsibility.
 
 ### A2A and external agents (P2.1)
 
@@ -429,9 +448,10 @@ the `model_invocation_failed` code when raised to the HTTP layer.
 - Invocation flows through the ADK `Runner`; tools execute through ADK-native
   function calling with declarations from `ToolDefinition.capabilities`.
 - One agent is stored in module-level state, matching the bundle model.
-- Sessions are in memory and not replica-safe; memory can use the PostgreSQL
-  provider when `OSA_MEMORY_DATABASE_URL` is set. Durable sessions remain open
-  work in `TODO.md`.
+- Sessions use the in-memory provider by default. Bundles with
+  `spec.session.persistence: true` select the PostgreSQL provider after
+  `osa-session-migrate` has been run; memory uses its separate
+  `osa-memory-migrate` path when `OSA_MEMORY_DATABASE_URL` is configured.
 - The `fake` model provider requires explicit opt-in via
   `OSA_ALLOW_FAKE_PROVIDER=1` in service bootstraps.
 - A2A Agent Card and JSON-RPC routes are available when `spec.a2a.enabled` and
@@ -443,6 +463,7 @@ the `model_invocation_failed` code when raised to the HTTP layer.
   spans are emitted when an SDK provider/exporter is configured.
 - Streaming is available at `POST /v1/invoke/stream`; token-level deltas
   depend on the configured model's streaming support.
-- Neither HTTP application currently enforces rate limits or quotas; place a
-  gateway or service-mesh policy in front of these APIs until the planned
-  controls in `TODO.md` are implemented.
+- Set `OSA_RATE_LIMIT_REQUESTS` to enable per-route/caller request budgets;
+  exhausted windows return `429` with `Retry-After` and `X-RateLimit-*`
+  headers. The built-in store is process-local, so replica-safe enforcement
+  still belongs at a gateway or service mesh.

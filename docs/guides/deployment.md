@@ -61,33 +61,36 @@ docker run -d -p 8000:8000 \
   (single process; state lost on restart).
 - With a DSN, agents/deployments/resources/audit events/external-agent records
   persist in PostgreSQL and are shared across replicas. Resource reads and
-  validation reconcile each process-local catalog from durable records. The
-  local deployment provider's child-process state is not restart- or
-  replica-safe yet; use BF17 in `TODO.md` when selecting a production
-  topology.
+  validation reconcile each process-local catalog from durable records. A
+  durable Control Plane requires `OSA_DEPLOY_PROVIDER=kubernetes`; the local
+  provider is development-only and process-local.
 
 ### Deployment configuration
 
 The Control Plane image starts the PostgreSQL-aware application factory. Run
 `osa-cp-migrate` separately before rollout when
 `OSA_CONTROL_PLANE_DATABASE_URL` is configured; the application never
-auto-migrates. The local deployment provider uses these server-side settings:
+auto-migrates. The selected deployment provider uses these server-side settings:
 
 | Variable | Purpose | Default |
 |---|---|---|
 | `OSA_CONTROL_PLANE_DATABASE_URL` | PostgreSQL DSN for agents, resources, deployments, and audit events | unset (in-memory) |
 | `OSA_DEPLOY_COMMAND_TEMPLATE` | Server-owned runtime launch template; supports `{bundle_path}` and `{port}` | `osa-runtime --config {bundle_path} --port {port}` |
+| `OSA_DEPLOY_PROVIDER` | Deployment provider (`local` or `kubernetes`) | `local` for in-memory development; required as `kubernetes` with a durable Control Plane |
+| `OSA_KUBERNETES_IMAGE` | Runtime image used by the Kubernetes provider | required for `kubernetes` |
+| `OSA_KUBERNETES_NAMESPACE` | Kubernetes namespace | `default` |
+| `OSA_KUBERNETES_REPLICAS` | Desired runtime replicas | `1` |
+| `OSA_KUBECTL` | `kubectl` executable | `kubectl` |
+| `OSA_KUBERNETES_ROLLOUT_TIMEOUT_SECONDS` | Maximum Kubernetes rollout wait | `60` |
 | `OSA_DEPLOY_ROOT` | Root directory for exported deployment bundles | OS temporary directory plus `osa-deployments` |
 | `OSA_DEPLOY_INVOKE_URL_TEMPLATE` | Optional public runtime URL; supports `{deployment_id}`, `{agent_id}`, `{version}`, and `{port}` | unset |
 | `OSA_DEPLOY_RUNTIME_ALLOWED_ORIGINS` | Origins forwarded to launched runtimes as `OSA_RUNTIME_ALLOWED_ORIGINS` | unset |
 
 The command template is configuration owned by the server/operator, never API
-input. In a split deployment, the executable named by the template and its
-runtime dependencies must be available to the Control Plane process. The
-Control Plane image is management-only and does not package `osa-runtime`; use
-an operator-provided launcher/provider or a deployment topology that puts the
-local provider beside the runtime (see the open launcher-contract item in
-`TODO.md`).
+input. The Control Plane image packages `osa-runtime` for the local development
+topology. In Kubernetes mode, the provider mounts the exported bundle into the
+separately published runtime image, so runtime credentials stay in Kubernetes
+Secret references.
 
 ### Migrations
 
@@ -101,25 +104,38 @@ OSA_CONTROL_PLANE_DATABASE_URL=... uv run osa-cp-migrate
 The application never auto-migrates (multi-replica race). Run migrations as
 a separate step, then roll replicas.
 
+Runtime persistence has independent migration commands and startup ordering:
+
+```bash
+OSA_MEMORY_DATABASE_URL=... uv run osa-memory-migrate
+OSA_SESSION_DATABASE_URL=... uv run osa-session-migrate
+```
+
+Run the memory command when `OSA_MEMORY_DATABASE_URL` is configured. Run the
+session command before deploying any bundle whose `spec.session.persistence`
+is `true`. Runtime startup validates both schemas but never creates or alters
+them.
+
 ### Multi-replica notes
 
 - Control Plane replicas share state through PostgreSQL; writes are
   transactional with unique constraints and optimistic locking.
-- This applies to persisted records, not the local provider's subprocesses:
-  provider shutdown, orphan cleanup, and restart reconciliation remain open.
-- Runtime replicas need a shared `SessionProvider` (persistent) for
-  cross-replica session continuity; with the in-memory provider, sessions
-  are per-process (documented limitation).
-- Neither service enforces HTTP rate limits or quotas yet. Apply those controls
-  at an API gateway or service mesh until the P2 rate-limit work in `TODO.md`
-  lands.
+- The local provider owns and stops only its own child processes and is rejected
+  for durable Control Plane deployments. The Kubernetes provider rehydrates
+  status from identity-labelled workloads after Control Plane restarts.
+- Runtime replicas need `spec.session.persistence: true` plus a shared,
+  migrated `OSA_SESSION_DATABASE_URL` for cross-replica session continuity.
+- Optional HTTP rate limits are available in-process; production replicas
+  should enforce the same policy at an API gateway or service mesh.
 
 ## Deploying an agent through the Control Plane
 
 1. Create the agent (`POST /agents`) with a definition.
 2. Activate it (`POST /agents/{id}/activate`) — references are validated.
 3. `POST /agents/{id}/deploy` — the Control Plane exports a bundle and
-   launches the runtime locally via `OSA_DEPLOY_COMMAND_TEMPLATE`.
+   launches it through the selected provider: the local provider uses
+   `OSA_DEPLOY_COMMAND_TEMPLATE`, while Kubernetes creates the labelled
+   workload from the exported bundle.
 4. Observe with `GET /deployments/{id}`, `GET /deployments/{id}/logs`,
    restart/stop/rollback as needed.
 
@@ -128,9 +144,6 @@ never accepts process commands.
 
 ## Remaining deployment work
 
-- Local-provider restart/reconciliation and multi-replica ownership (BF17 in
-  `TODO.md`)
-- PostgreSQL cross-replica resource-catalog acceptance (BF19)
-- Packaged Kubernetes provider selection and real Kind acceptance (the first
-  generic provider slice exists, but follow-up is paused)
+- Real Kind-cluster acceptance and distributed deployment-operation ownership
+  are still gated by the Kubernetes CI environment.
 - Distributed A2A task state and cancellation semantics (P2.4)

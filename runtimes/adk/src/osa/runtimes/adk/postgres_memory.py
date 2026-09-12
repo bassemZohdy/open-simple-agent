@@ -7,9 +7,8 @@ semantics (``ILIKE``). Per-scope limits and retention are enforced in SQL via
 extra (``osa-adk-runtime[postgres]``); the DSN comes from external
 configuration (``OSA_MEMORY_DATABASE_URL``), never from agent definitions.
 
-The table is created with ``CREATE TABLE IF NOT EXISTS`` at startup; schema
-management moves to Alembic migrations with the Control Plane persistence
-work (P1.1).
+Schema is owned by :mod:`osa.runtimes.adk.memory_migrations`; runtime startup
+only validates that the operator has applied the required version.
 """
 
 from __future__ import annotations
@@ -21,25 +20,9 @@ from typing import Any
 
 from osa.generic_agent import MemoryEntry, MemoryProvider, MemoryScope
 from osa.generic_agent.errors import MemoryConfigurationError
+from osa.runtimes.adk.memory_migrations import ensure_memory_schema, migrate_memory_schema
 
 _MEMORY_TABLE = "osa_memory_entries"
-
-_SCHEMA_DDL = f"""
-CREATE TABLE IF NOT EXISTS {_MEMORY_TABLE} (
-    entry_id TEXT PRIMARY KEY,
-    key TEXT NOT NULL,
-    content TEXT NOT NULL,
-    scope TEXT NOT NULL,
-    scope_id TEXT NOT NULL,
-    metadata JSONB NOT NULL DEFAULT '{{}}'::jsonb,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
-)
-"""
-
-_MEMORY_INDEX_DDL = (
-    f"CREATE INDEX IF NOT EXISTS ix_{_MEMORY_TABLE}_scope ON {_MEMORY_TABLE} (scope, scope_id, key, created_at)"
-)
 
 
 def _require_sqlalchemy() -> None:
@@ -68,12 +51,18 @@ class PostgresMemoryProvider(MemoryProvider):
         self._engine = create_async_engine(dsn, connect_args=connect_args or {})
 
     async def ensure_schema(self) -> None:
-        """Create the memory table if absent; validates connectivity."""
-        from sqlalchemy import text
+        """Validate connectivity and require an operator-applied schema."""
+        try:
+            await ensure_memory_schema(self._engine)
+        except Exception as exc:
+            raise MemoryConfigurationError(
+                "The runtime memory schema is unavailable; run 'osa-memory-migrate' "
+                "against OSA_MEMORY_DATABASE_URL before starting the runtime"
+            ) from exc
 
-        async with self._engine.begin() as connection:
-            await connection.execute(text(_SCHEMA_DDL))
-            await connection.execute(text(_MEMORY_INDEX_DDL))
+    async def migrate(self) -> int:
+        """Apply pending migrations for operator tooling and tests."""
+        return await migrate_memory_schema(self._engine)
 
     async def close(self) -> None:
         await self._engine.dispose()

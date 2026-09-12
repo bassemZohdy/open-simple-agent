@@ -65,9 +65,9 @@ backlog.
   reserved — raw interactions are never persisted automatically. A
   policy-driven extraction pipeline is future work and will arrive as an
   explicit, opt-in behavior.
-- The table is created with `CREATE TABLE IF NOT EXISTS` until a dedicated
-  memory migration path is adopted. Control Plane Alembic migrations do not
-  own this independently deployed runtime table.
+- The independent runtime schema is owned by the versioned
+  `osa-memory-migrate` command, not by Control Plane Alembic. Runtime startup
+  validates the applied version and never mutates this database.
 
 ## Consequences
 
@@ -83,7 +83,9 @@ backlog.
 - `ILIKE` substring search is linear at scale; an index on
   `(scope, scope_id, key, created_at)` covers the common paths, and pgvector
   remains available if semantic search becomes a requirement.
-- Memory still has bootstrap DDL instead of a versioned migration history.
+- Memory has a separate migration history and requires an explicit pre-start
+  migration step; the independent history must be backed up and upgraded with
+  the runtime package.
 
 ## Validation
 
@@ -95,7 +97,7 @@ backlog.
 
 ## Follow-up
 
-- [ ] Replace bootstrap `CREATE TABLE IF NOT EXISTS` with a dedicated,
+- [x] Replace bootstrap `CREATE TABLE IF NOT EXISTS` with a dedicated,
       versioned memory migration path and document its operational ownership.
 - [ ] Revisit pgvector when semantic retrieval becomes a concrete
       requirement.

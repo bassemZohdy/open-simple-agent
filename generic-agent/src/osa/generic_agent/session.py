@@ -48,6 +48,22 @@ class SessionAccessError(SessionError):
         super().__init__(f"Session '{session_id}' is not accessible to this caller")
 
 
+class SessionConcurrencyError(SessionError):
+    """A concurrent writer updated a session before this writer saved it."""
+
+    code = "session_concurrent_update"
+
+    def __init__(self, session_id: str) -> None:
+        self.session_id = session_id
+        super().__init__(f"Session '{session_id}' was updated concurrently")
+
+
+class SessionConfigurationError(SessionError):
+    """The selected durable session provider is not correctly configured."""
+
+    code = "session_configuration_error"
+
+
 @dataclass
 class SessionId:
     """Unique session identifier."""
@@ -76,6 +92,7 @@ class Session:
     max_history_messages: int = DEFAULT_MAX_HISTORY_MESSAGES
     metadata: dict[str, Any] = field(default_factory=dict)
     conversation_history: list[dict[str, str]] = field(default_factory=list)
+    revision: int = 0
 
     def add_message(self, role: str, content: str) -> None:
         """Add a message to the bounded conversation history.
@@ -175,6 +192,10 @@ class SessionProvider(ABC):
         """Remove expired sessions; returns the number purged."""
         ...
 
+    def close(self) -> None:
+        """Release provider resources; the in-memory implementation is a no-op."""
+        return None
+
 
 class SessionManager(SessionProvider):
     """In-memory session provider.
@@ -238,6 +259,7 @@ class SessionManager(SessionProvider):
 
     def save(self, session: Session) -> None:
         session.last_active_at = datetime.now(UTC)
+        session.revision += 1
         self._sessions[str(session.session_id)] = session
 
     def delete(

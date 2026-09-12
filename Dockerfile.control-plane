@@ -15,8 +15,9 @@ COPY runtimes/ runtimes/
 COPY control-plane/ control-plane/
 
 # The Control Plane needs its own member plus the generic-agent workspace
-# dependency; the postgres extra provides the persistence stack (ADR-004).
-RUN uv sync --frozen --no-dev --no-editable --package osa-control-plane --extra postgres
+# dependency; the runtime extra packages osa-runtime for the local provider
+# topology (ADR-004). Kubernetes deployments use a separate runtime image.
+RUN uv sync --frozen --no-dev --no-editable --package osa-control-plane --extra postgres --extra runtime
 
 FROM python:3.12-slim AS runtime
 

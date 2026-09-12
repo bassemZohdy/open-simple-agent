@@ -137,6 +137,20 @@ async def test_scale_restart_rollback_status_logs_and_list(tmp_path: Path) -> No
 
 
 @pytest.mark.asyncio
+async def test_status_rehydrates_after_provider_restart(tmp_path: Path) -> None:
+    provider = FakeKubernetesProvider()
+    deployment = await provider.deploy(_spec(_bundle(tmp_path)))
+
+    restarted_provider = FakeKubernetesProvider()
+    restarted_provider.objects = provider.objects
+    recovered = await restarted_provider.status(deployment.deployment_id)
+
+    assert recovered.deployment_id == deployment.deployment_id
+    assert recovered.agent_id == "agent-1"
+    assert recovered.status is DeploymentStatus.RUNNING
+
+
+@pytest.mark.asyncio
 async def test_stop_scales_to_zero(tmp_path: Path) -> None:
     provider = FakeKubernetesProvider()
     deployment = await provider.deploy(_spec(_bundle(tmp_path)))

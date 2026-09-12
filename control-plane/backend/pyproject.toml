@@ -14,12 +14,16 @@ dependencies = [
 # PostgreSQL persistence (ADR-004). Selected via
 # OSA_CONTROL_PLANE_DATABASE_URL; schema managed by Alembic (osa-cp-migrate).
 postgres = ["sqlalchemy[asyncio]>=2.0,<3", "asyncpg>=0.29", "alembic>=1.13"]
+# Packages the runtime launcher into the management image for the local
+# provider topology. Kubernetes uses a separately published runtime image.
+runtime = ["osa-adk-runtime"]
 
 [project.scripts]
 osa-cp-migrate = "osa.control_plane.backend.db:migrate_cli"
 
 [tool.uv.sources]
 osa-generic-agent = { workspace = true }
+osa-adk-runtime = { workspace = true }
 
 [build-system]
 requires = ["hatchling"]
