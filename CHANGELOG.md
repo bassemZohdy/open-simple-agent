@@ -40,6 +40,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - PostgreSQL-only Control Plane, memory, and durable-session selectors now
   reject malformed, empty, SQLite, and in-memory DSNs before provider setup;
   configured database failures remain fail-closed without fallback.
+- Documented the current per-subsystem provider matrix, including explicit
+  local SQLite coverage for lower-level A2A and rate-limit stores and the
+  PostgreSQL-only shared-production boundary.
 
 ### Added — Runtime durability, capacity, and deployment hardening
 - Added an explicit, versioned PostgreSQL runtime-session provider with strict

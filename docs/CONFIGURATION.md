@@ -193,6 +193,24 @@ is appropriate for tests and single-process development only. SQLite-backed
 development must be an explicit, subsystem-specific choice; it is not a
 general fallback or a shared-replica provider.
 
+### Current provider matrix
+
+The current implementation intentionally has different provider contracts by
+subsystem:
+
+| Subsystem | Explicit durable selector | No DSN | SQLite status | Restart/replica behavior |
+|---|---|---|---|---|
+| Control Plane | `OSA_CONTROL_PLANE_DATABASE_URL` | In-memory repositories | Rejected before engine creation | PostgreSQL survives restart and is shared across replicas; in-memory is process-local |
+| Runtime memory | `OSA_MEMORY_DATABASE_URL` | In-memory provider | Rejected before engine creation | PostgreSQL survives restart and is shareable after `osa-memory-migrate`; in-memory is ephemeral |
+| Runtime sessions | `spec.session.persistence: true` plus `OSA_SESSION_DATABASE_URL` | `SessionManager` when persistence is false; missing DSN fails when true | Rejected before engine creation | PostgreSQL preserves ownership/history across restart; in-memory is process-local |
+| A2A task records | `OSA_A2A_TASK_DATABASE_URL` | SDK in-memory task store | Explicit SQLite is exercised for local tests where the SDK supports it; not a shared-production guarantee | Durable task records survive restart, but active executor ownership remains process-local |
+| HTTP rate limits | `OSA_RATE_LIMIT_DATABASE_URL` | In-memory limiter | Explicit SQLite is exercised for local tests through SQLAlchemy; PostgreSQL is required for cross-replica production limits | Shared PostgreSQL windows coordinate replicas; in-memory/SQLite are local-only |
+
+For every row, an explicitly selected durable provider is authoritative. Invalid,
+unreachable, or unmigrated configured databases fail startup/readiness; the
+service does not move to another row or silently discard state. The matrix is
+covered by unit tests plus the optional PostgreSQL integration suite in CI.
+
 ## Memory persistence
 
 By default memory is in-memory (single process, lost on restart). Setting

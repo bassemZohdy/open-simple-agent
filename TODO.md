@@ -114,9 +114,6 @@ explicit single-process option with its own migration and backup guidance.
 - [ ] Add deployment-policy validation so durable/production surfaces reject
   process-local memory or SQLite providers, and add an explicit policy mode for
   deployments that require shared durable state.
-- [ ] Add a provider matrix covering Control Plane, memory, sessions, A2A task
-  records, and rate limits across PostgreSQL, SQLite where supported, and
-  in-memory development modes, including restart and failure behavior.
 
 ## Enterprise identity lifecycle — PARTIALLY COMPLETE
 
