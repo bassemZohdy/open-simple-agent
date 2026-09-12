@@ -12,6 +12,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added — A2A event cursor foundation
+- Added schema version 2 to `osa-a2a-migrate`, provisioning a tenant-scoped,
+  append-only `<task_table>_events` cursor table alongside the SDK task and
+  ownership tables.
+- Added fence-checked ordered event appends with bounded protocol payloads;
+  cross-process stream relay and inbound A2A streaming remain disabled until
+  the ADR-011 acceptance contract is approved and verified.
+
 ### Added — Distributed deployment-operation ownership slice
 - Added migration 0010 and tenant/resource-scoped PostgreSQL leases for
   deploy, stop, restart, and rollback operations, with stable operation IDs,

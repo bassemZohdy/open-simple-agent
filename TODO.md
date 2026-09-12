@@ -1,6 +1,6 @@
 # Open Simple Agent — Active Backlog
 
-Updated 2026-09-12. This file contains only unfinished, deferred, or
+Updated 2026-09-13. This file contains only unfinished, deferred, or
 deliberately gated work. Completed implementation history is recorded in
 `CHANGELOG.md` and git history.
 
@@ -49,7 +49,9 @@ Production-readiness limits are:
   remote-handler cancellation waiting, expired-owner cancellation, read-only
   terminal replay, terminal-event drain-before-release, and fail-closed
   owner-loss handling are implemented. The SDK active-task registry and
-  multi-process streaming/late-event acceptance remain incomplete; replica-wide
+  migration-owned event-cursor storage is now provisioned as schema version 2,
+  but multi-process streaming/late-event acceptance remains incomplete;
+  replica-wide
   capability telemetry now has an optional migration-owned PostgreSQL sink
   with deduplication, ordering, and tenant-retention controls;
   deployment-operation ownership now has a migration-owned PostgreSQL lease,
@@ -148,7 +150,8 @@ route. Concrete identity-source acceptance remains open.
 The SDK task record can be persisted in PostgreSQL with
 `OSA_A2A_TASK_DATABASE_URL`. OSA now adds an explicit versioned ownership table
 with tenant/caller scope, leases, fencing, durable cancellation, and expired
-lease takeover; run `osa-a2a-migrate` before startup. Durable task mutations
+lease takeover, plus a schema-version-2 migration-owned append-only event
+cursor; run `osa-a2a-migrate` before startup. Durable task mutations
 now carry the acquired ownership snapshot through the SDK call context and
 hold the ownership-row lock while saving, so stale workers fail closed. The
 active executor registry remains process-local. Independent handlers can look

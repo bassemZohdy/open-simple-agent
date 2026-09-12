@@ -31,7 +31,7 @@ Environment variables:
 | `OSA_ALLOW_FAKE_PROVIDER` | Opt-in deterministic fake model (`1`); never enabled by default |
 | `OSA_A2A_URL` | Public URL advertised in the Agent Card when `spec.a2a.enabled` |
 | `OSA_A2A_TASK_DATABASE_URL` | Async SQLAlchemy DSN for durable A2A tasks and ownership; unset keeps the process-local SDK store |
-| `OSA_A2A_TASK_TABLE` | A2A task table name; ownership uses the `<name>_ownership` companion table |
+| `OSA_A2A_TASK_TABLE` | A2A task table name; ownership and the schema-version-2 event cursor use the `<name>_ownership` and `<name>_events` companion tables |
 | `OSA_A2A_TASK_LEASE_SECONDS` | A2A ownership lease duration; minimum 5 seconds, default 30 |
 | `OSA_A2A_TASK_CANCEL_WAIT_SECONDS` | Maximum remote-handler wait for durable cancellation before a retryable error; default 30 seconds |
 | `OSA_CAPABILITY_TELEMETRY_DATABASE_URL` | PostgreSQL DSN for shared capability telemetry; mutually exclusive with the local JSONL sink |
@@ -137,8 +137,10 @@ session command before deploying any bundle whose `spec.session.persistence`
 is `true`. Runtime startup validates both schemas but never creates or alters
 them. Run the A2A command when `OSA_A2A_TASK_DATABASE_URL` is configured and
 any enabled runtime serves inbound A2A tasks; it provisions the SDK task table
-and OSA's versioned ownership table. Runtime startup validates those tables but
-never creates or alters them.
+and OSA's versioned ownership and append-only event tables. Runtime startup
+validates those tables but never creates or alters them. The event table is a
+storage foundation only; cross-process A2A streaming remains disabled pending
+the ADR-011 acceptance suite.
 
 Run `osa-capability-telemetry-migrate` when
 `OSA_CAPABILITY_TELEMETRY_DATABASE_URL` is configured. It provisions the

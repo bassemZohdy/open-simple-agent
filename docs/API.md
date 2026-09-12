@@ -330,8 +330,9 @@ By default A2A task records are process-local. Set
 `OSA_A2A_TASK_DATABASE_URL` to use the SDK's SQLAlchemy-backed
 `DatabaseTaskStore`; PostgreSQL is required for shared production, while
 SQLite may be selected explicitly for local testing. Run `osa-a2a-migrate`
-before startup; runtime startup validates the task and OSA ownership schemas
-without creating or altering them. Records and ownership leases are scoped by
+before startup; runtime startup validates the task, OSA ownership, and paired
+schema-version-2 event schemas without creating or altering them. Records and
+ownership leases are scoped by
 validated tenant and subject. The ownership table provides one worker lease,
 heartbeats, a monotonically increasing fencing token on takeover, and a
 durable cancellation request. A retry waits for a terminal task, replays that

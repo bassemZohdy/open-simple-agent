@@ -354,7 +354,8 @@ stores the tenant/caller scope, worker lease, fencing epoch, bound session, and
 durable cancellation flag. Only the current lease holder invokes the agent;
 healthy workers heartbeat, while retries may reclaim an expired lease or replay
 a durable terminal task. Run `osa-a2a-migrate` before startup; runtime startup
-only validates the task and ownership schema. PostgreSQL is the
+only validates the task, ownership, and schema-version-2 event tables.
+PostgreSQL is the
 shared-production choice; SQLite is an explicit local-only option where the
 SDK supports it. The SDK active-task registry remains process-local. Its
 durable task saves carry the ownership snapshot through the SDK call context

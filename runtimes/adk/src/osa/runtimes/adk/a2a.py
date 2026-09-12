@@ -32,11 +32,14 @@ from typing import TYPE_CHECKING, Any, cast
 from uuid import uuid4
 
 if TYPE_CHECKING:
+    from a2a.server.events import EventQueue
+
     from osa.generic_agent import AgentDefinition, AuthSettings, SkillDefinition
 
 from osa.runtimes.adk.a2a_ownership import A2aTaskOwnershipStore, TaskOwnership, heartbeat_loop
 from osa.runtimes.adk.a2a_task_store import (
     FencedDatabaseTaskStore,
+    bind_task_event,
     bind_task_ownership,
     bind_task_replay,
 )
@@ -176,11 +179,13 @@ class OsaA2aAgentExecutor:
         *,
         ownership_store: A2aTaskOwnershipStore | None = None,
         task_store: Any | None = None,
+        event_store: Any | None = None,
     ) -> None:
         self._agent = agent
         self._sessions: dict[str, str] = {}
         self._ownership_store = ownership_store
         self._task_store = task_store
+        self._event_store = event_store
 
     async def execute(self, context: Any, event_queue: Any) -> None:
         from a2a.server.tasks import TaskUpdater
@@ -198,12 +203,15 @@ class OsaA2aAgentExecutor:
 
         if ownership is not None:
             bind_task_ownership(context.call_context, ownership)
-        updater = TaskUpdater(event_queue, task_id, context_id)
+        tracked_event_queue = (
+            _TrackedEventQueue(event_queue, context.call_context) if self._event_store is not None else event_queue
+        )
+        updater = TaskUpdater(cast("EventQueue", tracked_event_queue), task_id, context_id)
 
         # The 1.x consumer requires the initial Task event before any
         # status/artifact updates. Publish it only after this worker owns the
         # durable fence; a losing worker must never create a late task row.
-        await event_queue.enqueue_event(
+        await tracked_event_queue.enqueue_event(
             Task(
                 id=task_id,
                 context_id=context_id,
@@ -282,7 +290,7 @@ class OsaA2aAgentExecutor:
                     current = await active_store.get(ownership.task_id, ownership.scope_key)
                     if current is not None and current.cancel_requested:
                         terminal_state = "canceled"
-                if await _wait_for_task_events_to_persist(event_queue):
+                if await _wait_for_task_events_to_persist(tracked_event_queue):
                     await active_store.release(ownership, terminal_state)
 
     @staticmethod
@@ -538,8 +546,27 @@ class OsaA2aAgentExecutor:
                     scope_key,
                 )
                 return
-        updater = TaskUpdater(event_queue, task_id, context_id)
+        tracked_event_queue = (
+            _TrackedEventQueue(event_queue, context.call_context) if self._event_store is not None else event_queue
+        )
+        updater = TaskUpdater(cast("EventQueue", tracked_event_queue), task_id, context_id)
         await updater.cancel()
+
+
+class _TrackedEventQueue:
+    """Record protocol events before handing them to the SDK queue."""
+
+    def __init__(self, delegate: Any, call_context: Any) -> None:
+        self._delegate = delegate
+        self._call_context = call_context
+
+    @property
+    def queue(self) -> Any:
+        return self._delegate.queue
+
+    async def enqueue_event(self, event: Any) -> None:
+        bind_task_event(self._call_context, event)
+        await self._delegate.enqueue_event(event)
 
 
 def _text_message(text: str) -> Any:
@@ -635,6 +662,7 @@ def _task_store_and_engine(app: Any) -> tuple[Any, Any | None]:
         app.state.osa_a2a_task_store = store
         app.state.osa_a2a_task_engine = None
         app.state.osa_a2a_ownership_store = None
+        app.state.osa_a2a_event_store = None
         return store, None
 
     _require_a2a_sdk()
@@ -667,10 +695,17 @@ def _task_store_and_engine(app: Any) -> tuple[Any, Any | None]:
         table_name=f"{table_name}_ownership",
         lease_seconds=_task_lease_seconds(),
     )
-    store = FencedDatabaseTaskStore(sdk_store, ownership_store)
+    from osa.runtimes.adk.a2a_event_store import A2aTaskEventStore, event_table_name
+
+    event_store = A2aTaskEventStore(
+        engine,
+        table_name=event_table_name(table_name),
+    )
+    store = FencedDatabaseTaskStore(sdk_store, ownership_store, event_store)
     app.state.osa_a2a_task_store = store
     app.state.osa_a2a_task_engine = engine
     app.state.osa_a2a_ownership_store = ownership_store
+    app.state.osa_a2a_event_store = event_store
     return store, engine
 
 
@@ -689,6 +724,7 @@ async def initialize_a2a_task_store(app: Any) -> None:
             app.state.osa_a2a_task_engine,
             task_table_name=task_table_name,
             ownership_store=ownership_store,
+            event_store=getattr(app.state, "osa_a2a_event_store", None),
         )
 
 
@@ -712,6 +748,7 @@ async def close_a2a_task_store(app: Any) -> None:
     app.state.osa_a2a_task_store = None
     app.state.osa_a2a_task_engine = None
     app.state.osa_a2a_ownership_store = None
+    app.state.osa_a2a_event_store = None
 
 
 def attach_a2a_routes(
@@ -745,6 +782,7 @@ def attach_a2a_routes(
                 agent,
                 ownership_store=getattr(app.state, "osa_a2a_ownership_store", None),
                 task_store=task_store,
+                event_store=getattr(app.state, "osa_a2a_event_store", None),
             ),
         ),
         task_store=task_store,

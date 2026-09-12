@@ -5,8 +5,10 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from osa.runtimes.adk.a2a_event_store import A2aTaskEventStore, event_table_name
+
 A2A_SCHEMA_VERSION_TABLE = "osa_a2a_schema_versions"
-CURRENT_SCHEMA_VERSION = 1
+CURRENT_SCHEMA_VERSION = 2
 
 
 def _validate_table_name(table_name: str) -> str:
@@ -32,13 +34,18 @@ async def migrate_a2a_schema(
     task_table_name: str,
     task_store: Any,
     ownership_store: Any,
+    event_store: A2aTaskEventStore | None = None,
 ) -> int:
-    """Apply the A2A SDK task and OSA ownership schema explicitly."""
+    """Apply the A2A SDK task, ownership, and event schema explicitly."""
     from a2a.server.models import Base
     from sqlalchemy import MetaData, Table, select
     from sqlalchemy.orm import class_mapper
 
     task_table_name = _validate_table_name(task_table_name)
+    event_store = event_store or A2aTaskEventStore(
+        engine,
+        table_name=event_table_name(task_table_name),
+    )
     version_metadata = MetaData()
     version_table = _version_table(version_metadata)
     task_tables = [table for table in class_mapper(task_store.task_model).tables if isinstance(table, Table)]
@@ -56,9 +63,19 @@ async def migrate_a2a_schema(
 
         await connection.run_sync(lambda sync_connection: Base.metadata.create_all(sync_connection, tables=task_tables))
         await connection.run_sync(ownership_store.schema_metadata.create_all)
-        await connection.execute(
-            version_table.insert().values(table_name=task_table_name, version=CURRENT_SCHEMA_VERSION)
-        )
+        await connection.run_sync(event_store.schema_metadata.create_all)
+        if current is None:
+            await connection.execute(
+                version_table.insert().values(table_name=task_table_name, version=CURRENT_SCHEMA_VERSION)
+            )
+        else:
+            from sqlalchemy import update
+
+            await connection.execute(
+                update(version_table)
+                .where(version_table.c.table_name == task_table_name)
+                .values(version=CURRENT_SCHEMA_VERSION)
+            )
     return CURRENT_SCHEMA_VERSION
 
 
@@ -67,11 +84,16 @@ async def ensure_a2a_schema(
     *,
     task_table_name: str,
     ownership_store: Any,
+    event_store: A2aTaskEventStore | None = None,
 ) -> None:
     """Validate A2A tables without mutating the database during startup."""
     from sqlalchemy import MetaData, inspect, select
 
     task_table_name = _validate_table_name(task_table_name)
+    event_store = event_store or A2aTaskEventStore(
+        engine,
+        table_name=event_table_name(task_table_name),
+    )
     metadata = MetaData()
     version_table = _version_table(metadata)
     try:
@@ -85,6 +107,7 @@ async def ensure_a2a_schema(
                 lambda sync_connection: (
                     inspect(sync_connection).has_table(task_table_name),
                     inspect(sync_connection).has_table(ownership_store.table_name),
+                    inspect(sync_connection).has_table(event_store.table_name),
                 )
             )
     except Exception as exc:

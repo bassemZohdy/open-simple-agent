@@ -312,8 +312,9 @@ OSA_A2A_TASK_DATABASE_URL=postgresql+asyncpg://... \
   uv run osa-a2a-migrate
 ```
 
-The migration provisions the SDK task table, a version row, and the OSA
-ownership table `<task_table>_ownership`. Startup validates all three without
+The migration provisions the SDK task table, a version row, the OSA ownership
+table `<task_table>_ownership`, and the paired append-only event table
+`<task_table>_events` (schema version 2). Startup validates all four without
 creating or altering them. The ownership row uses the same bounded tenant /
 caller scope as task lookup, a worker lease, heartbeats, a fencing token on
 takeover, and a durable cancellation request. A retry can replay a durable
@@ -323,6 +324,9 @@ terminal snapshots replay through read-only SDK events without a duplicate
 write. The SDK active-task registry is still process-local. Durable SDK task
 saves carry the ownership fence and hold the ownership-row lock through the
 write, so an expired or superseded worker cannot persist a late task mutation.
+The event table is a migration-owned storage foundation for the future
+cross-process A2A stream relay; inbound A2A streaming remains disabled until
+the architecture-gated acceptance suite passes.
 Terminal events drain through the SDK consumer before the owner releases its
 lease. Process-boundary PostgreSQL acceptance covers shared task creation,
 lookup, cancellation, and crash recovery. Expired-owner retries finalize

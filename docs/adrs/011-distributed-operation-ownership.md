@@ -2,8 +2,8 @@
 
 ## Status
 
-Proposed — A2A lease and fenced task-save slice implemented; full decision and
-acceptance pending
+Proposed — A2A lease, fenced task-save, and event-cursor foundation
+implemented; full decision and acceptance pending
 
 ## Date
 
@@ -34,8 +34,10 @@ task history. Process-boundary PostgreSQL acceptance covers shared task
 creation, lookup, cancellation, and crash recovery. Terminal events drain
 through the SDK consumer before lease release. Expired-owner retries fail
 closed with a stable terminal failure and never replay unknown model/tool side
-effects. The SDK active-task registry and multi-process streaming/late-event
-acceptance are still open, so this ADR remains proposed until the full
+effects. Schema version 2 now provisions the migration-owned append-only event
+cursor foundation, but no runtime stream relay consumes it yet. The SDK
+active-task registry and multi-process streaming/late-event acceptance are
+still open, so this ADR remains proposed until the full
 acceptance criteria and open review questions are resolved.
 
 The deployment slice now applies the same conservative boundary to the
@@ -159,10 +161,12 @@ concrete without silently enabling a weaker distributed contract.
 
 - Keep inbound A2A streaming disabled in the Agent Card until the acceptance
   suite proves the full cross-replica path.
-- Add a migration-owned append-only task-event table keyed by tenant, task,
-  fencing epoch, and a monotonically increasing per-task sequence. Store the
-  protocol event under the existing A2A task-persistence contract; do not put
-  bearer tokens, credentials, or unrelated telemetry payloads in the row.
+- Use the schema-version-2 migration-owned append-only task-event table keyed
+  by tenant, task, fencing epoch, and a monotonically increasing per-task
+  sequence. Store the protocol event under the existing A2A task-persistence
+  contract; do not put bearer tokens, credentials, or unrelated telemetry
+  payloads in the row. The current implementation provides the fenced storage
+  primitive; relay integration remains acceptance-gated.
 - The owner appends an event only while holding its current fence. The append
   and the ownership check share one transaction. A stale or terminal owner
   receives a conflict, and its HTTP stream must stop forwarding new events.

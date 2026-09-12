@@ -8,12 +8,22 @@ before every task mutation.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Any
 
 from osa.runtimes.adk.a2a_ownership import A2aTaskOwnershipStore, TaskOwnership
 
 A2A_TASK_OWNERSHIP_CONTEXT_KEY = "osa_a2a_task_ownership"
 A2A_TASK_REPLAY_CONTEXT_KEY = "osa_a2a_task_replay"
+A2A_TASK_PENDING_EVENTS_CONTEXT_KEY = "osa_a2a_pending_events"
+
+
+@dataclass(frozen=True)
+class PendingTaskEvent:
+    """Serialized protocol event waiting for the SDK task consumer to save it."""
+
+    event_type: str
+    payload: bytes
 
 
 class A2aTaskOwnershipLostError(RuntimeError):
@@ -43,6 +53,25 @@ def bind_task_replay(context: Any, task: Any) -> None:
     state[A2A_TASK_REPLAY_CONTEXT_KEY] = task
 
 
+def bind_task_event(context: Any, event: Any) -> None:
+    """Queue one protocol event for atomic append with its task mutation."""
+    state = getattr(context, "state", None)
+    if not isinstance(state, dict):
+        raise RuntimeError("A2A call context does not expose mutable state")
+    serialize = getattr(event, "SerializeToString", None)
+    if not callable(serialize):
+        raise TypeError("A2A protocol events must support protobuf serialization")
+    pending_events = state.setdefault(A2A_TASK_PENDING_EVENTS_CONTEXT_KEY, [])
+    if not isinstance(pending_events, list):
+        raise RuntimeError("A2A pending event state is invalid")
+    pending_events.append(
+        PendingTaskEvent(
+            event_type=type(event).__name__,
+            payload=bytes(serialize(deterministic=True)),
+        )
+    )
+
+
 class FencedDatabaseTaskStore:
     """Delegate SDK reads while fencing every durable task write.
 
@@ -52,9 +81,15 @@ class FencedDatabaseTaskStore:
     worker's task mutation.
     """
 
-    def __init__(self, store: Any, ownership_store: A2aTaskOwnershipStore) -> None:
+    def __init__(
+        self,
+        store: Any,
+        ownership_store: A2aTaskOwnershipStore,
+        event_store: Any | None = None,
+    ) -> None:
         self._store = store
         self._ownership_store = ownership_store
+        self._event_store = event_store
 
     @property
     def engine(self) -> Any:
@@ -83,6 +118,7 @@ class FencedDatabaseTaskStore:
 
         owner = self._store.owner_resolver(context)
         db_task = self._store._to_orm(task, owner)  # noqa: SLF001 - SDK adapter
+        pending_event = _peek_task_event(context) if self._event_store is not None else None
 
         async def write(connection: Any) -> None:
             from sqlalchemy.ext.asyncio import AsyncSession
@@ -93,11 +129,20 @@ class FencedDatabaseTaskStore:
             ) as session:
                 await session.merge(db_task)
                 await session.flush()
+            if pending_event is not None:
+                await self._event_store.append_on_connection(  # type: ignore[union-attr]
+                    connection,
+                    ownership,
+                    event_type=pending_event.event_type,
+                    payload=pending_event.payload,
+                )
 
         if not await self._ownership_store.run_if_owned(ownership, write):
             raise A2aTaskOwnershipLostError(
                 f"A2A task {task.id} ownership fence {ownership.fence} is no longer current"
             )
+        if pending_event is not None:
+            _consume_task_event(context, pending_event)
 
     async def get(self, task_id: str, context: Any) -> Any:
         return await self._store.get(task_id, context)
@@ -148,6 +193,29 @@ def _context_replay(context: Any) -> Any | None:
     return state.get(A2A_TASK_REPLAY_CONTEXT_KEY)
 
 
+def _peek_task_event(context: Any) -> PendingTaskEvent | None:
+    state = getattr(context, "state", None)
+    if not isinstance(state, dict):
+        return None
+    pending_events = state.get(A2A_TASK_PENDING_EVENTS_CONTEXT_KEY)
+    if not isinstance(pending_events, list) or not pending_events:
+        return None
+    event = pending_events[0]
+    if not isinstance(event, PendingTaskEvent):
+        raise RuntimeError("A2A pending event state is invalid")
+    return event
+
+
+def _consume_task_event(context: Any, event: PendingTaskEvent) -> None:
+    state = getattr(context, "state", None)
+    if not isinstance(state, dict):
+        raise RuntimeError("A2A call context does not expose mutable state")
+    pending_events = state.get(A2A_TASK_PENDING_EVENTS_CONTEXT_KEY)
+    if not isinstance(pending_events, list) or not pending_events or pending_events[0] != event:
+        raise RuntimeError("A2A pending event queue changed during task save")
+    pending_events.pop(0)
+
+
 def _same_task(left: Any, right: Any) -> bool:
     """Compare protobuf tasks deterministically without exposing their data."""
     return bool(left.SerializeToString(deterministic=True) == right.SerializeToString(deterministic=True))
@@ -155,9 +223,12 @@ def _same_task(left: Any, right: Any) -> bool:
 
 __all__ = [
     "A2A_TASK_OWNERSHIP_CONTEXT_KEY",
+    "A2A_TASK_PENDING_EVENTS_CONTEXT_KEY",
     "A2A_TASK_REPLAY_CONTEXT_KEY",
     "A2aTaskOwnershipLostError",
     "FencedDatabaseTaskStore",
+    "PendingTaskEvent",
+    "bind_task_event",
     "bind_task_replay",
     "bind_task_ownership",
 ]
