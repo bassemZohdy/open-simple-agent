@@ -222,6 +222,141 @@ async def test_opaque_oauth_token_uses_rfc7662_introspection(monkeypatch: pytest
 
 
 @pytest.mark.asyncio
+async def test_introspection_liveness_failure_is_a_stable_authentication_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from osa.generic_agent import OAuthIntrospectionClient
+
+    settings = AuthSettings(
+        mode=AuthMode.REQUIRED,
+        issuer="https://issuer.example.test/",
+        audience="osa-api",
+        introspection_url="https://issuer.example.test/introspect",
+        introspection_client_id="osa-runtime",
+        introspection_client_secret_ref=SecretReference(source="env", key="INTROSPECTION_SECRET"),
+    )
+    monkeypatch.setenv("INTROSPECTION_SECRET", "not-exposed")
+
+    class FailingClient:
+        async def __aenter__(self) -> FailingClient:
+            return self
+
+        async def __aexit__(self, *_args: object) -> None:
+            return None
+
+        async def post(self, _url: str, **_kwargs: object) -> Any:
+            raise httpx.ReadTimeout("identity provider unavailable")
+
+    monkeypatch.setattr(httpx, "AsyncClient", lambda **_kwargs: FailingClient())
+
+    with pytest.raises(AuthenticationError, match="could not be introspected"):
+        await OAuthIntrospectionClient(settings, EnvironmentSecretResolver()).authenticate("opaque-token")
+
+
+@pytest.mark.asyncio
+async def test_jwks_key_rotation_refreshes_an_unknown_key(
+    signing_material: tuple[rsa.RSAPrivateKey, dict[str, str]],
+) -> None:
+    _, jwk = signing_material
+    rotated = dict(jwk, kid="rotated-key")
+    responses = iter(({"keys": [jwk]}, {"keys": [rotated]}))
+
+    async def loader() -> Mapping[str, Any]:
+        return next(responses)
+
+    client = JwksClient(_settings(), loader=loader)
+    assert await client.get_key("test-key") == jwk
+    assert await client.get_key("rotated-key") == rotated
+
+
+@pytest.mark.asyncio
+async def test_introspection_rejects_disabled_identity(monkeypatch: pytest.MonkeyPatch) -> None:
+    from osa.generic_agent import OAuthIntrospectionClient
+
+    settings = AuthSettings(
+        mode=AuthMode.REQUIRED,
+        issuer="https://issuer.example.test/",
+        audience="osa-api",
+        introspection_url="https://issuer.example.test/introspect",
+        introspection_client_id="osa-runtime",
+        introspection_client_secret_ref=SecretReference(source="env", key="INTROSPECTION_SECRET"),
+    )
+    monkeypatch.setenv("INTROSPECTION_SECRET", "not-exposed")
+
+    class InactiveResponse:
+        status_code = 200
+
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> Mapping[str, Any]:
+            return {"active": False}
+
+    class InactiveClient:
+        async def __aenter__(self) -> InactiveClient:
+            return self
+
+        async def __aexit__(self, *_args: object) -> None:
+            return None
+
+        async def post(self, _url: str, **_kwargs: object) -> InactiveResponse:
+            return InactiveResponse()
+
+    monkeypatch.setattr(httpx, "AsyncClient", lambda **_kwargs: InactiveClient())
+
+    with pytest.raises(AuthenticationError, match="not active"):
+        await OAuthIntrospectionClient(settings, EnvironmentSecretResolver()).authenticate("opaque-token")
+
+
+@pytest.mark.asyncio
+async def test_introspection_role_changes_propagate_without_stale_cache(monkeypatch: pytest.MonkeyPatch) -> None:
+    from osa.generic_agent import OAuthIntrospectionClient
+
+    settings = AuthSettings(
+        mode=AuthMode.REQUIRED,
+        issuer="https://issuer.example.test/",
+        audience="osa-api",
+        introspection_url="https://issuer.example.test/introspect",
+        introspection_client_id="osa-runtime",
+        introspection_client_secret_ref=SecretReference(source="env", key="INTROSPECTION_SECRET"),
+    )
+    monkeypatch.setenv("INTROSPECTION_SECRET", "not-exposed")
+    payloads = iter(
+        (
+            {"active": True, "iss": settings.issuer, "sub": "user-123", "aud": ["osa-api"], "roles": ["viewer"]},
+            {"active": True, "iss": settings.issuer, "sub": "user-123", "aud": ["osa-api"], "roles": ["operator"]},
+        )
+    )
+
+    class RoleResponse:
+        status_code = 200
+
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> Mapping[str, Any]:
+            return next(payloads)
+
+    class RoleClient:
+        async def __aenter__(self) -> RoleClient:
+            return self
+
+        async def __aexit__(self, *_args: object) -> None:
+            return None
+
+        async def post(self, _url: str, **_kwargs: object) -> RoleResponse:
+            return RoleResponse()
+
+    monkeypatch.setattr(httpx, "AsyncClient", lambda **_kwargs: RoleClient())
+    client = OAuthIntrospectionClient(settings, EnvironmentSecretResolver())
+
+    first = await client.authenticate("opaque-token")
+    second = await client.authenticate("opaque-token")
+    assert first.roles == frozenset({"viewer"})
+    assert second.roles == frozenset({"operator"})
+
+
+@pytest.mark.asyncio
 async def test_oidc_discovery_resolves_and_validates_jwks_uri() -> None:
     settings = AuthSettings(
         mode=AuthMode.REQUIRED,

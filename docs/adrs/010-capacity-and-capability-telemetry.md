@@ -17,6 +17,10 @@ replica. Production deployments must enforce the same policy at a shared API
 gateway/service mesh until a replica-safe application store is selected.
 
 Model, native-tool, and MCP spans emit bounded capability counters and may be
-sent to an optional sink. Events contain only kind, capability name, outcome,
-stable error code, and duration; prompts, arguments, credentials, and outputs
-are excluded. Sink failures are isolated from agent behavior.
+sent to an optional sink. The default sink is disabled; operators may select
+the bounded JSONL sink with `OSA_CAPABILITY_TELEMETRY_PATH` and
+`OSA_CAPABILITY_TELEMETRY_MAX_BYTES`, or provide a sink programmatically.
+Events contain only kind, capability name, outcome, stable error code, and
+duration; prompts, arguments, credentials, and outputs are excluded. Sink
+failures are isolated from agent behavior. The file sink is process-local and
+does not claim replica-wide ordering or deduplication.

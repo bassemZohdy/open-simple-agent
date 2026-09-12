@@ -346,7 +346,7 @@ attributes.
 
 ## Tests and CI
 
-The current baseline is 601 collected tests: 574 pass locally and 27
+The current baseline is 608 collected tests: 581 pass locally and 27
 PostgreSQL/A2A/provider tests are skipped when their optional dependencies or
 `OSA_TEST_DATABASE_URL` are unavailable. CI runs:
 

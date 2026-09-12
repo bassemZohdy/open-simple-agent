@@ -20,6 +20,10 @@ Kubernetes-style probes: use `/health/live` for liveness and
 - **Metrics**: the runtime exposes Prometheus counters and duration
   summaries at `GET /metrics` (invocations, model/tool/MCP calls, capability
   outcomes, token usage, and rate-limit responses).
+- **Capability event file**: set `OSA_CAPABILITY_TELEMETRY_PATH` for a bounded,
+  sanitized JSONL trail. `OSA_CAPABILITY_TELEMETRY_MAX_BYTES` controls
+  compaction; the sink never stores prompts, outputs, credentials, or tool
+  arguments and is process-local.
 - **Logs**: structured JSON when `OSA_LOG_FORMAT=json`; every invocation log
   line carries `invocation_id`, `session_id`, agent, user/caller, and
   deployment correlation fields. Captured values are redacted and bounded.

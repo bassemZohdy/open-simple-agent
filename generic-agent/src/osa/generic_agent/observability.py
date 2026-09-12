@@ -12,6 +12,7 @@ import contextlib
 import importlib
 import json
 import logging
+import math
 import os
 import re
 import time
@@ -19,12 +20,18 @@ from collections.abc import AsyncIterator, Iterator, Mapping
 from contextlib import asynccontextmanager, contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass
+from pathlib import Path
 from threading import Lock
 from typing import Any, Protocol
 
 _SENSITIVE_KEY = re.compile(r"(?:token|secret|password|credential|authorization|api[_-]?key|prompt|input|output)", re.I)
 _SAFE_IDENTIFIER = re.compile(r"^[A-Za-z0-9._:/-]{1,128}$")
 _MAX_FIELD_LENGTH = 256
+_MAX_CAPABILITY_NAME_LENGTH = 128
+_MAX_CAPABILITY_ERROR_LENGTH = 128
+DEFAULT_CAPABILITY_TELEMETRY_MAX_BYTES = 10_000_000
+CAPABILITY_TELEMETRY_PATH_ENV_VAR = "OSA_CAPABILITY_TELEMETRY_PATH"
+CAPABILITY_TELEMETRY_MAX_BYTES_ENV_VAR = "OSA_CAPABILITY_TELEMETRY_MAX_BYTES"
 _SECRET_VALUE = re.compile(
     r"(?i)(\b(?:authorization\s*:\s*)?bearer\s+|\b(?:api[_-]?key|token|secret|password|client_secret)\s*[:=]\s*)"
     r"[\"']?[^,\s\"']+"
@@ -214,6 +221,100 @@ class InMemoryCapabilityTelemetrySink:
             return list(self._events)
 
 
+class JsonlCapabilityTelemetrySink:
+    """Persist bounded, payload-free capability events as newline-delimited JSON.
+
+    The sink is intentionally synchronous because the observability contract
+    is also used by native-tool worker threads. Writes are bounded by
+    ``max_bytes`` and compacted atomically when the limit is reached. Each
+    append is flushed and optionally fsynced so an operator can choose a
+    crash-durable local audit trail without making it the default behavior.
+    """
+
+    def __init__(
+        self,
+        path: str | os.PathLike[str],
+        *,
+        max_bytes: int = DEFAULT_CAPABILITY_TELEMETRY_MAX_BYTES,
+        fsync: bool = True,
+    ) -> None:
+        if max_bytes < 1024:
+            raise ValueError("max_bytes must be at least 1024")
+        self._path = Path(path)
+        if not self._path.name:
+            raise ValueError("path must name a file")
+        self._max_bytes = max_bytes
+        self._fsync = fsync
+        self._lock = Lock()
+
+    def record(self, event: CapabilityTelemetryEvent) -> None:
+        """Append one sanitized event and retain only the newest bounded data."""
+        line = self._encode(event)
+        with self._lock:
+            self._path.parent.mkdir(parents=True, exist_ok=True)
+            current_size = self._path.stat().st_size if self._path.exists() else 0
+            if current_size + len(line) <= self._max_bytes:
+                self._append(line)
+            else:
+                self._compact(line)
+
+    def _append(self, line: bytes) -> None:
+        with self._path.open("ab") as stream:
+            stream.write(line)
+            stream.flush()
+            if self._fsync:
+                os.fsync(stream.fileno())
+
+    def _compact(self, newest: bytes) -> None:
+        existing = self._path.read_bytes() if self._path.exists() else b""
+        lines = [line + b"\n" for line in existing.splitlines() if line.strip()]
+        lines.append(newest)
+        total = sum(len(line) for line in lines)
+        while len(lines) > 1 and total > self._max_bytes:
+            total -= len(lines.pop(0))
+        temporary_path = self._path.with_name(f".{self._path.name}.tmp")
+        try:
+            with temporary_path.open("wb") as stream:
+                stream.writelines(lines)
+                stream.flush()
+                if self._fsync:
+                    os.fsync(stream.fileno())
+            os.replace(temporary_path, self._path)
+        finally:
+            with contextlib.suppress(FileNotFoundError):
+                temporary_path.unlink()
+
+    @staticmethod
+    def _encode(event: CapabilityTelemetryEvent) -> bytes:
+        duration = event.duration_seconds if math.isfinite(event.duration_seconds) else 0.0
+        payload = {
+            "kind": bounded_text(event.kind, limit=32),
+            "name": bounded_text(event.name, limit=_MAX_CAPABILITY_NAME_LENGTH),
+            "outcome": bounded_text(event.outcome, limit=32),
+            "error_code": (
+                bounded_text(event.error_code, limit=_MAX_CAPABILITY_ERROR_LENGTH)
+                if event.error_code is not None
+                else None
+            ),
+            "duration_seconds": max(0.0, round(duration, 6)),
+        }
+        return (json.dumps(payload, sort_keys=True, separators=(",", ":")) + "\n").encode("utf-8")
+
+
+def capability_sink_from_env(environ: Mapping[str, str] | None = None) -> JsonlCapabilityTelemetrySink | None:
+    """Build the optional local JSONL sink from operator environment."""
+    values = os.environ if environ is None else environ
+    raw_path = values.get(CAPABILITY_TELEMETRY_PATH_ENV_VAR, "").strip()
+    if not raw_path:
+        return None
+    raw_max_bytes = values.get(CAPABILITY_TELEMETRY_MAX_BYTES_ENV_VAR)
+    try:
+        max_bytes = int(raw_max_bytes) if raw_max_bytes else DEFAULT_CAPABILITY_TELEMETRY_MAX_BYTES
+    except ValueError as exc:
+        raise ValueError(f"{CAPABILITY_TELEMETRY_MAX_BYTES_ENV_VAR} must be an integer") from exc
+    return JsonlCapabilityTelemetrySink(raw_path, max_bytes=max_bytes)
+
+
 def _format_labels(labels: tuple[tuple[str, str], ...]) -> str:
     if not labels:
         return ""
@@ -252,7 +353,7 @@ class Observability:
         capability_sink: CapabilityTelemetrySink | None = None,
     ) -> None:
         self.metrics = metrics if metrics is not None else MetricsRegistry()
-        self.capability_sink = capability_sink
+        self.capability_sink = capability_sink if capability_sink is not None else capability_sink_from_env()
         self._tracer = _tracer()
 
     @asynccontextmanager
@@ -368,13 +469,18 @@ class Observability:
 
 
 __all__ = [
+    "CAPABILITY_TELEMETRY_MAX_BYTES_ENV_VAR",
+    "CAPABILITY_TELEMETRY_PATH_ENV_VAR",
     "CapabilityTelemetryEvent",
     "CapabilityTelemetrySink",
+    "DEFAULT_CAPABILITY_TELEMETRY_MAX_BYTES",
     "InMemoryCapabilityTelemetrySink",
+    "JsonlCapabilityTelemetrySink",
     "JsonFormatter",
     "MetricsRegistry",
     "Observability",
     "bounded_text",
+    "capability_sink_from_env",
     "configure_structured_logging",
     "log_context",
     "log_event",

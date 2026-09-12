@@ -48,11 +48,22 @@ async def test_middleware_returns_retry_contract_and_exempts_health() -> None:
     async def limited() -> dict[str, str]:
         return {"status": "ok"}
 
+    @app.post("/v1/invoke/stream")
+    async def stream() -> dict[str, str]:
+        return {"status": "ok"}
+
+    @app.post("/a2a")
+    async def a2a() -> dict[str, str]:
+        return {"status": "ok"}
+
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         assert (await client.get("/health/live")).status_code == 200
         first = await client.get("/limited", headers={"Authorization": "Bearer token-a"})
         second = await client.get("/limited", headers={"Authorization": "Bearer token-a"})
         other = await client.get("/limited", headers={"Authorization": "Bearer token-b"})
+        stream_first = await client.post("/v1/invoke/stream", headers={"Authorization": "Bearer token-a"})
+        stream_second = await client.post("/v1/invoke/stream", headers={"Authorization": "Bearer token-a"})
+        a2a_response = await client.post("/a2a", headers={"Authorization": "Bearer token-a"})
 
     assert first.status_code == 200
     assert first.headers["x-ratelimit-limit"] == "1"
@@ -60,3 +71,6 @@ async def test_middleware_returns_retry_contract_and_exempts_health() -> None:
     assert second.headers["retry-after"] == "60"
     assert second.json()["error"]["code"] == "rate_limit_exceeded"
     assert other.status_code == 200
+    assert stream_first.status_code == 200
+    assert stream_second.status_code == 429
+    assert a2a_response.status_code == 200

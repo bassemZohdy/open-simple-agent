@@ -23,7 +23,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   `osa-runtime` launcher coverage in the Control Plane image, and durable
   Control Plane rejection of process-local deployments.
 - Added payload-free model/native-tool/MCP capability telemetry and opt-in
-  bounded HTTP rate-limit responses with retry headers.
+  bounded HTTP rate-limit responses with retry headers, plus an optional
+  bounded JSONL capability sink with sanitization and compaction.
 - Added PostgreSQL session and cross-replica resource acceptance coverage.
 
 ### Fixed — Control Plane safety and state coherence

@@ -30,8 +30,8 @@ Production-readiness limits are:
   application-level URL/DNS/redirect policy, with network egress still
   required as defense in depth;
 - A2A task state and HTTP capacity storage are not replica-safe; capability
-  telemetry is defined and payload-free but durable sink selection remains
-  open;
+  telemetry has a bounded local JSONL sink but shared replica-wide collection
+  remains open;
 - translated locales, deployment-specific browser OIDC, package publication,
   and the first public release remain open; Kubernetes follow-up is paused.
 
@@ -106,10 +106,13 @@ provider and separately published runtime image.
 ## Enterprise identity lifecycle — PARTIALLY COMPLETE
 
 Claim-driven lifecycle semantics and opaque-token introspection validation are
-implemented; concrete identity-source acceptance remains open.
+implemented; contract-level lifecycle coverage exists, while concrete
+identity-source acceptance remains open.
 
-- [ ] Add introspection liveness, key rotation, disabled-identity, and
-  role-change propagation tests after selecting an identity source.
+- [x] Add introspection liveness, key rotation, disabled-identity, and
+  role-change propagation tests for the RFC 7662/OIDC contract.
+- [ ] Run the same lifecycle acceptance suite against a selected enterprise
+  identity source.
 
 ## Distributed A2A task state — PENDING
 
@@ -124,12 +127,15 @@ The runtime A2A executor and SDK task store are process-local.
 ## Capability-level audit telemetry — PARTIALLY COMPLETE
 
 Management, runtime-boundary, and auth-denial audits exist. Model/native-tool/
-MCP capability metrics and an optional payload-free sink are implemented.
+MCP capability metrics and an optional payload-free, bounded JSONL sink are
+implemented for a single process.
 
 - [x] Define taxonomy, redaction, retention, sampling, and performance policy.
-- [ ] Implement optional sink and durable persistence without prompts, outputs,
-  credentials, or unbounded tool payloads.
-- [ ] Add model/tool/MCP success, failure, timeout, and isolation tests/docs.
+- [x] Implement optional local sink and durable bounded persistence without
+  prompts, outputs, credentials, or unbounded tool payloads.
+- [x] Add model/tool/MCP success, failure, timeout, and isolation tests/docs.
+- [ ] Select a shared collector or durable replica-wide sink contract with
+  ordering, deduplication, and tenant-retention ownership.
 
 ## Rate limiting and quotas — PARTIALLY COMPLETE
 

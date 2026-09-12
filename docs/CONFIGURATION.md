@@ -224,6 +224,8 @@ The runtime also accepts these service-level controls:
 | `OSA_RATE_LIMIT_REQUESTS` | Per-route, per-caller fixed-window request budget; `0` disables | `0` |
 | `OSA_RATE_LIMIT_WINDOW_SECONDS` | Rate-limit window length | `60` |
 | `OSA_RATE_LIMIT_BURST` | Optional per-window burst capacity | request budget |
+| `OSA_CAPABILITY_TELEMETRY_PATH` | Optional bounded JSONL file for capability outcomes | unset |
+| `OSA_CAPABILITY_TELEMETRY_MAX_BYTES` | Maximum JSONL sink size before newest-event compaction | `10000000` |
 
 When enabled, the HTTP services expose rate-limit headers (`X-RateLimit-Limit`,
 `X-RateLimit-Remaining`, and `X-RateLimit-Reset`) and return `429` with
@@ -232,10 +234,13 @@ bounded and process-local; use a gateway or service mesh for replica-safe
 enforcement until a shared application store is selected.
 
 Capability telemetry is emitted for model, native-tool, and MCP spans as
-bounded Prometheus counters. An optional `Observability` capability sink can
-receive only the capability kind/name, success or failure, stable error code,
-and duration; prompts, inputs, outputs, credentials, and tool arguments are
-never included.
+bounded Prometheus counters. Set `OSA_CAPABILITY_TELEMETRY_PATH` to enable the
+bounded, sanitized JSONL sink (or provide an `Observability` capability sink
+programmatically). It receives only the capability kind/name, success or
+failure, stable error code, and duration; prompts, inputs, outputs,
+credentials, and tool arguments are never included. The file sink is
+process-local; use a shared log/telemetry collector when replicas must be
+correlated.
 
 Boolean values are case-insensitive. Accepted true values are `1`, `true`,
 `yes`, and `on`; false values are `0`, `false`, `no`, and `off`.
