@@ -216,6 +216,11 @@ class KubernetesDeploymentProvider(DeploymentProvider):
         }
         if spec.label:
             labels[f"{_LABEL_PREFIX}/version"] = self._label_value(spec.label)
+        annotations: dict[str, str] = {}
+        if spec.operation_id:
+            annotations[f"{_LABEL_PREFIX}/operation-id"] = self._label_value(spec.operation_id)
+        if spec.fencing_epoch is not None:
+            annotations[f"{_LABEL_PREFIX}/fencing-epoch"] = str(spec.fencing_epoch)
 
         data: dict[str, str] = {}
         items: list[dict[str, str]] = []
@@ -266,13 +271,23 @@ class KubernetesDeploymentProvider(DeploymentProvider):
                 {
                     "apiVersion": "v1",
                     "kind": "ConfigMap",
-                    "metadata": {"name": config_name, "namespace": self._namespace, "labels": labels},
+                    "metadata": {
+                        "name": config_name,
+                        "namespace": self._namespace,
+                        "labels": labels,
+                        "annotations": annotations,
+                    },
                     "data": data,
                 },
                 {
                     "apiVersion": "apps/v1",
                     "kind": "Deployment",
-                    "metadata": {"name": name, "namespace": self._namespace, "labels": labels},
+                    "metadata": {
+                        "name": name,
+                        "namespace": self._namespace,
+                        "labels": labels,
+                        "annotations": annotations,
+                    },
                     "spec": {
                         "replicas": self._replicas,
                         "revisionHistoryLimit": 5,
@@ -282,7 +297,7 @@ class KubernetesDeploymentProvider(DeploymentProvider):
                         },
                         "selector": {"matchLabels": {"app.kubernetes.io/name": name}},
                         "template": {
-                            "metadata": {"labels": labels},
+                            "metadata": {"labels": labels, "annotations": annotations},
                             "spec": {
                                 "automountServiceAccountToken": False,
                                 "containers": [container],
@@ -299,7 +314,12 @@ class KubernetesDeploymentProvider(DeploymentProvider):
                 {
                     "apiVersion": "v1",
                     "kind": "Service",
-                    "metadata": {"name": name, "namespace": self._namespace, "labels": labels},
+                    "metadata": {
+                        "name": name,
+                        "namespace": self._namespace,
+                        "labels": labels,
+                        "annotations": annotations,
+                    },
                     "spec": {
                         "selector": {"app.kubernetes.io/name": name},
                         "ports": [{"name": "http", "port": _RUNTIME_PORT, "targetPort": "http"}],

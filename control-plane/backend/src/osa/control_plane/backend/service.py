@@ -22,6 +22,11 @@ from fastapi import FastAPI
 
 from osa.control_plane.backend.api import configure_control_plane_app
 from osa.control_plane.backend.db import create_db_engine, database_backend, database_url_from_env
+from osa.control_plane.backend.deployment_ownership import (
+    InMemoryDeploymentOperationOwnershipStore,
+    PostgresDeploymentOperationOwnershipStore,
+    deployment_operation_lease_seconds_from_env,
+)
 from osa.control_plane.backend.repositories import (
     AgentRepository,
     InMemoryAgentRepository,
@@ -109,6 +114,7 @@ def create_control_plane_app(
     engine: Any = None
     backend: str | None = None
     deployment_records: Any
+    deployment_ownership: Any
     audit_repository: Any
     agents: AgentRepository
     resources: ResourceDefinitionRepository
@@ -139,16 +145,22 @@ def create_control_plane_app(
             # without this, multi-replica Control Planes cannot see each other's
             # deployments and history is lost on restart.
             deployment_records = PostgresDeploymentRecordRepository(engine)
+            deployment_ownership = PostgresDeploymentOperationOwnershipStore(
+                engine,
+                lease_seconds=deployment_operation_lease_seconds_from_env(),
+            )
         else:
             agents = SqliteAgentRepository(engine)
             resources = SqliteResourceDefinitionRepository(engine)
             audit_repository = SqliteAuditEventRepository(engine)
             deployment_records = SqliteDeploymentRecordRepository(engine)
+            deployment_ownership = InMemoryDeploymentOperationOwnershipStore()
     else:
         agents = agent_repository if agent_repository is not None else InMemoryAgentRepository()
         resources = resource_repository if resource_repository is not None else InMemoryResourceDefinitionRepository()
         audit_repository = InMemoryAuditEventRepository()
         deployment_records = None
+        deployment_ownership = InMemoryDeploymentOperationOwnershipStore()
 
     resource_catalogs = ResourceCatalogs()
 
@@ -158,6 +170,7 @@ def create_control_plane_app(
             from osa.control_plane.backend.sqlite_migrations import ensure_sqlite_schema
 
             await ensure_sqlite_schema(engine)
+        await deployment_ownership.initialize()
         await _materialize_resources(resource_catalogs, resources)
         await initialize_rate_limit_limiter(fastapi_app)
         deployment_service = getattr(fastapi_app.state, "deployment_service", None)
@@ -192,6 +205,7 @@ def create_control_plane_app(
                 await shutdown()
             await agents.close()
             await resources.close()
+            await deployment_ownership.close()
             await close_rate_limit_limiter(fastapi_app)
             if engine is not None:
                 await engine.dispose()
@@ -206,6 +220,7 @@ def create_control_plane_app(
         secret_resolver=secret_resolver,
         observability=observability,
         audit_repository=audit_repository,
+        operation_ownership=deployment_ownership,
     )
     if dsn is not None:
         if backend == "sqlite":
@@ -225,5 +240,6 @@ def create_control_plane_app(
             agent_repository=agents,
             resource_catalogs=resource_catalogs,
             resource_repository=resources,
+            operation_ownership=deployment_ownership,
         )
     return configured

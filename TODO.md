@@ -115,14 +115,18 @@ lease/fencing boundary proposed in ADR-011, keep provider observation separate
 from owned intent, and fail closed on stale workers rather than replaying
 unknown side effects.
 
-- [ ] Decide whether all mutating operations for one deployment serialize under
-  one key or whether operation kinds may proceed independently; read-only
-  observations should remain concurrent.
-- [ ] Implement migration-owned deployment-operation ownership with tenant and
-  deployment scope, leases, fencing epochs, bounded takeover, and a stable
-  operation id.
-- [ ] Pass the ownership fence through provider calls and prevent stale
-  deploy/stop/restart/rollback/scale workers from persisting status or intent.
+- [x] Decide that all mutating operations for one deployment serialize under
+  one key while read-only observations remain concurrent. Deploy creation uses
+  the agent key until a deployment ID exists; stop, restart, and rollback use
+  the deployment key.
+- [x] Implement migration-owned deployment-operation ownership with tenant and
+  resource scope, leases, fencing epochs, bounded takeover, and a stable
+  operation ID in migration 0010. PostgreSQL is shared; SQLite/in-memory is
+  process-local by design.
+- [x] Pass operation metadata to deployment providers and prevent stale
+  deploy/stop/restart/rollback workers from persisting durable state. The
+  Kubernetes provider records operation metadata in workload annotations;
+  provider-only `scale()` is not exposed through the Control Plane service yet.
 - [ ] Add PostgreSQL acceptance with two independent workers covering command
   serialization, cancellation/expiry, late results, tenant isolation, and
   restart/reconciliation recovery.

@@ -62,6 +62,11 @@ class DeploymentSpec:
     identity: str = ""
     #: Port selected by the caller, retained in provider state.
     port: int | None = None
+    #: Operation metadata used by distributed providers for reconciliation and
+    #: idempotency. Providers must treat it as opaque and never accept it from
+    #: API input directly.
+    operation_id: str | None = None
+    fencing_epoch: int | None = None
 
 
 @dataclass

@@ -102,6 +102,7 @@ auto-migrates. The selected deployment provider uses these server-side settings:
 | `OSA_DEPLOY_ROOT` | Root directory for exported deployment bundles | OS temporary directory plus `osa-deployments` |
 | `OSA_DEPLOY_INVOKE_URL_TEMPLATE` | Optional public runtime URL; supports `{deployment_id}`, `{agent_id}`, `{version}`, and `{port}` | unset |
 | `OSA_DEPLOY_RUNTIME_ALLOWED_ORIGINS` | Origins forwarded to launched runtimes as `OSA_RUNTIME_ALLOWED_ORIGINS` | unset |
+| `OSA_DEPLOYMENT_OPERATION_LEASE_SECONDS` | PostgreSQL lease duration for mutating deployment operations; minimum 5 seconds | `30` |
 
 The command template is configuration owned by the server/operator, never API
 input. The Control Plane image packages `osa-runtime` for the local development
@@ -166,6 +167,10 @@ coordination.
 - The local provider owns and stops only its own child processes and is rejected
   for durable Control Plane deployments. The Kubernetes provider rehydrates
   status from identity-labelled workloads after Control Plane restarts.
+- With PostgreSQL, deploy, stop, restart, and rollback use migration-owned
+  tenant/resource leases, heartbeats, stable operation IDs, and fencing epochs;
+  stale workers fail closed before persisting late results. Local SQLite and
+  in-memory modes are process-local and cannot coordinate replicas.
 - Runtime replicas need `spec.session.persistence: true` plus a shared,
   migrated `OSA_SESSION_DATABASE_URL` for cross-replica session continuity.
 - A2A replicas need a shared, migrated PostgreSQL `OSA_A2A_TASK_DATABASE_URL`.
@@ -203,7 +208,9 @@ never accepts process commands.
 ## Remaining deployment work
 
 - The real Kind-cluster lifecycle acceptance job passes in CI; Control Plane
-  restart recovery is covered by provider reconciliation tests, while
-  distributed deployment-operation ownership remains a deployment gate.
+  restart recovery is covered by provider reconciliation tests. The ownership
+  implementation is present, but the two-worker PostgreSQL acceptance still
+  needs to prove provider-side-effect serialization, lease expiry/cancellation,
+  late results, tenant isolation, and restart/reconciliation recovery.
 - Complete true multi-process A2A active-task replica acceptance for streaming
   and late-event ordering (P2.4)

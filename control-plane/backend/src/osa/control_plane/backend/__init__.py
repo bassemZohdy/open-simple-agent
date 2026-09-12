@@ -18,6 +18,18 @@ from osa.control_plane.backend.deployment import (
     DeploymentStatus,
     LocalDeploymentProvider,
 )
+from osa.control_plane.backend.deployment_errors import (
+    DeploymentError,
+    DeploymentOperationBusyError,
+    DeploymentOperationError,
+    DeploymentOperationLostError,
+)
+from osa.control_plane.backend.deployment_ownership import (
+    DeploymentOperationLease,
+    DeploymentOperationOwnershipStore,
+    InMemoryDeploymentOperationOwnershipStore,
+    PostgresDeploymentOperationOwnershipStore,
+)
 from osa.control_plane.backend.kubernetes_deployment import (
     KubectlError,
     KubernetesDeploymentProvider,
@@ -67,6 +79,12 @@ __all__ = [
     "AuditEventRepository",
     "ConcurrentUpdateError",
     "Deployment",
+    "DeploymentError",
+    "DeploymentOperationBusyError",
+    "DeploymentOperationError",
+    "DeploymentOperationLease",
+    "DeploymentOperationLostError",
+    "DeploymentOperationOwnershipStore",
     "DeploymentRecord",
     "DeploymentRecordRepository",
     "DeploymentProvider",
@@ -76,6 +94,7 @@ __all__ = [
     "InMemoryAgentRepository",
     "InMemoryAuditEventRepository",
     "InMemoryDeploymentRecordRepository",
+    "InMemoryDeploymentOperationOwnershipStore",
     "InMemoryResourceDefinitionRepository",
     "KubernetesDeploymentProvider",
     "KubernetesSecretRef",
@@ -84,6 +103,7 @@ __all__ = [
     "LocalDeploymentProvider",
     "PostgresAgentRepository",
     "PostgresAuditEventRepository",
+    "PostgresDeploymentOperationOwnershipStore",
     "PostgresResourceDefinitionRepository",
     "SqliteAgentRepository",
     "SqliteAuditEventRepository",

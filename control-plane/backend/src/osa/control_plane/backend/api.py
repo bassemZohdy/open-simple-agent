@@ -415,6 +415,7 @@ def configure_control_plane_app(
     authenticator: JwtAuthenticator | None = None,
     secret_resolver: SecretResolver | None = None,
     observability: Observability | None = None,
+    operation_ownership: Any = None,
 ) -> FastAPI:
     """Attach routes and error mapping to a Control Plane app.
 
@@ -422,6 +423,7 @@ def configure_control_plane_app(
     backends behave identically.
     """
     from osa.control_plane.backend.deployment import LocalDeploymentProvider
+    from osa.control_plane.backend.deployment_ownership import InMemoryDeploymentOperationOwnershipStore
     from osa.control_plane.backend.deployment_service import DeploymentService
     from osa.control_plane.backend.deployments_api import configure_deployment_routes
     from osa.control_plane.backend.external_agents import (
@@ -498,6 +500,9 @@ def configure_control_plane_app(
         agent_repository=agent_repository,
         resource_catalogs=resource_catalogs,
         resource_repository=resource_repository,
+        operation_ownership=(
+            operation_ownership if operation_ownership is not None else InMemoryDeploymentOperationOwnershipStore()
+        ),
     )
 
     @app.exception_handler(HTTPException)

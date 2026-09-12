@@ -12,6 +12,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added — Distributed deployment-operation ownership slice
+- Added migration 0010 and tenant/resource-scoped PostgreSQL leases for
+  deploy, stop, restart, and rollback operations, with stable operation IDs,
+  heartbeats, fencing epochs, bounded takeover, and fail-closed late-result
+  persistence.
+- Added process-local ownership for in-memory and explicit SQLite Control Plane
+  modes, plus focused serialization, expiry, tenant-isolation, and fencing
+  tests. Two-worker provider-side-effect acceptance remains open in `TODO.md`.
+
 ### Hardened — Kubernetes provider boundary
 
 - Explicitly reject `OSA_DEPLOY_PROVIDER=openshift` until a dedicated

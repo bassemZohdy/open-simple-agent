@@ -1,3 +1,4 @@
+import asyncio
 from pathlib import Path
 from typing import Any, cast
 
@@ -5,7 +6,9 @@ import pytest
 
 from osa.control_plane.backend.agent_catalog import AgentRecord, AgentRecordStatus
 from osa.control_plane.backend.deployment import Deployment, DeploymentProvider, DeploymentStatus
-from osa.control_plane.backend.deployment_service import DeploymentError, DeploymentService
+from osa.control_plane.backend.deployment_errors import DeploymentError, DeploymentOperationBusyError
+from osa.control_plane.backend.deployment_ownership import InMemoryDeploymentOperationOwnershipStore
+from osa.control_plane.backend.deployment_service import DeploymentService
 from osa.control_plane.backend.repositories import (
     InMemoryAgentRepository,
     InMemoryDeploymentRecordRepository,
@@ -81,3 +84,64 @@ async def test_reconcile_provider_state_refreshes_persisted_records_after_restar
     refreshed = await records.get("d-1")
     assert refreshed is not None
     assert refreshed.status == "running"
+
+
+@pytest.mark.asyncio
+async def test_mutating_operations_are_serialized_across_service_instances(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class BlockingProvider(DeploymentProvider):
+        def __init__(self) -> None:
+            self.started = asyncio.Event()
+            self.release = asyncio.Event()
+            self.deploy_count = 0
+
+        async def deploy(self, spec: Any) -> Deployment:
+            self.deploy_count += 1
+            self.started.set()
+            await self.release.wait()
+            return Deployment(
+                deployment_id=f"deployment-{self.deploy_count}",
+                agent_id=spec.agent_id,
+                status=DeploymentStatus.RUNNING,
+            )
+
+        async def restart(self, deployment_id: str) -> Deployment:
+            raise NotImplementedError
+
+        async def stop(self, deployment_id: str) -> Deployment:
+            raise NotImplementedError
+
+        async def status(self, deployment_id: str) -> Deployment:
+            raise NotImplementedError
+
+        async def list_deployments(self) -> list[Deployment]:
+            return []
+
+    monkeypatch.setattr(DeploymentService, "_export_bundle", lambda self, record, **kwargs: "bundle")
+    agents = InMemoryAgentRepository()
+    agent = _record()
+    await agents.create(agent)
+    records = InMemoryDeploymentRecordRepository()
+    ownership = InMemoryDeploymentOperationOwnershipStore(lease_seconds=5)
+    provider = BlockingProvider()
+    services = [
+        DeploymentService(
+            provider=provider,
+            record_repository=records,
+            agent_repository=agents,
+            resource_catalogs=ResourceCatalogs(),
+            operation_ownership=ownership,
+        )
+        for _ in range(2)
+    ]
+
+    first_task = asyncio.create_task(services[0].deploy(agent.agent_id))
+    await asyncio.wait_for(provider.started.wait(), timeout=1)
+    with pytest.raises(DeploymentOperationBusyError, match="already active"):
+        await services[1].deploy(agent.agent_id)
+    provider.release.set()
+    result = await first_task
+
+    assert result.status == "running"
+    assert provider.deploy_count == 1

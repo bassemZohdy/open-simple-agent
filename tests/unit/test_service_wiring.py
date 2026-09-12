@@ -4,7 +4,12 @@ import pytest
 
 from osa.control_plane.backend.agent_catalog import AgentCatalogError
 from osa.control_plane.backend.deployment import LocalDeploymentProvider
-from osa.control_plane.backend.deployment_service import DeploymentError, create_deployment_provider
+from osa.control_plane.backend.deployment_errors import DeploymentError
+from osa.control_plane.backend.deployment_ownership import (
+    InMemoryDeploymentOperationOwnershipStore,
+    PostgresDeploymentOperationOwnershipStore,
+)
+from osa.control_plane.backend.deployment_service import create_deployment_provider
 from osa.control_plane.backend.repositories import (
     InMemoryDeploymentRecordRepository,
     PostgresDeploymentRecordRepository,
@@ -20,12 +25,14 @@ def test_dsn_selects_postgres_deployment_records(monkeypatch: pytest.MonkeyPatch
     app = create_control_plane_app(database_url="postgresql+asyncpg://osa:osa@localhost:5432/osa")
 
     assert isinstance(app.state.deployment_service._records, PostgresDeploymentRecordRepository)
+    assert isinstance(app.state.deployment_service._operation_ownership, PostgresDeploymentOperationOwnershipStore)
 
 
 def test_control_plane_selects_local_sqlite_records() -> None:
     app = create_control_plane_app(database_url="sqlite+aiosqlite:///control-plane.db")
 
     assert isinstance(app.state.deployment_service._records, SqliteDeploymentRecordRepository)
+    assert isinstance(app.state.deployment_service._operation_ownership, InMemoryDeploymentOperationOwnershipStore)
 
 
 def test_control_plane_rejects_sqlite_for_kubernetes(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -38,6 +45,7 @@ def test_in_memory_app_keeps_in_memory_deployment_records() -> None:
     app = create_control_plane_app()
 
     assert isinstance(app.state.deployment_service._records, InMemoryDeploymentRecordRepository)
+    assert isinstance(app.state.deployment_service._operation_ownership, InMemoryDeploymentOperationOwnershipStore)
 
 
 def test_local_provider_is_the_development_default(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -463,7 +463,7 @@ class ManagerTools:
             return _result("deploy_agent", "denied", detail="Agent belongs to another tenant")
         if getattr(record, "agent_type", "managed") == "external":
             return _result("deploy_agent", "denied", detail="External A2A agents are never deployed by OSA")
-        from osa.control_plane.backend.deployment_service import DeploymentError
+        from osa.control_plane.backend.deployment_errors import DeploymentError
 
         try:
             deployment = await self._deployments.deploy(agent_id)
@@ -508,7 +508,7 @@ class ManagerTools:
         self._require(principal, "rollback_deployment")
         if (gate := self._require_approval("rollback_deployment", approved)) is not None:
             return gate
-        from osa.control_plane.backend.deployment_service import DeploymentError
+        from osa.control_plane.backend.deployment_errors import DeploymentError
 
         try:
             record = await self._deployments.rollback(deployment_id, to_version)

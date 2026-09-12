@@ -215,6 +215,27 @@ unreachable, or unmigrated configured databases fail startup/readiness; the
 service does not move to another row or silently discard state. The matrix is
 covered by unit tests plus the optional PostgreSQL integration suite in CI.
 
+### Control Plane deployment-operation ownership
+
+When `OSA_CONTROL_PLANE_DATABASE_URL` selects PostgreSQL, the Control Plane
+uses the migration-owned `osa_deployment_operation_owners` table to coordinate
+mutating deployment operations across replicas. One tenant/resource key is
+owned at a time; acquisition advances a fencing epoch and creates a stable
+operation ID. The owner renews its lease while the provider call is in flight,
+and PostgreSQL deployment-record writes are accepted only while that exact
+owner and fence remain current.
+
+| Variable | Purpose | Default |
+|---|---|---:|
+| `OSA_DEPLOYMENT_OPERATION_LEASE_SECONDS` | Lease duration for deploy, stop, restart, and rollback ownership; takeover is possible after expiry | `30` seconds (minimum `5`) |
+
+Run `osa-cp-migrate` through migration `0010` before starting a PostgreSQL
+Control Plane. A missing or unmigrated ownership table is a startup failure;
+the service never creates it or falls back to local coordination. In-memory
+and explicit SQLite Control Planes use process-local ownership and must not be
+used to coordinate replicas. Read-only status, logs, and reconciliation remain
+observation paths and do not wait on the mutating-operation lease.
+
 ## Memory persistence
 
 By default memory is in-memory (single process, lost on restart). Setting

@@ -32,6 +32,7 @@ from osa.control_plane.backend.agent_catalog import (
 if TYPE_CHECKING:
     import builtins
 
+    from osa.control_plane.backend.deployment_ownership import DeploymentOperationLease
     from osa.generic_agent import AgentDefinition
 
 __all__ = [
@@ -788,6 +789,17 @@ class DeploymentRecordRepository(ABC):
     @abstractmethod
     async def delete(self, deployment_id: str) -> bool: ...
 
+    async def upsert_if_owned(self, record: DeploymentRecord, lease: DeploymentOperationLease) -> bool:
+        """Persist a result when the repository supports fencing.
+
+        Local repositories have no cross-process owner to validate, so their
+        default is equivalent to ``upsert``. PostgreSQL overrides this method
+        with an owner/fencing check in the same transaction as the upsert.
+        """
+        del lease
+        await self.upsert(record)
+        return True
+
 
 class InMemoryDeploymentRecordRepository(DeploymentRecordRepository):
     def __init__(self) -> None:
@@ -845,6 +857,57 @@ class PostgresDeploymentRecordRepository(DeploymentRecordRepository):
                     },
                 )
             )
+
+    async def upsert_if_owned(self, record: DeploymentRecord, lease: DeploymentOperationLease) -> bool:
+        """Fence late results before changing durable deployment state."""
+        from sqlalchemy import func, select
+        from sqlalchemy.dialects.postgresql import insert
+
+        from osa.control_plane.backend.deployment_ownership import deployment_operation_owners_table
+        from osa.control_plane.backend.tables import deployments_table
+
+        ownership_table = deployment_operation_owners_table()
+        async with self._engine.begin() as connection:
+            result = await connection.execute(
+                select(ownership_table, func.now().label("database_now"))
+                .where(
+                    ownership_table.c.tenant_id == (lease.tenant_id or ""),
+                    ownership_table.c.resource_id == lease.resource_id,
+                    ownership_table.c.operation_id == lease.operation_id,
+                    ownership_table.c.owner_id == lease.owner_id,
+                    ownership_table.c.fencing_epoch == lease.fencing_epoch,
+                    ownership_table.c.state == "active",
+                )
+                .with_for_update()
+            )
+            row = result.mappings().first()
+            if row is None or row["lease_expires_at"] <= row["database_now"]:
+                return False
+            await connection.execute(
+                insert(deployments_table)
+                .values(
+                    deployment_id=record.deployment_id,
+                    agent_id=record.agent_id,
+                    tenant_id=record.tenant_id,
+                    agent_name=record.agent_name,
+                    version=record.version,
+                    status=record.status,
+                    detail=record.detail,
+                    invoke_url=record.invoke_url,
+                    created_at=record.created_at,
+                    updated_at=record.updated_at,
+                )
+                .on_conflict_do_update(
+                    index_elements=["deployment_id"],
+                    set_={
+                        "status": record.status,
+                        "detail": record.detail,
+                        "invoke_url": record.invoke_url,
+                        "updated_at": record.updated_at,
+                    },
+                )
+            )
+        return True
 
     async def get(self, deployment_id: str) -> DeploymentRecord | None:
         from sqlalchemy import select
@@ -944,6 +1007,12 @@ class SqliteDeploymentRecordRepository(PostgresDeploymentRecordRepository):
                     },
                 )
             )
+
+    async def upsert_if_owned(self, record: DeploymentRecord, lease: DeploymentOperationLease) -> bool:
+        """SQLite is explicitly local and uses the repository default guard."""
+        del lease
+        await self.upsert(record)
+        return True
 
 
 # ---------------------------------------------------------------------------

@@ -14,12 +14,14 @@ No ADK internals are imported: the runtime is an external process.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import hashlib
 import os
 import shlex
 import shutil
 import socket
 import tempfile
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -33,6 +35,16 @@ from osa.control_plane.backend.deployment import (
     DeploymentSpec,
     LocalDeploymentProvider,
 )
+from osa.control_plane.backend.deployment_errors import (
+    DeploymentError,
+    DeploymentOperationBusyError,
+    DeploymentOperationLostError,
+)
+from osa.control_plane.backend.deployment_ownership import (
+    DeploymentOperationLease,
+    DeploymentOperationOwnershipStore,
+    InMemoryDeploymentOperationOwnershipStore,
+)
 from osa.control_plane.backend.repositories import (
     AgentRepository,
     DeploymentRecord,
@@ -44,6 +56,8 @@ from osa.control_plane.backend.resource_catalogs import (  # noqa: TC001 - ctor 
 from osa.generic_agent import bounded_text
 
 if TYPE_CHECKING:
+    from collections.abc import AsyncIterator
+
     from osa.control_plane.backend.repositories import ResourceDefinitionRepository
     from osa.generic_agent import AgentDefinition
 
@@ -117,10 +131,6 @@ class DeployedAgent:
     pid: int | None
 
 
-class DeploymentError(Exception):
-    """A deployment operation failed."""
-
-
 def _free_port() -> int:
     with socket.socket() as sock:
         sock.bind(("127.0.0.1", 0))
@@ -186,12 +196,16 @@ class DeploymentService:
         agent_repository: AgentRepository,
         resource_catalogs: ResourceCatalogs,
         resource_repository: ResourceDefinitionRepository | None = None,
+        operation_ownership: DeploymentOperationOwnershipStore | None = None,
     ) -> None:
         self._provider = provider
         self._records = record_repository
         self._agents = agent_repository
         self._catalogs = resource_catalogs
         self._resource_repository = resource_repository
+        self._operation_ownership = (
+            operation_ownership if operation_ownership is not None else InMemoryDeploymentOperationOwnershipStore()
+        )
         self._agent_locks: dict[str, Any] = {}
 
     def _agent_lock(self, agent_id: str) -> Any:
@@ -218,45 +232,55 @@ class DeploymentService:
                     f"Agent '{record.name}' is an external A2A agent; external agents are never deployed by OSA"
                 )
 
-            desired_identity = f"{agent_id}:{record.current_version}"
-            for existing in await self._records.list_for_agent(agent_id):
-                if existing.version != record.current_version or existing.status != "running":
-                    continue
-                try:
-                    observed = await self._provider.status(existing.deployment_id)
-                except KeyError:
-                    continue
-                if observed.status.value == "running":
-                    return existing
+            async with self._owned_operation(f"agent:{agent_id}", record.tenant_id, "deploy") as lease:
+                desired_identity = f"{agent_id}:{record.current_version}"
+                for existing in await self._records.list_for_agent(agent_id):
+                    if existing.version != record.current_version or existing.status != "running":
+                        continue
+                    try:
+                        observed = await self._provider.status(existing.deployment_id)
+                    except KeyError:
+                        continue
+                    if observed.status.value == "running":
+                        return existing
 
-            await self._reconcile_resources(record.tenant_id)
-            bundle_path = self._export_bundle(record)
-            port = _free_port()
-            health_url = f"http://127.0.0.1:{port}/health/ready"
-            command = shlex.split(command_template().format(bundle_path=bundle_path, port=port))
-            spec = DeploymentSpec(
-                agent_id=agent_id,
-                command=command,
-                env=_runtime_env(),
-                health_check_url=health_url,
-                label=record.current_version,
-                identity=desired_identity,
-                port=port,
-            )
-            deployment = await self._provider.deploy(spec)
-            actual_port = deployment.port or port
-            record_row = DeploymentRecord(
-                deployment_id=deployment.deployment_id,
-                agent_id=agent_id,
-                tenant_id=record.tenant_id,
-                agent_name=record.name,
-                version=record.current_version,
-                status=deployment.status.value,
-                detail=deployment.error or "",
-                invoke_url=public_invoke_url(deployment.deployment_id, agent_id, record.current_version, actual_port),
-            )
-            await self._records.upsert(record_row)
-            return record_row
+                await self._reconcile_resources(record.tenant_id)
+                bundle_path = self._export_bundle(record)
+                port = _free_port()
+                health_url = f"http://127.0.0.1:{port}/health/ready"
+                command = shlex.split(command_template().format(bundle_path=bundle_path, port=port))
+                spec = DeploymentSpec(
+                    agent_id=agent_id,
+                    command=command,
+                    env=_runtime_env(),
+                    health_check_url=health_url,
+                    label=record.current_version,
+                    identity=desired_identity,
+                    port=port,
+                    operation_id=lease.operation_id if lease is not None else None,
+                    fencing_epoch=lease.fencing_epoch if lease is not None else None,
+                )
+                await self._assert_owned(lease)
+                deployment = await self._provider.deploy(spec)
+                await self._assert_owned(lease)
+                actual_port = deployment.port or port
+                record_row = DeploymentRecord(
+                    deployment_id=deployment.deployment_id,
+                    agent_id=agent_id,
+                    tenant_id=record.tenant_id,
+                    agent_name=record.name,
+                    version=record.current_version,
+                    status=deployment.status.value,
+                    detail=deployment.error or "",
+                    invoke_url=public_invoke_url(
+                        deployment.deployment_id,
+                        agent_id,
+                        record.current_version,
+                        actual_port,
+                    ),
+                )
+                await self._persist(record_row, lease)
+                return record_row
 
     async def status(self, deployment_id: str) -> DeploymentRecord:
         observed = await self._provider.status(deployment_id)
@@ -293,12 +317,24 @@ class DeploymentService:
         return await self._records.get(deployment_id)
 
     async def stop(self, deployment_id: str) -> DeploymentRecord:
-        await self._provider.stop(deployment_id)
-        return await self.status(deployment_id)
+        stored = await self._records.get(deployment_id)
+        if stored is None:
+            raise KeyError(f"Deployment not found: {deployment_id}")
+        async with self._owned_operation(f"deployment:{deployment_id}", stored.tenant_id, "stop") as lease:
+            await self._assert_owned(lease)
+            await self._provider.stop(deployment_id)
+            await self._assert_owned(lease)
+            return await self._refresh_status_owned(deployment_id, lease)
 
     async def restart(self, deployment_id: str) -> DeploymentRecord:
-        await self._provider.restart(deployment_id)
-        return await self.status(deployment_id)
+        stored = await self._records.get(deployment_id)
+        if stored is None:
+            raise KeyError(f"Deployment not found: {deployment_id}")
+        async with self._owned_operation(f"deployment:{deployment_id}", stored.tenant_id, "restart") as lease:
+            await self._assert_owned(lease)
+            await self._provider.restart(deployment_id)
+            await self._assert_owned(lease)
+            return await self._refresh_status_owned(deployment_id, lease)
 
     async def rollback(self, deployment_id: str, to_version: str | None = None) -> DeploymentRecord:
         """Redeploy an earlier version of the deployed agent.
@@ -314,57 +350,68 @@ class DeploymentService:
             stored = await self._records.get(deployment_id)
             if stored is None:
                 raise KeyError(f"Deployment not found: {deployment_id}")
-            agent = await self._agents.get(stored.agent_id)
-            if agent is None:
-                raise DeploymentError(f"Agent '{stored.agent_id}' no longer exists")
-            target = to_version
-            if target is None:
-                previous = [v for v in agent.versions if v.version != agent.current_version]
-                if not previous:
-                    raise DeploymentError(f"Agent '{agent.name}' has no earlier version to roll back to")
-                target = previous[-1].version
-            snapshot = next((v for v in agent.versions if v.version == target), None)
-            if snapshot is None or snapshot.definition is None:
-                raise DeploymentError(f"Version '{target}' has no definition snapshot")
-            try:
-                stopped = await self._provider.stop(deployment_id)
-            except KeyError:
-                raise
-            except Exception as exc:
-                raise DeploymentError("Unable to stop the existing deployment for rollback") from exc
-            stored.status = stopped.status.value
-            stored.detail = stopped.error or ""
-            await self._records.upsert(stored)
+            async with self._owned_operation(f"deployment:{deployment_id}", stored.tenant_id, "rollback") as lease:
+                await self._assert_owned(lease)
+                agent = await self._agents.get(stored.agent_id)
+                if agent is None:
+                    raise DeploymentError(f"Agent '{stored.agent_id}' no longer exists")
+                target = to_version
+                if target is None:
+                    previous = [v for v in agent.versions if v.version != agent.current_version]
+                    if not previous:
+                        raise DeploymentError(f"Agent '{agent.name}' has no earlier version to roll back to")
+                    target = previous[-1].version
+                snapshot = next((v for v in agent.versions if v.version == target), None)
+                if snapshot is None or snapshot.definition is None:
+                    raise DeploymentError(f"Version '{target}' has no definition snapshot")
+                try:
+                    stopped = await self._provider.stop(deployment_id)
+                    await self._assert_owned(lease)
+                except KeyError:
+                    raise
+                except DeploymentOperationLostError:
+                    raise
+                except Exception as exc:
+                    raise DeploymentError("Unable to stop the existing deployment for rollback") from exc
+                stored.status = stopped.status.value
+                stored.detail = stopped.error or ""
+                await self._persist(stored, lease)
 
-            await self._reconcile_resources(agent.tenant_id)
-            bundle_path = self._export_bundle(agent, override_definition=snapshot.definition, version=target)
-            port = _free_port()
-            spec = DeploymentSpec(
-                agent_id=stored.agent_id,
-                command=shlex.split(command_template().format(bundle_path=bundle_path, port=port)),
-                env=_runtime_env(),
-                health_check_url=f"http://127.0.0.1:{port}/health/ready",
-                label=target,
-                identity=f"{stored.agent_id}:{target}",
-                port=port,
-            )
-            try:
-                deployment = await self._provider.deploy(spec)
-            except Exception as exc:
-                raise DeploymentError(f"Rollback to version '{target}' failed to start") from exc
-            actual_port = deployment.port or port
-            replacement = DeploymentRecord(
-                deployment_id=deployment.deployment_id,
-                agent_id=stored.agent_id,
-                tenant_id=agent.tenant_id,
-                agent_name=agent.name,
-                version=target,
-                status=deployment.status.value,
-                detail=deployment.error or "",
-                invoke_url=public_invoke_url(deployment.deployment_id, stored.agent_id, target, actual_port),
-            )
-            await self._records.upsert(replacement)
-            return replacement
+                await self._reconcile_resources(agent.tenant_id)
+                bundle_path = self._export_bundle(agent, override_definition=snapshot.definition, version=target)
+                port = _free_port()
+                spec = DeploymentSpec(
+                    agent_id=stored.agent_id,
+                    command=shlex.split(command_template().format(bundle_path=bundle_path, port=port)),
+                    env=_runtime_env(),
+                    health_check_url=f"http://127.0.0.1:{port}/health/ready",
+                    label=target,
+                    identity=f"{stored.agent_id}:{target}",
+                    port=port,
+                    operation_id=lease.operation_id if lease is not None else None,
+                    fencing_epoch=lease.fencing_epoch if lease is not None else None,
+                )
+                try:
+                    await self._assert_owned(lease)
+                    deployment = await self._provider.deploy(spec)
+                    await self._assert_owned(lease)
+                except DeploymentOperationLostError:
+                    raise
+                except Exception as exc:
+                    raise DeploymentError(f"Rollback to version '{target}' failed to start") from exc
+                actual_port = deployment.port or port
+                replacement = DeploymentRecord(
+                    deployment_id=deployment.deployment_id,
+                    agent_id=stored.agent_id,
+                    tenant_id=agent.tenant_id,
+                    agent_name=agent.name,
+                    version=target,
+                    status=deployment.status.value,
+                    detail=deployment.error or "",
+                    invoke_url=public_invoke_url(deployment.deployment_id, stored.agent_id, target, actual_port),
+                )
+                await self._persist(replacement, lease)
+                return replacement
 
     async def logs(self, deployment_id: str, tail: int = 200) -> list[str]:
         if await self._records.get(deployment_id) is None:
@@ -377,6 +424,92 @@ class DeploymentService:
 
     async def list_for_agent(self, agent_id: str) -> list[DeploymentRecord]:
         return await self._records.list_for_agent(agent_id)
+
+    @asynccontextmanager
+    async def _owned_operation(
+        self,
+        resource_id: str,
+        tenant_id: str | None,
+        operation_kind: str,
+    ) -> AsyncIterator[DeploymentOperationLease]:
+        """Run a mutating operation under a renewable fenced lease."""
+        operation_id = str(uuid4())
+        lease = await self._operation_ownership.acquire(tenant_id, resource_id, operation_id)
+        if lease is None:
+            raise DeploymentOperationBusyError(
+                f"A deployment {operation_kind} operation is already active for '{resource_id}'"
+            )
+
+        lost = asyncio.Event()
+
+        async def heartbeat_loop() -> None:
+            try:
+                while True:
+                    await asyncio.sleep(max(1.0, self._operation_ownership.lease_seconds / 3))
+                    if not await self._operation_ownership.heartbeat(lease):
+                        lost.set()
+                        return
+            except asyncio.CancelledError:
+                raise
+            except Exception:  # noqa: BLE001 - the operation must fail closed
+                lost.set()
+
+        heartbeat_task = asyncio.create_task(heartbeat_loop())
+        operation_error: BaseException | None = None
+        try:
+            await self._assert_owned(lease, lost)
+            yield lease
+        except BaseException as exc:
+            operation_error = exc
+            raise
+        finally:
+            heartbeat_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await heartbeat_task
+            outcome = "completed" if operation_error is None else ("lost" if lost.is_set() else "failed")
+            try:
+                released = await self._operation_ownership.release(lease, outcome)
+            except Exception as exc:  # noqa: BLE001 - successful side effects are unknown
+                raise DeploymentOperationLostError(
+                    f"Unable to release deployment operation '{lease.operation_id}'; operation outcome is unknown"
+                ) from exc
+            if not released:
+                raise DeploymentOperationLostError(
+                    f"Deployment operation '{lease.operation_id}' lost ownership; late results were not accepted"
+                ) from operation_error
+
+    async def _assert_owned(
+        self,
+        lease: DeploymentOperationLease,
+        lost: asyncio.Event | None = None,
+    ) -> None:
+        if (lost is not None and lost.is_set()) or not await self._operation_ownership.is_current(lease):
+            raise DeploymentOperationLostError(
+                f"Deployment operation '{lease.operation_id}' no longer owns '{lease.resource_id}'"
+            )
+
+    async def _persist(self, record: DeploymentRecord, lease: DeploymentOperationLease) -> None:
+        """Persist only while the operation's fencing token is current."""
+        await self._assert_owned(lease)
+        if not await self._records.upsert_if_owned(record, lease):
+            raise DeploymentOperationLostError(
+                f"Deployment operation '{lease.operation_id}' was fenced before persisting state"
+            )
+
+    async def _refresh_status_owned(
+        self,
+        deployment_id: str,
+        lease: DeploymentOperationLease,
+    ) -> DeploymentRecord:
+        observed = await self._provider.status(deployment_id)
+        await self._assert_owned(lease)
+        stored = await self._records.get(deployment_id)
+        if stored is None:
+            raise KeyError(f"Deployment not found: {deployment_id}")
+        stored.status = observed.status.value
+        stored.detail = observed.error or ""
+        await self._persist(stored, lease)
+        return stored
 
     async def _reconcile_resources(self, tenant_id: str | None) -> None:
         if self._resource_repository is None:

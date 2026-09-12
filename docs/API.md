@@ -298,11 +298,15 @@ when the template is unset.
 
 Every transition persists intent and observed state through the
 `DeploymentRecordRepository` (in-memory by default, PostgreSQL when the
-Control Plane is configured with a database). The local provider is explicitly
+Control Plane is configured with a database). With PostgreSQL, mutating deploy,
+stop, restart, and rollback operations acquire a migration-owned
+tenant/resource lease and carry a stable operation ID plus fencing epoch;
+late workers cannot persist fenced results. The local provider is explicitly
 development-only and stops its owned children on graceful shutdown. Kubernetes
 status/list operations rehydrate workloads from OSA identity labels after a
-Control Plane restart; multi-replica operation ownership remains an external
-provider responsibility.
+Control Plane restart. Read-only status, logs, and reconciliation do not wait
+on the mutating-operation lease; full two-worker provider acceptance remains
+tracked in `TODO.md`.
 
 ### A2A and external agents (P2.1)
 

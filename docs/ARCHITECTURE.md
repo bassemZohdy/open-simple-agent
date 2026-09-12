@@ -313,13 +313,19 @@ referenced resources to a bundle directory and launches a runtime via a
 server-owned command template (`OSA_DEPLOY_COMMAND_TEMPLATE`) — commands are
 never accepted from API input. Intent and observed state persist through the
 `DeploymentRecordRepository` (in-memory, or PostgreSQL when the Control
-Plane uses a database); rollback currently relaunches an earlier immutable
-version snapshot but its stop/relaunch/persist consistency remains open.
+Plane uses a database); rollback relaunches an earlier immutable version
+snapshot under the same ownership boundary as other mutations.
 Durable Control Plane deployments select the Kubernetes provider. Deployed
 runtimes are external processes: no ADK internals are imported. Kubernetes
 status/list operations rehydrate workloads from OSA identity labels after a
-Control Plane restart; real Kind validation passes in CI, while distributed
-operation ownership remains open in `TODO.md`.
+Control Plane restart; real Kind validation passes in CI. Mutating deploy,
+stop, restart, and rollback operations use a tenant/resource-scoped lease with
+a stable operation ID and monotonically increasing fencing epoch. The
+PostgreSQL ownership table is created only by migration 0010; a heartbeat
+renews the lease, takeover occurs only after expiry, and fenced repository
+writes reject late results. Status, logs, and provider reconciliation remain
+read-only observation paths. Full two-worker provider-side-effect and restart
+acceptance remains open in `TODO.md`.
 The provider factory rejects `OSA_DEPLOY_PROVIDER=openshift` until a separate
 OpenShift provider is implemented; OpenShift API and admission behavior must
 not be added as conditional paths to the generic Kubernetes provider.

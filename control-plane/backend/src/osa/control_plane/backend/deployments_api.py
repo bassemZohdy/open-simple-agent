@@ -18,14 +18,17 @@ Every transition persists through the ``DeploymentRecordRepository``.
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from fastapi import FastAPI, HTTPException, Query, Request
 from pydantic import BaseModel, ConfigDict
 
 from osa.control_plane.backend.audit import record_audit_event
-from osa.control_plane.backend.deployment_service import DeploymentError, DeploymentService
+from osa.control_plane.backend.deployment_errors import DeploymentError, DeploymentOperationError
 from osa.generic_agent import AuthenticatedPrincipal, log_event
+
+if TYPE_CHECKING:
+    from osa.control_plane.backend.deployment_service import DeploymentService
 
 logger = logging.getLogger(__name__)
 
@@ -100,6 +103,8 @@ def configure_deployment_routes(app: FastAPI) -> FastAPI:
             record = await service.deploy(agent_id)
         except KeyError as exc:
             raise HTTPException(status_code=404, detail=str(exc.args[0])) from exc
+        except DeploymentOperationError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
         except DeploymentError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         await record_audit_event(
@@ -138,6 +143,8 @@ def configure_deployment_routes(app: FastAPI) -> FastAPI:
             record = await service.status(deployment_id)
         except KeyError as exc:
             raise HTTPException(status_code=404, detail=str(exc.args[0])) from exc
+        except DeploymentOperationError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
         await record_audit_event(http_request, action="deployment.status", target=deployment_id)
         log_event(
             logger, logging.INFO, "deployment status checked", {"deployment_id": deployment_id, "status": record.status}
@@ -153,6 +160,8 @@ def configure_deployment_routes(app: FastAPI) -> FastAPI:
             record = await service.stop(deployment_id)
         except KeyError as exc:
             raise HTTPException(status_code=404, detail=str(exc.args[0])) from exc
+        except DeploymentOperationError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
         await record_audit_event(http_request, action="deployment.stop", target=deployment_id)
         log_event(logger, logging.INFO, "deployment stopped", {"deployment_id": deployment_id, "status": record.status})
         return _response(record)
@@ -205,6 +214,8 @@ def configure_deployment_routes(app: FastAPI) -> FastAPI:
             record = await service.rollback(deployment_id, version)
         except KeyError as exc:
             raise HTTPException(status_code=404, detail=str(exc.args[0])) from exc
+        except DeploymentOperationError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
         except DeploymentError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         await record_audit_event(

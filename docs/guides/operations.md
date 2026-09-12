@@ -97,6 +97,14 @@ health probe; startup failures carry the captured logs in the record detail.
   Events are deduplicated by stable ID, ordered by database ingestion time plus
   ID, and pruned using `OSA_CAPABILITY_TELEMETRY_RETENTION_DAYS`; tenant
   deletion is an explicit operator data-retention action.
+- When the Control Plane uses PostgreSQL, migration 0010 owns deployment
+  operation leases. `OSA_DEPLOYMENT_OPERATION_LEASE_SECONDS` defaults to 30
+  seconds (minimum 5); tune it above the longest expected provider call and
+  keep it consistent across replicas. Deploy, stop, restart, and rollback are
+  serialized per tenant/resource key, heartbeats renew ownership, and stale
+  workers fail closed before durable status writes. A missing migration is a
+  startup failure. Read-only status, logs, and reconciliation do not acquire
+  this lease.
 
 ## Upgrades
 
@@ -115,7 +123,7 @@ health probe; startup failures carry the captured logs in the record detail.
 
 ## Remaining operational work
 
-- Replica-safe deployment-operation ownership
+- Complete two-worker PostgreSQL acceptance for deployment-operation ownership
 - Complete true multi-process A2A active-task replica acceptance for streaming
   and late-event ordering (P2.4)
 - Gateway-level quota policy

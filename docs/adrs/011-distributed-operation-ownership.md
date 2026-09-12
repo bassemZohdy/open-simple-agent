@@ -38,6 +38,16 @@ effects. The SDK active-task registry and multi-process streaming/late-event
 acceptance are still open, so this ADR remains proposed until the full
 acceptance criteria and open review questions are resolved.
 
+The deployment slice now applies the same conservative boundary to the
+currently exposed mutating Control Plane operations: deploy creation is keyed
+by agent until a deployment ID exists, while stop, restart, and rollback use
+the deployment key. PostgreSQL migration 0010 owns the lease rows, provider
+deploy specs carry the operation metadata, and durable deployment-record
+writes lock and validate the current owner/fence before updating state. The
+provider-only Kubernetes `scale()` capability is not exposed through
+`DeploymentService` yet. Two-worker provider-side-effect and restart/recovery
+acceptance is still required before this ADR can be accepted.
+
 ## Decision drivers
 
 - Database-backed coordination must work with the existing PostgreSQL
@@ -119,12 +129,14 @@ concurrency rules.
 
 ### 4. Deployment operations
 
-Deploy, stop, restart, rollback, and scale use the same lease/fencing
-primitive, keyed by tenant, deployment, and operation kind. Provider calls use
-the deployment id as their idempotency key where the provider supports it.
+The accepted target is for deploy, stop, restart, rollback, and scale to use
+the same lease/fencing primitive, keyed by tenant and deployment resource.
+Provider calls use a provider-owned idempotency key where supported.
 Provider observation/reconciliation remains separate: it may update observed
 status, but it cannot clear an active lease or overwrite an intent owned by a
-newer fencing epoch.
+newer fencing epoch. The current implementation covers deploy, stop, restart,
+and rollback; provider-only `scale()` remains outside the Control Plane
+service surface until its operation contract is added.
 
 ### 5. Telemetry boundary
 
@@ -235,5 +247,7 @@ implementations only.
   declaration and side-effect evidence are required?
 - What lease/heartbeat durations and takeover limits fit the supported runtime
   timeout range?
-- Should deployment operation keys serialize all operations per deployment or
-  allow independent read-only observations concurrently?
+- Resolved for the current slice: serialize all mutating operations per
+  deployment resource; keep read-only observations concurrent. Revisit only if
+  a future provider exposes a mutation with a separately proven idempotency
+  contract.
