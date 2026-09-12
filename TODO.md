@@ -72,8 +72,8 @@ The following are the current blockers or decision gates:
   requires a selected provider and test tenant.
   The real Kind lifecycle workflow passes in CI; OpenShift behavior remains a
   separate provider gate.
-- **Architecture-gated:** completing the remaining distributed A2A
-  multi-process/active-task streaming and late-event contract requires approval
+- **Architecture-gated:** completing the remaining public distributed A2A
+  multi-process/active-task streaming and late-event route contract requires approval
   of `docs/adrs/011-distributed-operation-ownership.md`.
 - **Product-gated:** browser OIDC issuer/client/redirect semantics, package
   registry publication, and the first public release need explicit product
@@ -91,7 +91,7 @@ enable a gated feature.
 | Gate | Decision required | Review default | Unlocks |
 |---|---|---|---|
 | Enterprise identity | Select one real OIDC/JWKS or RFC 7662 provider and a non-production test tenant, including issuer, audience, expected subject, and tenant claims. | Use the existing provider-neutral harness against the organization’s existing non-production IdP; do not add provider-specific code to the core boundary. | Concrete identity lifecycle acceptance. |
-| ADR-011 | Approve or revise the conservative lease/fencing/cancellation/event-cursor contract and its multi-worker acceptance criteria. | Accept the proposed decision as written; keep public A2A streaming disabled until the PostgreSQL multi-worker suite passes. | Public cross-replica A2A streaming and late-event work. |
+| ADR-011 | Approve or revise the conservative lease/fencing/cancellation/event-cursor contract and its public-route acceptance criteria. | Accept the proposed decision as written; keep public A2A streaming disabled until the ADR is accepted and route-level acceptance passes. | Public cross-replica A2A streaming and late-event work. |
 | Browser OIDC | Choose deployment-owned issuer, client registration, redirect, refresh, logout, and token-storage semantics. | Authorization Code + PKCE with deployment-specific configuration; never place bearer tokens in URLs, source, logs, or persistent configuration. | Control Panel browser login/refresh implementation. |
 | Public bundle import/export | Decide whether third parties may import/export public agent-definition bundles, and define compatibility, trust, and secret/reference rules. | Keep public definition import/export out of scope until a versioned compatibility and trust contract is approved; retain server-side deployment export and resource import/export. | Public bundle API and UI scope. |
 | Package publication/release | Select PyPI/another registry/private-only distribution, then choose the first public version and release notes. | Keep the existing signed GHCR/GitHub Release path as the baseline; publish Python packages only after a registry and support policy are selected. | First automated public release. |

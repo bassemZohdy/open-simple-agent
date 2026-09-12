@@ -99,7 +99,8 @@ Evidence from the current repository:
 - `RuntimeDependencies` and `AgentStreamEvent` are framework-neutral seams in
   `generic-agent`; the ADK and LangGraph runtimes consume those seams without
   importing either framework into the generic package.
-- Current gaps are distributed A2A streaming/late-event acceptance, concrete
+- Current gaps are public distributed A2A streaming-route/late-event
+  acceptance, concrete
   enterprise identity acceptance, and deployment/release decisions. The
   exposed deployment-operation ownership slice and its independent-worker
   PostgreSQL acceptance are complete. These remaining items are in `TODO.md`

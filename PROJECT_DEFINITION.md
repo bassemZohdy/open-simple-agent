@@ -190,8 +190,10 @@ read-only terminal replay, terminal-event drain-before-release, and fail-closed
 owner-loss handling; process-boundary PostgreSQL acceptance covers task
 creation, lookup, cancellation, and crash recovery. Schema version 2 now also
 provisions a migration-owned append-only event cursor and bounded polling
-relay foundation, while route integration, the SDK active-task registry, and
-multi-process streaming/late-event acceptance remain backlog work.
+relay foundation, with independent PostgreSQL-worker acceptance for takeover
+fencing, late-event rejection, ordered terminal delivery, and cursor replay.
+Public route integration and the SDK active-task registry remain backlog work;
+the Agent Card continues to advertise non-streaming capabilities.
 Expired-owner retries never replay unknown model/tool side effects. Future work may
 deepen delegation/consent semantics without turning A2A into a management
 protocol.
@@ -278,7 +280,7 @@ generic `kubectl`-backed Kubernetes provider, which supports
 Deployment/Service/config/secret/probe/lifecycle behavior and rehydrates
 status from OSA identity labels after a Control Plane restart. Real Kind and
 independent-worker PostgreSQL deployment-operation ownership acceptance pass
-in CI. A2A multi-process streaming/late-event acceptance remains
+in CI. Public A2A multi-process streaming-route/late-event acceptance remains
 architecture-gated.
 OpenShift-specific behavior remains separately deferred.
 
@@ -448,5 +450,5 @@ Items 1–7 and the Manager Agent/release foundations are substantially
 implemented. Current delivery focus is production-readiness hardening of
 deployment safety, outbound security, persistence boundaries, and capacity
 controls, followed by the remaining Control Panel and release decisions while
-A2A streaming/late-event acceptance and OpenShift follow-up stay gated. The
+public A2A streaming-route/late-event acceptance and OpenShift follow-up stay gated. The
 detailed, acceptance-tested backlog is maintained in [TODO.md](TODO.md).

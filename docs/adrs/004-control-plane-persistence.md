@@ -105,8 +105,9 @@ SQLAlchemy 2.0 async, Alembic.
   PostgreSQL cross-replica resource acceptance is exercised in CI; Kind
   Kubernetes lifecycle acceptance passes in CI, while OpenShift behavior and
   distributed deployment-operation ownership is implemented and independently
-  accepted for the exposed mutations; A2A streaming/late-event ownership and
-  any future provider-wide expansion remain tracked separately in `TODO.md`.
+  accepted for the exposed mutations; public A2A streaming/late-event route
+  ownership and any future provider-wide expansion remain tracked separately in
+  `TODO.md`.
 - External A2A agent records are durable in the PostgreSQL repository; the
   in-memory default remains process-local.
 

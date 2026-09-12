@@ -390,8 +390,8 @@ bounded and process-local. Set `OSA_RATE_LIMIT_DATABASE_URL` to use the
 atomic PostgreSQL-compatible shared store across replicas; run
 `uv run osa-rate-limit-migrate --database-url postgresql+asyncpg://...` before
 starting a production service. The key contains only a method, bounded route,
-and hashed caller identity; request payloads are never stored. Distributed A2A
-streaming/late-event ownership and gateway-level global quotas remain
+and hashed caller identity; request payloads are never stored. Public A2A
+streaming/late-event route ownership and gateway-level global quotas remain
 deployment policy; deployment-operation ownership for the exposed Control
 Plane mutations is covered separately by the migration-owned lease contract
 above.
