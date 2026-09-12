@@ -12,6 +12,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added — Control Panel locale coverage
+- Added centralized English/Arabic messages for the Control Panel shell and
+  management views, including localized accessible names, route titles, and
+  browser-session locale selection.
+- Added Arabic RTL document/layout behavior while preserving browser-locale
+  timestamp formatting and machine-stable API values.
+- Added locale tests covering Arabic switching, session restoration, document
+  language/direction, and translated navigation.
+
 ### Added — Runtime durability, capacity, and deployment hardening
 - Added an explicit, versioned PostgreSQL runtime-session provider with strict
   ownership, TTL, bounded history, optimistic concurrency, and the

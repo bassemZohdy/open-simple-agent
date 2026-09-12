@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 
 import { ApiError, type ExternalAgentSummary } from "../api/client";
+import { useLocale } from "../i18n/LocaleContext";
 import { useControlPlaneClient } from "../api/useControlPlaneClient";
 
 function errorMessage(caught: unknown, fallback: string): string {
@@ -20,15 +21,16 @@ function clampTimeoutSeconds(raw: number): number {
   return Math.min(300, Math.round(raw));
 }
 
-function skillNames(skills: ExternalAgentSummary["skills"]): string {
+function skillNames(skills: ExternalAgentSummary["skills"]): string | null {
   const names = skills
     .map((skill) => (typeof skill.name === "string" ? skill.name : null))
     .filter((name): name is string => name !== null);
-  return names.length > 0 ? names.join(", ") : `${skills.length} skill(s)`;
+  return names.length > 0 ? names.join(", ") : null;
 }
 
 export function InvocationPage() {
   const client = useControlPlaneClient();
+  const { t } = useLocale();
   const [agents, setAgents] = useState<ExternalAgentSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -51,12 +53,12 @@ export function InvocationPage() {
         next.some((agent) => agent.external_id === current) ? current : (next[0]?.external_id ?? ""),
       );
     } catch (caught) {
-      setError(errorMessage(caught, "Unable to load external agents"));
+      setError(errorMessage(caught, t("Unable to load external agents")));
       setAgents([]);
     } finally {
       setLoading(false);
     }
-  }, [client]);
+  }, [client, t]);
 
   useEffect(() => {
     void loadAgents();
@@ -65,12 +67,12 @@ export function InvocationPage() {
   async function submitInvocation(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!selectedId) {
-      setInvokeError("Select an external agent to invoke");
+      setInvokeError(t("Select an external agent to invoke"));
       return;
     }
     const trimmed = message.trim();
     if (!trimmed) {
-      setInvokeError("A message is required");
+      setInvokeError(t("A message is required"));
       return;
     }
     setInvoking(true);
@@ -80,7 +82,7 @@ export function InvocationPage() {
       const result = await client.invokeExternalAgent(selectedId, trimmed, timeoutSeconds);
       setOutput(result.output);
     } catch (caught) {
-      setInvokeError(errorMessage(caught, "Unable to invoke the external agent"));
+      setInvokeError(errorMessage(caught, t("Unable to invoke the external agent")));
     } finally {
       setInvoking(false);
     }
@@ -90,47 +92,47 @@ export function InvocationPage() {
     <section aria-labelledby="console-title">
       <div className="page-heading">
         <div>
-          <span className="eyebrow">Invocation console</span>
-          <h2 id="console-title">Console</h2>
-          <p>Test external A2A agents registered with the Control Plane.</p>
+          <span className="eyebrow">{t("Invocation console")}</span>
+          <h2 id="console-title">{t("Console")}</h2>
+          <p>{t("Test external A2A agents registered with the Control Plane.")}</p>
         </div>
-        <span className="count-badge" aria-label={`${agents.length} external agents`}>{agents.length}</span>
+        <span className="count-badge" aria-label={t("{count} external agents", { count: agents.length })}>{agents.length}</span>
       </div>
 
-      {loading ? <div className="state-card" role="status">Loading external agents…</div> : null}
+      {loading ? <div className="state-card" role="status">{t("Loading external agents…")}</div> : null}
       {!loading && error ? (
         <div className="state-card error-card" role="alert">
-          <strong>External agents unavailable</strong>
+          <strong>{t("External agents unavailable")}</strong>
           <span>{error}</span>
-          <button type="button" className="secondary-button" onClick={() => void loadAgents()}>Retry</button>
+          <button type="button" className="secondary-button" onClick={() => void loadAgents()}>{t("Retry")}</button>
         </div>
       ) : null}
       {!loading && !error && agents.length === 0 ? (
         <div className="state-card">
-          <strong>No external agents registered</strong>
-          <span>Register an external A2A agent through the Control Plane API to test it here.</span>
+          <strong>{t("No external agents registered")}</strong>
+          <span>{t("Register an external A2A agent through the Control Plane API to test it here.")}</span>
         </div>
       ) : null}
       {!loading && !error && agents.length > 0 ? (
         <div className="table-wrap">
           <table>
-            <caption className="sr-only">Registered external A2A agents</caption>
+            <caption className="sr-only">{t("Registered external A2A agents")}</caption>
             <thead>
-              <tr><th scope="col">Agent</th><th scope="col">URL</th><th scope="col">Status</th><th scope="col">Skills</th><th scope="col">Actions</th></tr>
+              <tr><th scope="col">{t("Agent")}</th><th scope="col">{t("URL")}</th><th scope="col">{t("Status")}</th><th scope="col">{t("Skills")}</th><th scope="col">{t("Actions")}</th></tr>
             </thead>
             <tbody>
               {agents.map((agent) => (
                 <tr key={agent.external_id}>
                   <td>
                     <strong>{agent.name}</strong>
-                    <small>{agent.card_name ? `${agent.card_name} ${agent.card_version}`.trim() : "No card name"}</small>
+                    <small>{agent.card_name ? `${agent.card_name} ${agent.card_version}`.trim() : t("No card name")}</small>
                   </td>
                   <td><code>{agent.url}</code></td>
                   <td>
-                    <span className={statusClass(agent.status)}>{agent.status}</span>
+                    <span className={statusClass(agent.status)}>{t(agent.status)}</span>
                     {agent.detail ? <small>{agent.detail}</small> : null}
                   </td>
-                  <td>{skillNames(agent.skills)}</td>
+                  <td>{skillNames(agent.skills) ?? t("{count} skill(s)", { count: agent.skills.length })}</td>
                   <td>
                     <button
                       type="button"
@@ -138,7 +140,7 @@ export function InvocationPage() {
                       onClick={() => setSelectedId(agent.external_id)}
                       disabled={selectedId === agent.external_id}
                     >
-                      {selectedId === agent.external_id ? "Selected" : "Test"}
+                      {selectedId === agent.external_id ? t("Selected") : t("Test")}
                     </button>
                   </td>
                 </tr>
@@ -151,13 +153,13 @@ export function InvocationPage() {
       <section className="detail-section" aria-labelledby="a2a-console-title">
         <div className="section-heading">
           <div>
-            <span className="eyebrow">A2A test console</span>
-            <h3 id="a2a-console-title">Send a message</h3>
+            <span className="eyebrow">{t("A2A test console")}</span>
+            <h3 id="a2a-console-title">{t("Send a message")}</h3>
           </div>
         </div>
         <form className="detail-card create-panel" onSubmit={(event) => void submitInvocation(event)} noValidate>
           <div className="filter-bar">
-            <label htmlFor="invoke-agent">Agent
+            <label htmlFor="invoke-agent">{t("Agent")}
               <select
                 id="invoke-agent"
                 value={selectedId}
@@ -169,7 +171,7 @@ export function InvocationPage() {
                 ))}
               </select>
             </label>
-            <label htmlFor="invoke-timeout">Timeout (seconds)
+            <label htmlFor="invoke-timeout">{t("Timeout (seconds)")}
               <input
                 id="invoke-timeout"
                 type="number"
@@ -183,34 +185,33 @@ export function InvocationPage() {
             </label>
           </div>
           <small id="invoke-timeout-hint" className="muted-text" style={{ marginTop: 0 }}>
-            Clamped to 1–300 seconds; effective timeout: {timeoutSeconds}s.
+            {t("Clamped to 1–300 seconds; effective timeout: {seconds}s.", { seconds: timeoutSeconds })}
           </small>
-          <label htmlFor="invoke-message">Message
+          <label htmlFor="invoke-message">{t("Message")}
             <textarea
               id="invoke-message"
               className="definition-editor resize-none"
               value={message}
               onChange={(event) => setMessage(event.target.value)}
               rows={4}
-              placeholder="What would you like to ask the remote agent?"
+              placeholder={t("What would you like to ask the remote agent?")}
               disabled={invoking}
             />
           </label>
-          {invokeError ? <div className="state-card error-card inline-state" role="alert"><strong>Invocation failed</strong><span>{invokeError}</span></div> : null}
+          {invokeError ? <div className="state-card error-card inline-state" role="alert"><strong>{t("Invocation failed")}</strong><span>{invokeError}</span></div> : null}
           <div className="action-row">
             <button type="submit" disabled={invoking || agents.length === 0}>
-              {invoking ? "Invoking…" : "Invoke agent"}
+              {invoking ? t("Invoking…") : t("Invoke agent")}
             </button>
           </div>
           {output !== null ? (
             <div>
-              <span className="eyebrow">Response</span>
-              <pre className="logs-view" aria-label="Agent response">{output}</pre>
+              <span className="eyebrow">{t("Response")}</span>
+              <pre className="logs-view" aria-label={t("Agent response")}>{output}</pre>
             </div>
           ) : null}
           <p className="muted-text">
-            External agents are invoked through the A2A protocol via the Control Plane. Managed agents are invoked
-            from the Deployments page on deployments that publish a runtime invoke URL (ADR-008).
+            {t("External agents are invoked through the A2A protocol via the Control Plane. Managed agents are invoked from the Deployments page on deployments that publish a runtime invoke URL (ADR-008).")}
           </p>
         </form>
       </section>

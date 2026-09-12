@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { ApiError, type HealthResponse } from "../api/client";
+import { useLocale } from "../i18n/LocaleContext";
 import { useControlPlaneClient } from "../api/useControlPlaneClient";
 
 export function HealthPage() {
   const client = useControlPlaneClient();
+  const { t } = useLocale();
   const [payload, setPayload] = useState<HealthResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -22,7 +24,7 @@ export function HealthPage() {
       },
       (caught: unknown) => {
         if (!active) return;
-        setError(caught instanceof ApiError ? caught.message : "Unable to read Control Plane health");
+        setError(caught instanceof ApiError ? caught.message : t("Unable to read Control Plane health"));
         setPayload(null);
         setLoading(false);
       },
@@ -30,7 +32,7 @@ export function HealthPage() {
     return () => {
       active = false;
     };
-  }, [client, reloadTick]);
+  }, [client, reloadTick, t]);
 
   const entries = payload
     ? Object.entries(payload).filter(([, value]) => typeof value !== "object" && typeof value !== "function")
@@ -40,27 +42,27 @@ export function HealthPage() {
   return (
     <section aria-labelledby="health-title">
       <div className="page-heading">
-        <div><span className="eyebrow">Operations</span><h2 id="health-title">Health</h2></div>
+        <div><span className="eyebrow">{t("Operations")}</span><h2 id="health-title">{t("Health")}</h2></div>
         <button
           type="button"
           className="secondary-button"
           disabled={loading}
           onClick={() => setReloadTick((tick) => tick + 1)}
         >
-          {loading ? "Refreshing…" : "Refresh"}
+          {loading ? t("Refreshing…") : t("Refresh")}
         </button>
       </div>
-      {loading && !payload ? <div className="state-card" role="status">Checking readiness…</div> : null}
+      {loading && !payload ? <div className="state-card" role="status">{t("Checking readiness…")}</div> : null}
       {error ? (
         <div className="state-card error-card" role="alert">
-          <strong>Control Plane unavailable</strong>
+          <strong>{t("Control Plane unavailable")}</strong>
           <span>{error}</span>
         </div>
       ) : null}
       {!error && payload ? (
         <div className="state-card" role="status">
-          <strong>Readiness: {status ?? "ready"}</strong>
-          <span>Source: GET /health/ready</span>
+          <strong>{t("Readiness: {status}", { status: status ? t(status) : t("ready") })}</strong>
+          <span>{t("Source: GET /health/ready")}</span>
           {entries.length > 0 ? (
             <dl className="metadata-list">
               {entries.map(([key, value]) => (
@@ -69,7 +71,7 @@ export function HealthPage() {
             </dl>
           ) : null}
           <details className="definition-details">
-            <summary>Raw readiness payload</summary>
+            <summary>{t("Raw readiness payload")}</summary>
             <pre>{JSON.stringify(payload, null, 2)}</pre>
           </details>
         </div>

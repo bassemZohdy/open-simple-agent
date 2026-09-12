@@ -64,10 +64,13 @@ this file records that language rather than introducing a marketing redesign.
 - **Target market(s) and evidence:** General technical users; the repository
   product definition and API contract are the maintained evidence. No
   Japan-specific market behavior is currently defined.
-- **Locale(s) and language policy:** English UI copy is the current supported
-  locale. Dates and numeric values use browser `Intl` formatting; API values
-  remain machine-stable. New locale support must centralize messages and
-  preserve accessible names and validation meaning.
+- **Locale(s) and language policy:** English (`en`) and Arabic (`ar`) are
+  supported. English remains the default fallback; the shell uses the browser
+  language when no session choice exists, and an explicit choice is kept only
+  in the current browser session. Arabic sets document direction to RTL.
+  Dates and numeric values use browser `Intl` formatting; API values remain
+  machine-stable. Messages, accessible names, and validation meaning are
+  centralized in the locale provider.
 - **Usage scene:** Frequent desktop use with narrow-screen inspection and
   keyboard navigation for operational workflows.
 - **Register:** Product/admin. Familiarity, state clarity, and recovery win
@@ -99,7 +102,8 @@ against both themes.
 ## Typography
 
 Inter is the established UI face, with the system stack as a resilient
-fallback. The sans face handles headings, labels, actions, and prose. The mono
+fallback. The sans face handles headings, labels, actions, and prose, with
+system Arabic fallbacks preserving script coverage. The mono
 stack is reserved for IDs, URLs, JSON, logs, and other technical values. Upper
 case is limited to eyebrow labels and table headings; user-facing actions use
 sentence case. `Intl.DateTimeFormat` owns localized timestamps, while raw ISO

@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 
 import { ApiError, type AuditEvent } from "../api/client";
+import { useLocale } from "../i18n/LocaleContext";
 import { useControlPlaneClient } from "../api/useControlPlaneClient";
+import { SearchField } from "../components/SearchField";
 import { formatTimestamp } from "../lib/format";
 
 const limitOptions = [50, 100, 200, 500] as const;
@@ -46,6 +48,7 @@ function formatDetail(detail: AuditEvent["detail"]): string {
 
 export function AuditPage() {
   const client = useControlPlaneClient();
+  const { t } = useLocale();
   const [events, setEvents] = useState<AuditEvent[]>([]);
   const [actionFilter, setActionFilter] = useState("");
   const [limit, setLimit] = useState<number>(100);
@@ -63,13 +66,13 @@ export function AuditPage() {
       try {
         setEvents(await client.listAuditEvents(nextLimit));
       } catch (caught) {
-        setError(errorMessage(caught, "Unable to load audit events"));
+        setError(errorMessage(caught, t("Unable to load audit events")));
         setEvents([]);
       } finally {
         setLoading(false);
       }
     },
-    [client, limit],
+    [client, limit, t],
   );
 
   const loadMetrics = useCallback(async () => {
@@ -78,12 +81,12 @@ export function AuditPage() {
     try {
       setMetrics(await client.getMetrics());
     } catch (caught) {
-      setMetricsError(errorMessage(caught, "Unable to load metrics"));
+        setMetricsError(errorMessage(caught, t("Unable to load metrics")));
       setMetrics(null);
     } finally {
       setMetricsLoading(false);
     }
-  }, [client]);
+  }, [client, t]);
 
   useEffect(() => {
     void loadEvents();
@@ -105,23 +108,16 @@ export function AuditPage() {
     <section aria-labelledby="audit-title">
       <div className="page-heading">
         <div>
-          <span className="eyebrow">Operational oversight</span>
-          <h2 id="audit-title">Audit &amp; metrics</h2>
-          <p>Recent Control Plane audit events and bounded operational metrics.</p>
+          <span className="eyebrow">{t("Operational oversight")}</span>
+          <h2 id="audit-title">{t("Audit & metrics")}</h2>
+          <p>{t("Recent Control Plane audit events and bounded operational metrics.")}</p>
         </div>
-        <span className="count-badge" aria-label={`${visibleEvents.length} shown of the ${events.length} most recent events loaded`}>{visibleEvents.length}<small>/{events.length} loaded</small></span>
+        <span className="count-badge" aria-label={t("{shown} shown of the {total} most recent events loaded", { shown: visibleEvents.length, total: events.length })}>{visibleEvents.length}<small>/{events.length} {t("loaded")}</small></span>
       </div>
 
       <form className="filter-bar" onSubmit={submitFilters} noValidate>
-        <label htmlFor="audit-action">Action
-          <input
-            id="audit-action"
-            value={actionFilter}
-            onChange={(event) => setActionFilter(event.target.value)}
-            placeholder="e.g. deployment or agent"
-          />
-        </label>
-        <label htmlFor="audit-limit">Limit
+        <SearchField id="audit-action" label={t("Action")} value={actionFilter} onChange={setActionFilter} placeholder={t("e.g. deployment or agent")} clearLabel={t("Clear search")} />
+        <label htmlFor="audit-limit">{t("Limit")}
           <select
             id="audit-limit"
             value={limit}
@@ -136,29 +132,29 @@ export function AuditPage() {
             ))}
           </select>
         </label>
-        <button type="submit">Refresh</button>
+        <button type="submit">{t("Refresh")}</button>
       </form>
 
-      {loading ? <div className="state-card" role="status">Loading audit events…</div> : null}
+      {loading ? <div className="state-card" role="status">{t("Loading audit events…")}</div> : null}
       {!loading && error ? (
         <div className="state-card error-card" role="alert">
-          <strong>Audit events unavailable</strong>
+          <strong>{t("Audit events unavailable")}</strong>
           <span>{error}</span>
-          <button type="button" className="secondary-button" onClick={() => void loadEvents()}>Retry</button>
+          <button type="button" className="secondary-button" onClick={() => void loadEvents()}>{t("Retry")}</button>
         </div>
       ) : null}
       {!loading && !error && visibleEvents.length === 0 ? (
         <div className="state-card">
-          <strong>No audit events</strong>
-          <span>Control Plane operations are recorded here as they happen.</span>
+          <strong>{t("No audit events")}</strong>
+          <span>{t("Control Plane operations are recorded here as they happen.")}</span>
         </div>
       ) : null}
       {visibleEvents.length > 0 ? (
         <div className="table-wrap">
           <table>
-            <caption className="sr-only">Recent audit events</caption>
+            <caption className="sr-only">{t("Recent audit events")}</caption>
             <thead>
-              <tr><th scope="col">Time</th><th scope="col">Actor</th><th scope="col">Action</th><th scope="col">Target</th><th scope="col">Tenant</th><th scope="col">Detail</th></tr>
+              <tr><th scope="col">{t("Time")}</th><th scope="col">{t("Actor")}</th><th scope="col">{t("Action")}</th><th scope="col">{t("Target")}</th><th scope="col">{t("Tenant")}</th><th scope="col">{t("Detail")}</th></tr>
             </thead>
             <tbody>
               {visibleEvents.map((entry) => (
@@ -167,7 +163,7 @@ export function AuditPage() {
                   <td>{entry.actor}</td>
                   <td><code>{entry.action}</code></td>
                   <td><code>{entry.target}</code></td>
-                  <td>{entry.tenant_id ?? "Shared scope"}</td>
+                  <td>{entry.tenant_id ?? t("Shared scope")}</td>
                   <td title={JSON.stringify(entry.detail)}>{formatDetail(entry.detail)}</td>
                 </tr>
               ))}
@@ -179,34 +175,34 @@ export function AuditPage() {
       <section className="detail-section" aria-labelledby="metrics-title">
         <div className="section-heading">
           <div>
-            <span className="eyebrow">Operational metrics</span>
-            <h3 id="metrics-title">Prometheus metrics</h3>
+            <span className="eyebrow">{t("Operational metrics")}</span>
+            <h3 id="metrics-title">{t("Prometheus metrics")}</h3>
           </div>
           <button type="button" disabled={metricsLoading} onClick={() => void loadMetrics()}>
-            {metricsLoading ? "Refreshing…" : "Refresh metrics"}
+            {metricsLoading ? t("Refreshing…") : t("Refresh metrics")}
           </button>
         </div>
-        {metricsLoading ? <div className="state-card" role="status">Loading metrics…</div> : null}
+        {metricsLoading ? <div className="state-card" role="status">{t("Loading metrics…")}</div> : null}
         {!metricsLoading && metricsError ? (
           <div className="state-card error-card" role="alert">
-            <strong>Metrics unavailable</strong>
+            <strong>{t("Metrics unavailable")}</strong>
             <span>{metricsError}</span>
-            <button type="button" className="secondary-button" onClick={() => void loadMetrics()}>Retry</button>
+            <button type="button" className="secondary-button" onClick={() => void loadMetrics()}>{t("Retry")}</button>
           </div>
         ) : null}
         {!metricsLoading && !metricsError && samples.length === 0 ? (
           <div className="state-card">
-            <strong>No metrics recorded</strong>
-            <span>Counters appear once the Control Plane handles traffic.</span>
+          <strong>{t("No metrics recorded")}</strong>
+          <span>{t("Counters appear once the Control Plane handles traffic.")}</span>
           </div>
         ) : null}
         {samples.length > 0 ? (
           <>
             <div className="table-wrap">
               <table>
-                <caption className="sr-only">Prometheus metric samples</caption>
+                <caption className="sr-only">{t("Prometheus metric samples")}</caption>
                 <thead>
-                  <tr><th scope="col">Metric</th><th scope="col">Labels</th><th scope="col">Value</th></tr>
+                  <tr><th scope="col">{t("Metric")}</th><th scope="col">{t("Labels")}</th><th scope="col">{t("Value")}</th></tr>
                 </thead>
                 <tbody>
                   {samples.map((sample) => (
@@ -220,8 +216,8 @@ export function AuditPage() {
               </table>
             </div>
             <details>
-              <summary>Raw Prometheus exposition</summary>
-              <pre className="logs-view" aria-label="Raw metrics exposition">{metrics}</pre>
+              <summary>{t("Raw Prometheus exposition")}</summary>
+              <pre className="logs-view" aria-label={t("Raw metrics exposition")}>{metrics}</pre>
             </details>
           </>
         ) : null}

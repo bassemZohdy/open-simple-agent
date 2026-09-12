@@ -10,11 +10,12 @@ documentation, and appropriate failure/security behavior are complete.
 ## Current status
 
 The runnable-agent gate, managed-platform foundation, Manager Agent surface,
-Control Plane, runtime images, release automation, current English Control
-Panel, durable runtime sessions, migration-owned memory schema,
+Control Plane, runtime images, release automation, current English/Arabic
+Control Panel, durable runtime sessions, migration-owned memory schema,
 operator-selected deployment provider, capability telemetry, identity contract
-coverage, and opt-in HTTP rate limiting (including a PostgreSQL shared store)
-are implemented and covered by tests/CI.
+coverage, opt-in HTTP rate limiting (including a PostgreSQL shared store), and
+English/Arabic Control Panel locale coverage are implemented and covered by
+tests/CI.
 
 Production-readiness limits are:
 
@@ -34,10 +35,9 @@ Production-readiness limits are:
   store, but active-task ownership/cancellation/recovery and replica-wide
   telemetry collection are not distributed-safe; long-running operation
   ownership and global gateway quotas remain deployment concerns;
-- translated locales, deployment-specific browser OIDC, package publication,
-  and the first public release remain open; the Kubernetes lifecycle acceptance
-  passes in CI, while this workstation cannot run it locally because Docker is
-  unavailable.
+- deployment-specific browser OIDC, package publication, and the first public
+  release remain open; the Kubernetes lifecycle acceptance passes in CI, while
+  this workstation cannot run it locally because Docker is unavailable.
 
 ## Pending work and gates
 
@@ -52,9 +52,10 @@ The following are the current blockers or decision gates:
   and replica-wide capability telemetry require approval of the proposed
   ownership contract in `docs/adrs/011-distributed-operation-ownership.md`,
   plus the telemetry retention/ordering decision.
-- **Product-gated:** translated locales, browser OIDC issuer/client/redirect
-  semantics, package registry publication, and the first public release need
-  explicit product decisions.
+- **Product-gated:** browser OIDC issuer/client/redirect semantics, package
+  registry publication, and the first public release need explicit product
+  decisions. English and Arabic are the currently supported Control Panel
+  locales; adding further locales remains a product decision.
 - **Requirement-gated:** the deferred section below remains intentionally
   paused until a concrete product or integration requirement exists.
 
@@ -63,8 +64,8 @@ The following are the current blockers or decision gates:
 Review and approve the proposed distributed operation ownership contract in
 `docs/adrs/011-distributed-operation-ownership.md`. The next decision gates
 after that review are distributed A2A active-task state, shared telemetry
-collection, translated locales, browser OIDC contracts, package publication,
-and the first public release.
+collection, browser OIDC contracts, package publication, and the first public
+release.
 
 ---
 
@@ -121,12 +122,15 @@ implemented for a single process.
 
 ## Control Panel — PARTIALLY COMPLETE
 
-The English panel includes authenticated shell, agents/resources, authoring,
-lifecycle/deployments, audit/metrics, A2A/runtime consoles, safe snapshots,
-responsive behavior, and loading/empty/error recovery.
+The panel includes an authenticated shell, English and Arabic locale coverage
+with RTL layout, agents/resources, authoring, lifecycle/deployments,
+audit/metrics, A2A/runtime consoles, safe snapshots, responsive behavior, and
+loading/empty/error recovery. Dates continue to use the browser locale/timezone
+through `Intl`; API and machine values remain stable.
 
-- [ ] Add translated-locale coverage while preserving accessibility and
-  browser-locale timestamps.
+- [x] Add English/Arabic locale coverage while preserving accessibility and
+  browser-locale timestamps; the selector is session-scoped and browser
+  language is used when no session choice exists.
 - [ ] Define deployment-specific OIDC browser login/refresh after issuer,
   client, and redirect contracts are selected.
 - [ ] Decide whether public agent-definition bundle import/export belongs in

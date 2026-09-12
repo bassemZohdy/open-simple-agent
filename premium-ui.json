@@ -2,6 +2,7 @@
   "profile": "product-admin",
   "sourceRoots": ["control-plane/frontend/src"],
   "locale": "en",
+  "supportedLocales": ["en", "ar"],
   "canonicalMap": "UX-CONTRACT.md",
   "requiredCapabilities": [
     "Table Selection",

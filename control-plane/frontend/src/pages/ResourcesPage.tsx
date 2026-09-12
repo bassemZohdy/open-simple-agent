@@ -1,7 +1,9 @@
 import { type FormEvent, useEffect, useState } from "react";
 
 import { ApiError, type ResourceEnvelope, type ResourceKind } from "../api/client";
+import { useLocale } from "../i18n/LocaleContext";
 import { useControlPlaneClient } from "../api/useControlPlaneClient";
+import { SearchField } from "../components/SearchField";
 
 const resourceKinds: ResourceKind[] = ["Model", "Tool", "Skill", "Mcp", "MemoryPolicy"];
 const summaryFields = ["provider", "model", "transport", "scope", "enabled", "retention_days"] as const;
@@ -23,6 +25,7 @@ function displayValue(value: unknown): string {
 
 export function ResourcesPage() {
   const client = useControlPlaneClient();
+  const { t } = useLocale();
   const [kind, setKind] = useState<ResourceKind>("Model");
   const [query, setQuery] = useState("");
   const [resources, setResources] = useState<ResourceEnvelope[]>([]);
@@ -45,7 +48,7 @@ export function ResourcesPage() {
       },
       (caught: unknown) => {
         if (!active) return;
-        const message = caught instanceof ApiError ? `${caught.code}: ${caught.message}` : `Unable to load ${kind} resources`;
+        const message = caught instanceof ApiError ? `${caught.code}: ${caught.message}` : t("Unable to load {kind} resources", { kind: t(kind) });
         setError(message);
         setResources([]);
         setTotal(0);
@@ -55,7 +58,7 @@ export function ResourcesPage() {
     return () => {
       active = false;
     };
-  }, [client, kind, reloadTick]);
+  }, [client, kind, reloadTick, t]);
 
   async function submitSearch(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -66,7 +69,7 @@ export function ResourcesPage() {
       setResources(response.resources);
       setTotal(response.total);
     } catch (caught) {
-      const message = caught instanceof ApiError ? `${caught.code}: ${caught.message}` : `Unable to load ${kind} resources`;
+      const message = caught instanceof ApiError ? `${caught.code}: ${caught.message}` : t("Unable to load {kind} resources", { kind: t(kind) });
       setError(message);
       setResources([]);
       setTotal(0);
@@ -79,36 +82,33 @@ export function ResourcesPage() {
     <section aria-labelledby="resources-title">
       <div className="page-heading">
         <div>
-          <span className="eyebrow">Runtime catalogs</span>
-          <h2 id="resources-title">Resources</h2>
-          <p>Tenant-scoped model, tool, skill, MCP, and memory-policy definitions returned by the Control Plane.</p>
+          <span className="eyebrow">{t("Runtime catalogs")}</span>
+          <h2 id="resources-title">{t("Resources")}</h2>
+          <p>{t("Tenant-scoped model, tool, skill, MCP, and memory-policy definitions returned by the Control Plane.")}</p>
         </div>
-        <span className="count-badge" aria-label={`${total} matching resources`}>{total}</span>
+        <span className="count-badge" aria-label={t("{count} matching resources", { count: total })}>{total}</span>
       </div>
 
-      <div className="segmented-control" role="group" aria-label="Resource kind">
+      <div className="segmented-control" role="group" aria-label={t("Resource kind")}>
         {resourceKinds.map((resourceKind) => (
-          <button key={resourceKind} type="button" className={kind === resourceKind ? "segment active" : "segment"} aria-pressed={kind === resourceKind} onClick={() => setKind(resourceKind)}>{resourceKind}</button>
+          <button key={resourceKind} type="button" className={kind === resourceKind ? "segment active" : "segment"} aria-pressed={kind === resourceKind} onClick={() => setKind(resourceKind)}>{t(resourceKind)}</button>
         ))}
       </div>
 
       <form className="filter-bar" onSubmit={(event) => void submitSearch(event)} noValidate>
-        <label>
-          Search {kind} names
-          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Resource name" />
-        </label>
-        <button type="submit">Search</button>
+        <SearchField id="resource-search" label={t("Search {kind} names", { kind: t(kind) })} value={query} onChange={setQuery} placeholder={t("Resource name")} clearLabel={t("Clear search")} />
+        <button type="submit">{t("Search")}</button>
       </form>
 
-      {loading ? <div className="state-card" role="status">Loading {kind} resources…</div> : null}
+      {loading ? <div className="state-card" role="status">{t("Loading {kind} resources…", { kind: t(kind) })}</div> : null}
       {!loading && error ? (
         <div className="state-card error-card" role="alert">
-          <strong>{kind} resources unavailable</strong>
+          <strong>{t("{kind} resources unavailable", { kind: t(kind) })}</strong>
           <span>{error}</span>
-          <button type="button" className="secondary-button" onClick={() => setReloadTick((tick) => tick + 1)}>Retry</button>
+          <button type="button" className="secondary-button" onClick={() => setReloadTick((tick) => tick + 1)}>{t("Retry")}</button>
         </div>
       ) : null}
-      {!loading && !error && resources.length === 0 ? <div className="state-card"><strong>No {kind} resources found</strong><span>Adjust the search or register resources through the Control Plane API.</span></div> : null}
+      {!loading && !error && resources.length === 0 ? <div className="state-card"><strong>{t("No {kind} resources found", { kind: t(kind) })}</strong><span>{t("Adjust the search or register resources through the Control Plane API.")}</span></div> : null}
       {!loading && !error && resources.length > 0 ? (
         <div className="card-grid">
           {resources.map((resource) => {
@@ -121,12 +121,12 @@ export function ResourcesPage() {
             return (
               <article className="catalog-card" key={`${resource.kind}:${name}`}>
                 <div className="catalog-card-heading">
-                  <div><span className="eyebrow">{resource.kind}</span><h3>{name}</h3></div>
+                  <div><span className="eyebrow">{t(resource.kind)}</span><h3>{name}</h3></div>
                   <span className="api-version">{resource.apiVersion}</span>
                 </div>
-                <p>{description ?? "No description"}</p>
-                {highlights.length > 0 ? <dl className="metadata-list">{highlights.map(({ field, value }) => <div key={field}><dt>{field.replaceAll("_", " ")}</dt><dd>{value}</dd></div>)}</dl> : null}
-                <details className="definition-details"><summary>View safe definition</summary><pre>{JSON.stringify(resource.spec, null, 2)}</pre></details>
+                <p>{description ?? t("No description")}</p>
+                {highlights.length > 0 ? <dl className="metadata-list">{highlights.map(({ field, value }) => <div key={field}><dt>{t(field.replaceAll("_", " "))}</dt><dd>{value}</dd></div>)}</dl> : null}
+                <details className="definition-details"><summary>{t("View safe definition")}</summary><pre>{JSON.stringify(resource.spec, null, 2)}</pre></details>
               </article>
             );
           })}

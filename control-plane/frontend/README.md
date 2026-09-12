@@ -24,7 +24,7 @@ regenerating `package-lock.json`.
 
 Set `VITE_OSA_API_BASE_URL` to the Control Plane origin when it is not `http://localhost:8000`.
 
-The shell supports an optional Bearer token for Control Plane instances using `OSA_AUTH_MODE=optional|required`. Tokens are stored only in `sessionStorage`; they are never written to source, configuration, URLs, or logs. OIDC login/refresh orchestration is intentionally not invented here because issuer/client/redirect semantics are deployment-specific and are not yet a stable Control Plane contract.
+The shell supports an optional Bearer token for Control Plane instances using `OSA_AUTH_MODE=optional|required`. Tokens are stored only in `sessionStorage`; they are never written to source, configuration, URLs, or logs. The UI supports English and Arabic: it detects the browser language when no session choice exists, stores an explicit locale only in the current `sessionStorage` session, and applies RTL layout for Arabic. Dates continue to use the browser locale/timezone through `Intl`. OIDC login/refresh orchestration is intentionally not invented here because issuer/client/redirect semantics are deployment-specific and are not yet a stable Control Plane contract.
 
 ## Current implementation
 
@@ -32,7 +32,11 @@ Implemented:
 
 - responsive React shell and navigation;
 - optional session-scoped Bearer token handling;
+- centralized English/Arabic messages, locale selection, localized accessible
+  labels, route titles, and RTL layout support;
 - typed Control Plane API client with stable OSA error-envelope handling;
+- shared submit-based search fields with localized clear actions and focus
+  restoration;
 - Agents list/search/status filtering backed by `GET /agents`;
 - built-in template cards backed by `GET /templates`;
 - tenant-scoped Model, Tool, Skill, MCP, and MemoryPolicy catalog browsing backed by `GET /resources/{kind}`;
@@ -57,7 +61,8 @@ Implemented:
   semantic status/error regions, and narrow-viewport layout coverage for
   keyboard users;
 - loading, empty, error, 401/403-safe presentation;
-- Vitest/Testing Library coverage for API auth/error behavior and the implemented management views.
+- Vitest/Testing Library coverage for API auth/error behavior, locale/RTL
+  behavior, and the implemented management views.
 
 Managed-agent invocation (sessions, streaming, tool traces) is available from
 the Deployments page when a deployment publishes a runtime invoke URL. The

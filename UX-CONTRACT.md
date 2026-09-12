@@ -8,9 +8,13 @@
   access.
 - **Target market(s):** General technical/admin use; no Japan-specific market
   contract is defined.
-- **Active locales:** English (`en`) is the current supported UI locale.
-- **Language/content register:** Plain English, sentence-case actions, with
-  future translations required to preserve meaning and accessible names.
+- **Active locales:** English (`en`) and Arabic (`ar`) are supported. English
+  is the fallback; the browser language selects Arabic only when it is the
+  browser's preferred language and no session choice exists.
+- **Language/content register:** Centralized locale messages preserve
+  sentence-case actions, accessible names, and validation meaning. Selecting
+  Arabic sets the document language and direction to `ar`/`rtl`; the choice is
+  stored only in the current browser session.
 - **Timezone/calendar policy:** API timestamps are UTC ISO strings; display
   timestamps use the browser locale/timezone through `Intl`.
 - **Accessibility target:** WCAG 2.2 AA.
@@ -47,6 +51,7 @@
 | Select/Listbox | Native `<select>` | browser semantics + page contract | native | keyboard/component tests |
 | Date | `<time>` plus `formatTimestamp` | API ISO timestamp contract | typed display | component tests |
 | Form | Native form + page validation | API schemas and page flow | create / edit | validation tests |
+| Search | Shared `SearchField` with explicit clear action | UX contract | submit-based filter | component + page tests |
 | Scrollbar | Global application stylesheet | `DESIGN.md` and `styles.css` | geometry exceptions | static audit + browser check |
 | Toast | Inline `.state-card` feedback | page flow contract | success / error / status | component tests |
 | CRUD | Shared route/service behavior | API contract | return to detail / stay | page and API tests |
@@ -59,7 +64,7 @@
 | Icon button | Not used; text labels required | n/a | n/a | n/a | n/a | n/a | n/a |
 | Input | Labeled native input | border emphasis | visible outline | n/a | native disabled | remains same size | inline field/form message |
 | Secret input | Password-masked token field | border emphasis | visible outline | n/a | native disabled | remains same size | inline connection error |
-| Search | Submit-based filter with visible label | border emphasis | visible outline | n/a | native disabled | page loading state | retryable inline alert |
+| Search | Shared submit-based `SearchField` with visible label and clear action | border emphasis | visible outline | n/a | native disabled | page loading state | retryable inline alert |
 | Textarea | Labeled native textarea | border emphasis | visible outline | n/a | native disabled | remains same size | inline validation/error |
 | Table/list | Native table or cards | link/action emphasis | native focus | n/a | n/a | stable loading card | retryable inline alert |
 
@@ -86,7 +91,7 @@
 | Create | Create-agent form | Button label + disabled fields | Agent detail | inline success/detail | inline validation or retry | route focus on detail | `docs/API.md` |
 | Edit | API-backed immutable update/version flow | page action state | owning detail page | inline status | preserve state + retry | action remains visible | `docs/API.md` |
 | Delete | API only; no UI bulk delete | API request | caller-controlled | API response | typed API error | caller-controlled | `docs/API.md` |
-| Search | Submit filter form | stable loading card | same list | updated count | retry | main landmark | `styles.css` |
+| Search | Submit filter form; clear resets the field and returns focus | stable loading card | same list | updated count | retry | main landmark | `styles.css`, `SearchField.tsx` |
 | Bulk action | Not applicable | n/a | n/a | n/a | n/a | n/a | product scope |
 | Cancel/back | Native link/button | none | prior/list route | none | browser navigation | route focus | `App.tsx` |
 | Soft-delete | Archive confirmation | confirmation group | detail page | inline success | cancel/retry | confirmation remains nearby | `docs/API.md` |
@@ -94,8 +99,9 @@
 
 ## Navigation and responsive behavior
 
-- **Route document title policy:** The shell title is stable today; route
-  titles are a future localized enhancement.
+- **Route document title policy:** The shell sets a localized route title in
+  the form `{Page} — Open Simple Agent`; technical agent names and secrets are
+  not inserted into browser history or window titles.
 - **Route error / 403 page behavior:** API error cards preserve context;
   server authorization remains authoritative and rejected tokens clear from
   the session.

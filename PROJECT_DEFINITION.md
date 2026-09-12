@@ -273,9 +273,12 @@ responsive shell, optional session-scoped Bearer-token handling, a typed
 Control Plane client, management views, authoring/lifecycle flows, A2A and
 managed-runtime invocation consoles, safe immutable version inspection, and
 frontend CI checks including a non-root production image with SPA fallback.
-The current UI locale is English; broader translated-locale acceptance and
-deployment-specific OIDC browser login semantics remain deployment/product
-decisions until issuer/client/redirect requirements are explicit.
+English and Arabic are supported Control Panel locales. The selector is
+session-scoped, browser language is used as the initial default, Arabic applies
+RTL layout, and timestamps retain browser `Intl` locale/timezone formatting.
+Further locale additions and deployment-specific OIDC browser login semantics
+remain product/deployment decisions until issuer/client/redirect requirements
+are explicit.
 
 ## Control plane vs data plane
 

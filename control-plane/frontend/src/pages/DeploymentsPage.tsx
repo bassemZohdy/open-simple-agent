@@ -7,6 +7,7 @@ import {
   type DeploymentStatus,
   type DeploymentSummary,
 } from "../api/client";
+import { useLocale } from "../i18n/LocaleContext";
 import { useControlPlaneClient } from "../api/useControlPlaneClient";
 
 const logTailOptions = [100, 200, 500, 1000] as const;
@@ -30,6 +31,7 @@ function stoppable(status: DeploymentStatus): boolean {
 
 export function DeploymentsPage() {
   const client = useControlPlaneClient();
+  const { t } = useLocale();
   const [searchParams, setSearchParams] = useSearchParams();
   const selectedAgentId = searchParams.get("agent") ?? "";
 
@@ -77,12 +79,12 @@ export function DeploymentsPage() {
       }
       setAgents(collected);
     } catch (caught) {
-      setAgentsError(errorMessage(caught, "Unable to load agents"));
+      setAgentsError(errorMessage(caught, t("Unable to load agents")));
       setAgents([]);
     } finally {
       setAgentsLoading(false);
     }
-  }, [client]);
+  }, [client, t]);
 
   useEffect(() => {
     void loadAgents();
@@ -95,13 +97,13 @@ export function DeploymentsPage() {
       try {
         setDeployments(await client.listAgentDeployments(agentId));
       } catch (caught) {
-        setHistoryError(errorMessage(caught, "Unable to load deployment history"));
+        setHistoryError(errorMessage(caught, t("Unable to load deployment history")));
         setDeployments([]);
       } finally {
         setHistoryLoading(false);
       }
     },
-    [client],
+    [client, t],
   );
 
   useEffect(() => {
@@ -153,7 +155,7 @@ export function DeploymentsPage() {
         setDeployments((current) => [updated, ...current]);
         setSelected(updated);
         setLogs(null);
-        setMessage(`Deployment ${updated.deployment_id} started for version ${updated.version}.`);
+        setMessage(t("Deployment {id} started for version {version}.", { id: updated.deployment_id, version: updated.version }));
       } else if (deploymentId) {
         if (action === "stop") updated = await client.stopDeployment(deploymentId);
         else if (action === "restart") updated = await client.restartDeployment(deploymentId);
@@ -162,11 +164,11 @@ export function DeploymentsPage() {
         replaceDeployment(updated);
         if (action === "rollback") {
           setRollbackVersion("");
-          setMessage(`Deployment rolled back to version ${updated.version}.`);
+          setMessage(t("Deployment rolled back to version {version}.", { version: updated.version }));
         }
       }
     } catch (caught) {
-      setActionError(errorMessage(caught, `Unable to ${action} deployment`));
+      setActionError(errorMessage(caught, t("Unable to {action} deployment", { action: t(action) })));
     } finally {
       setBusy(null);
     }
@@ -181,7 +183,7 @@ export function DeploymentsPage() {
       const response = await client.getDeploymentLogs(selected.deployment_id, logTail);
       setLogs(response.lines);
     } catch (caught) {
-      setActionError(errorMessage(caught, "Unable to load deployment logs"));
+      setActionError(errorMessage(caught, t("Unable to load deployment logs")));
       setLogs(null);
     } finally {
       setBusy(null);
@@ -193,7 +195,7 @@ export function DeploymentsPage() {
     if (!selected?.invoke_url) return;
     const message = managedMessage.trim();
     if (!message) {
-      setActionError("A message is required");
+      setActionError(t("A message is required"));
       return;
     }
     setBusy({ action: "invoke-managed", deploymentId: selected.deployment_id });
@@ -202,7 +204,7 @@ export function DeploymentsPage() {
       const result = await client.invokeRuntimeEndpoint(selected.invoke_url, message);
       setManagedOutput(result.error ? `${result.output}\n${result.error}`.trim() : result.output);
     } catch (caught) {
-      setActionError(errorMessage(caught, "Unable to reach the runtime endpoint"));
+      setActionError(errorMessage(caught, t("Unable to reach the runtime endpoint")));
     } finally {
       setBusy(null);
     }
@@ -242,93 +244,93 @@ export function DeploymentsPage() {
     <section aria-labelledby="deployments-title">
       <div className="page-heading">
         <div>
-          <span className="eyebrow">Runtime operations</span>
-          <h2 id="deployments-title">Deployments</h2>
-          <p>Launch versioned agents through the Control Plane and manage their lifecycle, status, and logs.</p>
+          <span className="eyebrow">{t("Runtime operations")}</span>
+          <h2 id="deployments-title">{t("Deployments")}</h2>
+          <p>{t("Launch versioned agents through the Control Plane and manage their lifecycle, status, and logs.")}</p>
         </div>
         {selectedAgentId ? (
-          <span className="count-badge" aria-label={`${deployments.length} deployments`}>{deployments.length}</span>
+          <span className="count-badge" aria-label={t("{count} deployments", { count: deployments.length })}>{deployments.length}</span>
         ) : null}
       </div>
 
       <form className="filter-bar" onSubmit={submitFilters} noValidate>
-        <label htmlFor="deployment-agent">Agent
+        <label htmlFor="deployment-agent">{t("Agent")}
           <select id="deployment-agent" value={selectedAgentId} onChange={(event) => selectAgent(event.target.value)}>
-            <option value="">Select an agent…</option>
+            <option value="">{t("Select an agent…")}</option>
             {agents.map((agent) => (
-              <option key={agent.agent_id} value={agent.agent_id}>{agent.name} ({agent.status})</option>
+              <option key={agent.agent_id} value={agent.agent_id}>{agent.name} ({t(agent.status)})</option>
             ))}
           </select>
         </label>
         {selectedAgentId ? (
-          <button type="submit" disabled={busy !== null}>Refresh history</button>
+          <button type="submit" disabled={busy !== null}>{t("Refresh history")}</button>
         ) : null}
       </form>
 
-      {agentsLoading ? <div className="state-card" role="status">Loading agents…</div> : null}
+      {agentsLoading ? <div className="state-card" role="status">{t("Loading agents…")}</div> : null}
       {!agentsLoading && agentsError ? (
         <div className="state-card error-card" role="alert">
-          <strong>Agent list unavailable</strong>
+          <strong>{t("Agent list unavailable")}</strong>
           <span>{agentsError}</span>
-          <button type="button" className="secondary-button" onClick={() => void loadAgents()}>Retry</button>
+          <button type="button" className="secondary-button" onClick={() => void loadAgents()}>{t("Retry")}</button>
         </div>
       ) : null}
       {!agentsLoading && !agentsError && agents.length === 0 ? (
         <div className="state-card">
-          <strong>No agents found</strong>
-          <span>Create an agent through the API to deploy it.</span>
+          <strong>{t("No agents found")}</strong>
+          <span>{t("Create an agent through the API to deploy it.")}</span>
         </div>
       ) : null}
 
       {!agentsLoading && !agentsError && !selectedAgentId && agents.length > 0 ? (
         <div className="state-card">
-          <strong>Select an agent</strong>
-          <span>Deployment history is scoped to one agent; choose it above to view and manage its deployments.</span>
+          <strong>{t("Select an agent")}</strong>
+          <span>{t("Deployment history is scoped to one agent; choose it above to view and manage its deployments.")}</span>
         </div>
       ) : null}
 
       {selectedAgentId && !agentsLoading && !agentsError ? (
         <>
           {message ? <div className="state-card success-card inline-state" role="status">{message}</div> : null}
-          {actionError ? <div className="state-card error-card inline-state" role="alert"><strong>Action failed</strong><span>{actionError}</span></div> : null}
+          {actionError ? <div className="state-card error-card inline-state" role="alert"><strong>{t("Action failed")}</strong><span>{actionError}</span></div> : null}
           {historyError ? (
             <div className="state-card error-card" role="alert">
-              <strong>Deployment history unavailable</strong>
+              <strong>{t("Deployment history unavailable")}</strong>
               <span>{historyError}</span>
-              <button type="button" className="secondary-button" onClick={() => void loadHistory(selectedAgentId)}>Retry</button>
+              <button type="button" className="secondary-button" onClick={() => void loadHistory(selectedAgentId)}>{t("Retry")}</button>
             </div>
           ) : null}
 
           <section className="detail-section" aria-labelledby="deployment-history-title">
             <div className="section-heading">
               <div>
-                <span className="eyebrow">{selectedAgent ? selectedAgent.name : "Agent"}</span>
-                <h3 id="deployment-history-title">Deployment history</h3>
+                <span className="eyebrow">{selectedAgent ? selectedAgent.name : t("Agent")}</span>
+                <h3 id="deployment-history-title">{t("Deployment history")}</h3>
               </div>
               <button type="button" disabled={busy !== null} onClick={() => void runLifecycle("deploy")}>
-                {busy?.action === "deploy" ? "Deploying…" : "Deploy current version"}
+                {busy?.action === "deploy" ? t("Deploying…") : t("Deploy current version")}
               </button>
             </div>
-            {historyLoading ? <div className="state-card" role="status">Loading deployments…</div> : null}
+            {historyLoading ? <div className="state-card" role="status">{t("Loading deployments…")}</div> : null}
             {!historyLoading && !historyError && deployments.length === 0 ? (
               <div className="state-card">
-                <strong>No deployments yet</strong>
-                <span>Deploy the current agent version to start its runtime through the configured provider.</span>
+                <strong>{t("No deployments yet")}</strong>
+                <span>{t("Deploy the current agent version to start its runtime through the configured provider.")}</span>
               </div>
             ) : null}
             {deployments.length > 0 ? (
               <div className="table-wrap">
                 <table>
-                  <caption className="sr-only">Deployment history</caption>
+                    <caption className="sr-only">{t("Deployment history")}</caption>
                   <thead>
-                    <tr><th scope="col">Deployment</th><th scope="col">Version</th><th scope="col">Status</th><th scope="col">Detail</th><th scope="col">Actions</th></tr>
+                    <tr><th scope="col">{t("Deployment")}</th><th scope="col">{t("Version")}</th><th scope="col">{t("Status")}</th><th scope="col">{t("Detail")}</th><th scope="col">{t("Actions")}</th></tr>
                   </thead>
                   <tbody>
                     {deployments.map((entry) => (
                       <tr key={entry.deployment_id}>
                         <td><code>{entry.deployment_id}</code></td>
                         <td>{entry.version}</td>
-                        <td><span className={statusClass(entry.status)}>{entry.status}</span></td>
+                        <td><span className={statusClass(entry.status)}>{t(entry.status)}</span></td>
                         <td>{entry.detail || "—"}</td>
                         <td>
                           <button
@@ -345,7 +347,7 @@ export function DeploymentsPage() {
                               setRollbackConfirm(false);
                             }}
                           >
-                            Manage
+                            {t("Manage")}
                           </button>
                         </td>
                       </tr>
@@ -360,46 +362,45 @@ export function DeploymentsPage() {
             <section className="detail-section" aria-labelledby="deployment-detail-title">
               <div className="section-heading">
                 <div>
-                  <span className="eyebrow">Deployment detail</span>
+                  <span className="eyebrow">{t("Deployment detail")}</span>
                   <h3 id="deployment-detail-title"><code>{selected.deployment_id}</code></h3>
                 </div>
-                <span className={statusClass(selected.status)}>{selected.status}</span>
+                <span className={statusClass(selected.status)}>{t(selected.status)}</span>
               </div>
               <article className="detail-card">
                 <dl className="metadata-list detail-metadata">
-                  <div><dt>Agent</dt><dd><Link className="agent-link" to={`/agents/${encodeURIComponent(selected.agent_id)}`}>{selected.agent_name}</Link></dd></div>
-                  <div><dt>Version</dt><dd>{selected.version}</dd></div>
-                  <div><dt>Tenant</dt><dd>{selected.tenant_id ?? "Shared scope"}</dd></div>
-                  <div><dt>Detail</dt><dd>{selected.detail || "—"}</dd></div>
-                  <div><dt>Runtime endpoint</dt><dd>{selected.invoke_url ? <a className="agent-link" href={selected.invoke_url}>{selected.invoke_url}</a> : "Not configured"}</dd></div>
+                  <div><dt>{t("Agent")}</dt><dd><Link className="agent-link" to={`/agents/${encodeURIComponent(selected.agent_id)}`}>{selected.agent_name}</Link></dd></div>
+                  <div><dt>{t("Version")}</dt><dd>{selected.version}</dd></div>
+                  <div><dt>{t("Tenant")}</dt><dd>{selected.tenant_id ?? t("Shared scope")}</dd></div>
+                  <div><dt>{t("Detail")}</dt><dd>{selected.detail || "—"}</dd></div>
+                  <div><dt>{t("Runtime endpoint")}</dt><dd>{selected.invoke_url ? <a className="agent-link" href={selected.invoke_url}>{selected.invoke_url}</a> : t("Not configured")}</dd></div>
                 </dl>
                 <div className="action-row">
                   <button type="button" disabled={busyLocked(selected?.deployment_id)} onClick={() => void runLifecycle("status", selected.deployment_id)}>
-                    {busy?.action === "status" && busy.deploymentId === selected.deployment_id ? "Refreshing…" : "Refresh status"}
+                    {busy?.action === "status" && busy.deploymentId === selected.deployment_id ? t("Refreshing…") : t("Refresh status")}
                   </button>
                   {stoppable(selected.status) ? (
                     <button type="button" disabled={busyLocked(selected?.deployment_id)} onClick={() => void runLifecycle("stop", selected.deployment_id)}>
-                      {busy?.action === "stop" && busy.deploymentId === selected.deployment_id ? "Stopping…" : "Stop"}
+                      {busy?.action === "stop" && busy.deploymentId === selected.deployment_id ? t("Stopping…") : t("Stop")}
                     </button>
                   ) : null}
                   <button type="button" disabled={busyLocked(selected?.deployment_id)} onClick={() => void runLifecycle("restart", selected.deployment_id)}>
-                    {busy?.action === "restart" && busy.deploymentId === selected.deployment_id ? "Restarting…" : "Restart"}
+                    {busy?.action === "restart" && busy.deploymentId === selected.deployment_id ? t("Restarting…") : t("Restart")}
                   </button>
                   <button type="button" className="danger-button" disabled={busyLocked(selected?.deployment_id)} onClick={() => void requestRollback()}>
-                    {busy?.action === "rollback" && busy.deploymentId === selected.deployment_id ? "Rolling back…" : rollbackConfirm ? "Confirm rollback" : "Rollback"}
+                    {busy?.action === "rollback" && busy.deploymentId === selected.deployment_id ? t("Rolling back…") : rollbackConfirm ? t("Confirm rollback") : t("Rollback")}
                   </button>
                 </div>
                 {rollbackConfirm ? (
                   <div className="confirmation" role="alert">
                     <span>
-                      Roll back to version {rollbackVersion.trim() || "(previous version)"}? This relaunches the
-                      deployment from an earlier immutable snapshot.
+                      {t("Roll back to version {version}? This relaunches the deployment from an earlier immutable snapshot.", { version: rollbackVersion.trim() || t("(previous version)") })}
                     </span>
                     <button type="button" className="danger-button" disabled={busyLocked(selected?.deployment_id)} onClick={() => void requestRollback()}>
-                      Confirm rollback
+                      {t("Confirm rollback")}
                     </button>
                     <button type="button" className="secondary-button" disabled={busyLocked(selected?.deployment_id)} onClick={() => setRollbackConfirm(false)}>
-                      Cancel
+                      {t("Cancel")}
                     </button>
                   </div>
                 ) : null}
@@ -411,7 +412,7 @@ export function DeploymentsPage() {
                     void requestRollback();
                   }}
                 >
-                  <label htmlFor="rollback-version">Rollback version
+                  <label htmlFor="rollback-version">{t("Rollback version")}
                     <input
                       id="rollback-version"
                       value={rollbackVersion}
@@ -419,43 +420,42 @@ export function DeploymentsPage() {
                         setRollbackVersion(event.target.value);
                         setRollbackConfirm(false);
                       }}
-                      placeholder="Leave empty for the previous version"
+                      placeholder={t("Leave empty for the previous version")}
                       disabled={busyLocked(selected?.deployment_id)}
                     />
                   </label>
                   <button type="submit" className="secondary-button" disabled={busyLocked(selected?.deployment_id)}>
-                    Roll back to this version
+                    {t("Roll back to this version")}
                   </button>
                 </form>
-                <p className="muted-text">Rollback relaunches this deployment from an earlier immutable version snapshot.</p>
+                <p className="muted-text">{t("Rollback relaunches this deployment from an earlier immutable version snapshot.")}</p>
                 {selected.invoke_url ? (
                   <>
                     <div className="section-heading">
                       <div>
-                        <span className="eyebrow">Managed invocation</span>
-                        <h4>Test message</h4>
+                        <span className="eyebrow">{t("Managed invocation")}</span>
+                        <h4>{t("Test message")}</h4>
                       </div>
                     </div>
                     <form className="filter-bar version-form" onSubmit={(event) => void submitManagedInvoke(event)} noValidate>
-                      <label htmlFor="managed-invoke-message">Message
+                      <label htmlFor="managed-invoke-message">{t("Message")}
                         <input
                           id="managed-invoke-message"
                           value={managedMessage}
                           onChange={(event) => setManagedMessage(event.target.value)}
-                          placeholder="Ask the deployed agent something"
+                          placeholder={t("Ask the deployed agent something")}
                           disabled={busyLocked(selected?.deployment_id)}
                         />
                       </label>
                       <button type="submit" disabled={busyLocked(selected?.deployment_id)}>
-                        {busy?.action === "invoke-managed" ? "Invoking…" : "Send test message"}
+                        {busy?.action === "invoke-managed" ? t("Invoking…") : t("Send test message")}
                       </button>
                     </form>
                     {managedOutput !== null ? (
-                      <pre className="logs-view" aria-label="Managed invocation output">{managedOutput}</pre>
+                      <pre className="logs-view" aria-label={t("Managed invocation output")}>{managedOutput}</pre>
                     ) : null}
                     <p className="muted-text">
-                      Sent directly to the runtime endpoint using its own authentication; the Control Plane token is
-                      never forwarded.
+                      {t("Sent directly to the runtime endpoint using its own authentication; the Control Plane token is never forwarded.")}
                     </p>
                   </>
                 ) : null}
@@ -467,12 +467,12 @@ export function DeploymentsPage() {
             <section className="detail-section" aria-labelledby="deployment-logs-title">
               <div className="section-heading">
                 <div>
-                  <span className="eyebrow">Captured output</span>
-                  <h3 id="deployment-logs-title">Logs</h3>
+                  <span className="eyebrow">{t("Captured output")}</span>
+                  <h3 id="deployment-logs-title">{t("Logs")}</h3>
                 </div>
               </div>
               <form className="filter-bar version-form" onSubmit={(event) => void loadLogs(event)} noValidate>
-                <label htmlFor="log-tail">Tail lines
+                <label htmlFor="log-tail">{t("Tail lines")}
                   <select
                     id="log-tail"
                     value={logTail}
@@ -485,21 +485,21 @@ export function DeploymentsPage() {
                   </select>
                 </label>
                 <button type="submit" disabled={busyLocked(selected?.deployment_id)}>
-                  {busy?.action === "logs" ? "Loading…" : "Load logs"}
+                  {busy?.action === "logs" ? t("Loading…") : t("Load logs")}
                 </button>
               </form>
               {logs === null ? (
                 <div className="state-card">
-                  <strong>No logs loaded</strong>
-                  <span>Load the bounded captured output for this deployment.</span>
+                  <strong>{t("No logs loaded")}</strong>
+                  <span>{t("Load the bounded captured output for this deployment.")}</span>
                 </div>
               ) : logs.length === 0 ? (
                 <div className="state-card">
-                  <strong>No captured output</strong>
-                  <span>The deployment has not produced any captured log lines yet.</span>
+                  <strong>{t("No captured output")}</strong>
+                  <span>{t("The deployment has not produced any captured log lines yet.")}</span>
                 </div>
               ) : (
-                <pre className="logs-view" aria-label="Deployment log output">{logs.join("\n")}</pre>
+                <pre className="logs-view" aria-label={t("Deployment log output")}>{logs.join("\n")}</pre>
               )}
             </section>
           ) : null}
