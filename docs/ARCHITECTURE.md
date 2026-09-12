@@ -327,7 +327,8 @@ to an OSA session. The SDK task store is process-local by default; when
 `DatabaseTaskStore` with tenant/subject ownership and initializes it before
 readiness. The durable record is shareable across replicas, but active
 executor ownership and cancellation/recovery are not yet distributed. The
-Control Plane tracks **external** A2A agents as
+runtime drains the handler's active tasks before closing agent and database
+dependencies. The Control Plane tracks **external** A2A agents as
 records distinct from managed agents: registration fetches and validates the
 remote Agent Card, refresh re-checks health, and invocation goes through the
 A2A client with bounded timeouts and `a2a_remote_failed` error mapping. The
@@ -357,7 +358,7 @@ window pruning; the schema is provisioned by `osa-rate-limit-migrate`.
 
 ## Tests and CI
 
-The current baseline is 608 collected tests: 581 pass locally and 27
+The current baseline is 616 collected tests: 587 pass locally and 29
 PostgreSQL/A2A/provider tests are skipped when their optional dependencies or
 `OSA_TEST_DATABASE_URL` are unavailable. CI runs:
 

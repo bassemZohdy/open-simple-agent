@@ -304,9 +304,10 @@ with the `osa-adk-runtime[a2a]` extra), the runtime API serves:
   skills, `text/plain` modes; `protocol_binding: JSONRPC`).
 - `POST /a2a` — A2A JSON-RPC `message/send`: one A2A task per invocation,
   submitted → working → completed (agent output as a task artifact) or
-  failed (deterministic error text). The A2A context id maps to an OSA
-  session created on first contact, so multi-turn conversations keep one
-  session per conversation.
+  failed (deterministic error text) or canceled. The runtime emits one local
+  canceled terminal state when the SDK cancels an active task. The A2A context
+  id maps to an OSA session created on first contact, so multi-turn
+  conversations keep one session per conversation.
 
 By default A2A task records are process-local. Set
 `OSA_A2A_TASK_DATABASE_URL` to use the SDK's PostgreSQL-capable

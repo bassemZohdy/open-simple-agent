@@ -145,9 +145,9 @@ class OsaA2aAgentExecutor:
     """Maps A2A ``message/send`` to ``GenericAdkAgent.invoke``.
 
     Task lifecycle: submitted -> working -> completed (artifact carrying the
-    agent output) or failed (deterministic error text). A2A context ids map
-    to OSA sessions created on first contact, so multi-turn conversations
-    keep one session per A2A conversation.
+    agent output), failed (deterministic error text), or canceled. A2A context ids map
+        to OSA sessions created on first contact, so multi-turn conversations
+        keep one session per A2A conversation.
     """
 
     def __init__(self, agent: Any) -> None:
@@ -208,12 +208,20 @@ class OsaA2aAgentExecutor:
         )
 
     async def cancel(self, context: Any, event_queue: Any) -> None:
+        """Publish the protocol cancellation state for this invocation.
+
+        The SDK cancels the producer task before calling this method. The
+        updater event is therefore the single terminal transition emitted by
+        the executor; late agent output cannot be published after cancellation.
+        Replica-wide ownership and recovery remain a separate deployment
+        concern.
+        """
         from a2a.server.tasks import TaskUpdater
 
         context_id = context.context_id or str(uuid4())
         task_id = context.task_id or str(uuid4())
         updater = TaskUpdater(event_queue, task_id, context_id)
-        await updater.failed(_failure_message("cancellation is not supported for OSA agents"))
+        await updater.cancel()
 
 
 def _text_message(text: str) -> Any:
@@ -311,10 +319,22 @@ async def initialize_a2a_task_store(app: Any) -> None:
 
 
 async def close_a2a_task_store(app: Any) -> None:
-    """Dispose the database engine owned by the A2A task store, if any."""
+    """Drain the handler and dispose its database engine, if any.
+
+    The SDK's request handler owns the process-local active-task registry and
+    its producer/consumer tasks.  Draining that handler before disposing the
+    SQLAlchemy engine prevents shutdown from leaving work that can still try
+    to persist through a closed database connection.
+    """
+    handler = getattr(app.state, "osa_a2a_handler", None)
+    close_handler = getattr(handler, "aclose", None)
+    if close_handler is not None:
+        await close_handler()
+
     engine = getattr(app.state, "osa_a2a_task_engine", None)
     if engine is not None:
         await engine.dispose()
+    app.state.osa_a2a_handler = None
     app.state.osa_a2a_task_store = None
     app.state.osa_a2a_task_engine = None
 

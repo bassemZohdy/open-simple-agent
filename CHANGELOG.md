@@ -29,11 +29,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Added opt-in PostgreSQL-backed A2A task records using the pinned SDK store,
   tenant/subject ownership, startup initialization, and runtime shutdown
   disposal; active in-flight task ownership remains a follow-up.
+- Added local A2A cancellation handling that emits a canceled terminal task
+  state, with coverage for the executor event contract.
 - Added a Docker-backed Kind CI acceptance job covering Kubernetes deployment
   readiness, scale, restart, rollback, stop, and Control Plane-cache recovery.
 - Added Control Plane startup reconciliation and a cancellable polling watcher
   that refresh persisted deployment records from provider-owned workloads after
   a Control Plane restart.
+- Hardened runtime shutdown so the A2A handler drains active producer and
+  consumer tasks before agent and database dependencies are closed.
 - Added an opt-in PostgreSQL-backed fixed-window rate-limit store and migration
   CLI with atomic cross-replica updates, bounded route/identity keys, decision
   metrics, and multi-instance race coverage.

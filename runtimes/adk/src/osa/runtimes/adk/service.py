@@ -197,6 +197,10 @@ def create_runtime_app(
         try:
             yield
         finally:
+            # Drain A2A producer/consumer tasks before shutting down the agent
+            # and its persistence dependencies. The handler owns the SDK's
+            # active-task registry and may still be writing task events.
+            await runtime_api.close_a2a_task_store(app)
             await runtime.shutdown()
             provider = runtime.memory_provider
             close = getattr(provider, "close", None)
@@ -206,7 +210,6 @@ def create_runtime_app(
             close_session = getattr(session_provider, "close", None)
             if close_session is not None:
                 close_session()
-            await runtime_api.close_a2a_task_store(app)
             await runtime_api.close_rate_limit_store(app)
             runtime_api.reset_runtime()
 

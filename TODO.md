@@ -102,7 +102,8 @@ in-flight work still needs an ownership and recovery protocol.
 - [ ] Implement and wire replica-consistent task state.
 - [ ] Add multi-replica creation, completion, failure, lookup, and recovery
   acceptance tests without tenant/caller leakage.
-- [ ] Define cancellation ordering and protection against late events/retries.
+- [ ] Define cross-replica cancellation ordering and protection against late
+  events/retries; the local runtime now emits one canceled terminal state.
 
 ## Capability-level audit telemetry — PARTIALLY COMPLETE
 

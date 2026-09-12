@@ -142,6 +142,60 @@ class TestAgentCardGeneration:
 
 
 class TestA2aTaskStore:
+    async def test_close_drains_handler_before_disposing_engine(self) -> None:
+        from fastapi import FastAPI
+
+        from osa.runtimes.adk.a2a import close_a2a_task_store
+
+        class Handler:
+            def __init__(self) -> None:
+                self.closed = False
+
+            async def aclose(self) -> None:
+                self.closed = True
+
+        class Engine:
+            def __init__(self, handler: Handler) -> None:
+                self.handler = handler
+                self.disposed_after_handler = False
+
+            async def dispose(self) -> None:
+                self.disposed_after_handler = self.handler.closed
+
+        app = FastAPI()
+        handler = Handler()
+        engine = Engine(handler)
+        app.state.osa_a2a_handler = handler
+        app.state.osa_a2a_task_engine = engine
+        app.state.osa_a2a_task_store = object()
+
+        await close_a2a_task_store(app)
+
+        assert handler.closed
+        assert engine.disposed_after_handler
+        assert app.state.osa_a2a_handler is None
+        assert app.state.osa_a2a_task_store is None
+        assert app.state.osa_a2a_task_engine is None
+
+    async def test_executor_publishes_canceled_terminal_state(self) -> None:
+        from a2a.server.events import EventQueueLegacy
+        from a2a.types import TaskState
+
+        from osa.runtimes.adk.a2a import OsaA2aAgentExecutor
+
+        class Context:
+            context_id = "context-cancel"
+            task_id = "task-cancel"
+
+        queue = EventQueueLegacy()
+        try:
+            await OsaA2aAgentExecutor(agent=object()).cancel(Context(), queue)
+            event = await queue.dequeue_event()
+            assert event.status.state == TaskState.TASK_STATE_CANCELED
+        finally:
+            queue.task_done()
+            await queue.close(immediate=True)
+
     async def test_database_task_store_persists_and_scopes_by_tenant_and_subject(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
