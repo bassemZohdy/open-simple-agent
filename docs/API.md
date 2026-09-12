@@ -336,7 +336,9 @@ within PostgreSQL's identifier limit. Runtime startup validates the task, OSA
 ownership, and paired schema-version-2 event schemas without creating or
 altering them. Records and
 ownership leases are scoped by
-validated tenant and subject. The ownership table provides one worker lease,
+validated tenant and subject. Persisted A2A identity fields are non-empty and
+limited to 255 characters; oversized authenticated claims fail closed before
+a task or event write. The ownership table provides one worker lease,
 heartbeats, a monotonically increasing fencing token on takeover, and a
 durable cancellation request. A retry waits for a terminal task, replays that
 terminal record, or reclaims an expired lease. Remote cancellation waits for

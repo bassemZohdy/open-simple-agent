@@ -80,4 +80,11 @@ async def test_ownership_conflict_fencing_cancellation_and_terminal_state(tmp_pa
     assert await second.is_cancel_requested(canceled_reclaim)
     assert await second.release(canceled_reclaim, "canceled")
 
+    with pytest.raises(ValueError, match="task identifier"):
+        await first.acquire("t" * 256, "context-4", "tenant-a:subject-a")
+    with pytest.raises(ValueError, match="context identifier"):
+        await first.acquire("task-4", "c" * 256, "tenant-a:subject-a")
+    with pytest.raises(ValueError, match="scope identifier"):
+        await first.acquire("task-4", "context-4", "s" * 256)
+
     await engine.dispose()

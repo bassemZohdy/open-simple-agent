@@ -36,7 +36,10 @@ if TYPE_CHECKING:
 
     from osa.generic_agent import AgentDefinition, AuthSettings, SkillDefinition
 
-from osa.runtimes.adk.a2a_event_store import MAX_A2A_TASK_TABLE_NAME_LENGTH
+from osa.runtimes.adk.a2a_event_store import (
+    MAX_A2A_TASK_TABLE_NAME_LENGTH,
+    validate_a2a_persisted_text,
+)
 from osa.runtimes.adk.a2a_ownership import A2aTaskOwnershipStore, TaskOwnership, heartbeat_loop
 from osa.runtimes.adk.a2a_task_store import (
     FencedDatabaseTaskStore,
@@ -618,10 +621,13 @@ def _a2a_task_owner(context: Any) -> str:
     principal = current_principal()
     if principal is not None:
         tenant = principal.tenant_id or "-"
-        return f"tenant:{tenant}:subject:{principal.subject}"
+        return validate_a2a_persisted_text(
+            f"tenant:{tenant}:subject:{principal.subject}",
+            label="task ownership scope",
+        )
     user = getattr(context, "user", None)
     user_name = getattr(user, "user_name", None)
-    return str(user_name or "anonymous")
+    return validate_a2a_persisted_text(str(user_name or "anonymous"), label="task ownership scope")
 
 
 def _validate_task_table_name(table_name: str) -> str:

@@ -12,6 +12,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Hardened — A2A persisted identity bounds
+- A2A task, context, tenant, caller-scope, session, and worker-owner values
+  now reject inputs over the shared 255-character database-column bound before
+  reads or writes. Removed silent tenant/scope and configured owner-ID
+  truncation so SQLite and PostgreSQL fail closed consistently.
+
 ### Hardened — A2A cancellation takeover
 - An expired owner now preserves a previously recorded durable cancellation
   request when a replacement worker finalizes the task, rather than converting

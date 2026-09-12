@@ -125,6 +125,7 @@ def test_event_table_name_and_payload_validation() -> None:
     from osa.runtimes.adk.a2a_event_store import (
         MAX_A2A_TASK_TABLE_NAME_LENGTH,
         A2aTaskEventStore,
+        _resolve_tenant_id,
         event_table_name,
     )
 
@@ -135,6 +136,10 @@ def test_event_table_name_and_payload_validation() -> None:
         event_table_name("x" * (MAX_A2A_TASK_TABLE_NAME_LENGTH + 1))
     with pytest.raises(ValueError, match="positive"):
         A2aTaskEventStore(object(), table_name="events", max_payload_bytes=0)
+    with pytest.raises(ValueError, match="at most 255"):
+        _resolve_tenant_id("t" * 256, "anonymous")
+    with pytest.raises(ValueError, match="at most 255"):
+        _resolve_tenant_id(None, "s" * 256)
 
 
 @pytest.mark.asyncio

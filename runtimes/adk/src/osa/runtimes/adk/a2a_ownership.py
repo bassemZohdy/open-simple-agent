@@ -17,7 +17,11 @@ from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
-from osa.runtimes.adk.a2a_event_store import POSTGRES_IDENTIFIER_MAX_LENGTH
+from osa.runtimes.adk.a2a_event_store import (
+    MAX_A2A_PERSISTED_TEXT_LENGTH,
+    POSTGRES_IDENTIFIER_MAX_LENGTH,
+    validate_a2a_persisted_text,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
@@ -58,13 +62,13 @@ class A2aTaskOwnershipStore:
         self._table = Table(
             table_name,
             self._metadata,
-            Column("task_id", String(255), primary_key=True),
-            Column("context_id", String(255), nullable=False),
-            Column("scope_key", String(255), nullable=False),
-            Column("owner_id", String(255), nullable=True),
+            Column("task_id", String(MAX_A2A_PERSISTED_TEXT_LENGTH), primary_key=True),
+            Column("context_id", String(MAX_A2A_PERSISTED_TEXT_LENGTH), nullable=False),
+            Column("scope_key", String(MAX_A2A_PERSISTED_TEXT_LENGTH), nullable=False),
+            Column("owner_id", String(MAX_A2A_PERSISTED_TEXT_LENGTH), nullable=True),
             Column("fence", Integer, nullable=False, default=0),
             Column("lease_until", DateTime(timezone=True), nullable=True),
-            Column("session_id", String(255), nullable=True),
+            Column("session_id", String(MAX_A2A_PERSISTED_TEXT_LENGTH), nullable=True),
             Column("cancel_requested", Boolean, nullable=False, default=False),
             Column("state", Text, nullable=False, default="released"),
         )
@@ -73,8 +77,11 @@ class A2aTaskOwnershipStore:
     def _make_owner_id() -> str:
         configured = os.environ.get("OSA_A2A_OWNER_ID")
         if configured and configured.strip():
-            return configured.strip()[:255]
-        return f"{socket.gethostname()}:{os.getpid()}:{uuid4()}"
+            return validate_a2a_persisted_text(configured.strip(), label="owner identifier")
+        return validate_a2a_persisted_text(
+            f"{socket.gethostname()}:{os.getpid()}:{uuid4()}",
+            label="owner identifier",
+        )
 
     @property
     def owner_id(self) -> str:
@@ -97,6 +104,8 @@ class A2aTaskOwnershipStore:
         return self._metadata
 
     async def get(self, task_id: str, scope_key: str) -> TaskOwnership | None:
+        _validate_ownership_key(task_id, label="task identifier")
+        _validate_ownership_key(scope_key, label="scope identifier")
         from sqlalchemy import select
 
         async with self._engine.connect() as connection:
@@ -109,6 +118,9 @@ class A2aTaskOwnershipStore:
 
     async def acquire(self, task_id: str, context_id: str, scope_key: str) -> TaskOwnership | None:
         """Acquire a lease, reclaiming only an expired prior owner."""
+        _validate_ownership_key(task_id, label="task identifier")
+        _validate_ownership_key(context_id, label="context identifier")
+        _validate_ownership_key(scope_key, label="scope identifier")
         from sqlalchemy import insert, select, update
 
         now = datetime.now(UTC)
@@ -192,6 +204,7 @@ class A2aTaskOwnershipStore:
 
     async def heartbeat(self, ownership: TaskOwnership) -> bool:
         """Extend a lease only when its owner and fencing token still match."""
+        _validate_ownership(ownership)
         from sqlalchemy import update
 
         lease_until = datetime.now(UTC) + timedelta(seconds=self._lease_seconds)
@@ -222,6 +235,7 @@ class A2aTaskOwnershipStore:
         equivalent row lock, but durable local mode is single-replica by
         contract and still receives the same lease/fence validation.
         """
+        _validate_ownership(ownership)
         from sqlalchemy import select
 
         now = datetime.now(UTC)
@@ -261,6 +275,8 @@ class A2aTaskOwnershipStore:
 
     async def request_cancel(self, task_id: str, scope_key: str) -> bool:
         """Persist cancellation without requiring the requesting replica to own the task."""
+        _validate_ownership_key(task_id, label="task identifier")
+        _validate_ownership_key(scope_key, label="scope identifier")
         from sqlalchemy import update
 
         async with self._engine.begin() as connection:
@@ -276,6 +292,8 @@ class A2aTaskOwnershipStore:
         return bool(int(result.rowcount or 0) == 1)
 
     async def bind_session(self, ownership: TaskOwnership, session_id: str) -> bool:
+        _validate_ownership(ownership)
+        _validate_ownership_key(session_id, label="session identifier")
         from sqlalchemy import update
 
         async with self._engine.begin() as connection:
@@ -296,6 +314,7 @@ class A2aTaskOwnershipStore:
         """Release or terminally close a lease using its fencing token."""
         if state not in {"released", "completed", "failed", "canceled"}:
             raise ValueError("A2A task ownership state is invalid")
+        _validate_ownership(ownership)
         from sqlalchemy import update
 
         async with self._engine.begin() as connection:
@@ -346,6 +365,20 @@ async def heartbeat_loop(store: A2aTaskOwnershipStore, ownership: TaskOwnership)
     """Keep a long-running task lease alive until the worker loses ownership."""
     while await store.heartbeat(ownership):
         await asyncio.sleep(store.heartbeat_interval_seconds)
+
+
+def _validate_ownership_key(value: str, *, label: str) -> str:
+    return validate_a2a_persisted_text(value, label=label)
+
+
+def _validate_ownership(ownership: TaskOwnership) -> None:
+    _validate_ownership_key(ownership.task_id, label="task identifier")
+    _validate_ownership_key(ownership.context_id, label="context identifier")
+    _validate_ownership_key(ownership.scope_key, label="scope identifier")
+    if ownership.owner_id is not None:
+        _validate_ownership_key(ownership.owner_id, label="owner identifier")
+    if ownership.session_id is not None:
+        _validate_ownership_key(ownership.session_id, label="session identifier")
 
 
 __all__ = ["A2aTaskOwnershipStore", "TaskOwnership", "heartbeat_loop"]

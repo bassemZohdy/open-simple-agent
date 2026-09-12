@@ -21,6 +21,7 @@ POSTGRES_IDENTIFIER_MAX_LENGTH = 63
 MAX_A2A_TASK_TABLE_NAME_LENGTH = POSTGRES_IDENTIFIER_MAX_LENGTH - len("_ownership")
 MAX_A2A_EVENT_TYPE_LENGTH = 64
 MAX_A2A_EVENT_PAYLOAD_BYTES = 1024 * 1024
+MAX_A2A_PERSISTED_TEXT_LENGTH = 255
 
 
 @dataclass(frozen=True)
@@ -76,8 +77,8 @@ class A2aTaskEventStore:
         self._table = Table(
             table_name,
             self._metadata,
-            Column("tenant_id", String(255), nullable=False),
-            Column("task_id", String(255), nullable=False),
+            Column("tenant_id", String(MAX_A2A_PERSISTED_TEXT_LENGTH), nullable=False),
+            Column("task_id", String(MAX_A2A_PERSISTED_TEXT_LENGTH), nullable=False),
             Column("fencing_epoch", Integer, nullable=False),
             Column("sequence", Integer, nullable=False),
             Column("event_type", String(MAX_A2A_EVENT_TYPE_LENGTH), nullable=False),
@@ -119,6 +120,7 @@ class A2aTaskEventStore:
             raise ValueError("A2A event payload must not be empty")
         if len(payload) > self._max_payload_bytes:
             raise ValueError("A2A event payload exceeds the configured limit")
+        validate_a2a_persisted_text(ownership.task_id, label="task identifier")
         resolved_tenant_id = _resolve_tenant_id(tenant_id, ownership.scope_key)
         sequence_holder: list[int] = []
 
@@ -154,6 +156,7 @@ class A2aTaskEventStore:
             raise ValueError("A2A event payload must not be empty")
         if len(payload) > self._max_payload_bytes:
             raise ValueError("A2A event payload exceeds the configured limit")
+        validate_a2a_persisted_text(ownership.task_id, label="task identifier")
         resolved_tenant_id = _resolve_tenant_id(tenant_id, ownership.scope_key)
 
         from sqlalchemy import func, insert, select
@@ -189,8 +192,8 @@ class A2aTaskEventStore:
         limit: int = 128,
     ) -> list[A2aTaskEvent]:
         """Read a bounded ordered page after a client cursor."""
-        if not tenant_id or not task_id:
-            raise ValueError("A2A event reads require tenant and task identifiers")
+        validate_a2a_persisted_text(tenant_id, label="tenant identifier")
+        validate_a2a_persisted_text(task_id, label="task identifier")
         if after_sequence < 0:
             raise ValueError("A2A event cursor must not be negative")
         if limit < 1:
@@ -261,22 +264,30 @@ def _validate_event_type(value: str) -> str:
 
 def _resolve_tenant_id(tenant_id: str | None, scope_key: str) -> str:
     if tenant_id is not None:
-        if not tenant_id or len(tenant_id) > 255:
-            raise ValueError("A2A tenant identifier is invalid")
-        return tenant_id
+        return validate_a2a_persisted_text(tenant_id, label="tenant identifier")
+    validate_a2a_persisted_text(scope_key, label="scope identifier")
     if scope_key.startswith("tenant:"):
         tenant = scope_key.removeprefix("tenant:").split(":subject:", 1)[0]
         if tenant:
-            return tenant[:255]
-    return scope_key[:255] or "-"
+            return validate_a2a_persisted_text(tenant, label="tenant identifier")
+    return scope_key
+
+
+def validate_a2a_persisted_text(value: str, *, label: str) -> str:
+    """Validate text that is stored in a bounded A2A identity column."""
+    if not isinstance(value, str) or not value or len(value) > MAX_A2A_PERSISTED_TEXT_LENGTH:
+        raise ValueError(f"A2A {label} must be non-empty and at most {MAX_A2A_PERSISTED_TEXT_LENGTH} characters")
+    return value
 
 
 __all__ = [
     "A2A_EVENT_TABLE_SUFFIX",
     "A2aTaskEvent",
     "A2aTaskEventStore",
+    "MAX_A2A_PERSISTED_TEXT_LENGTH",
     "MAX_A2A_TASK_TABLE_NAME_LENGTH",
     "MAX_A2A_EVENT_PAYLOAD_BYTES",
     "POSTGRES_IDENTIFIER_MAX_LENGTH",
     "event_table_name",
+    "validate_a2a_persisted_text",
 ]

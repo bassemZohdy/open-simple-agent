@@ -304,7 +304,9 @@ OSA_A2A_TASK_DATABASE_URL=postgresql+asyncpg://... \
 
 Durable records are scoped by the validated OSA tenant and subject when the
 shared authentication boundary is active; unauthenticated embedded callers
-use the A2A protocol user scope. Run the explicit schema step before startup:
+use the A2A protocol user scope. Persisted A2A identity fields are non-empty
+and limited to 255 characters; oversized authenticated claims fail closed
+before a task or event write. Run the explicit schema step before startup:
 
 ```bash
 OSA_A2A_TASK_DATABASE_URL=postgresql+asyncpg://... \
