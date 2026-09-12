@@ -224,6 +224,29 @@ class TestImportExport:
             )
             assert response.status_code == 422
 
+    async def test_import_validates_entire_batch_before_writing(self) -> None:
+        async with await client() as c:
+            response = await c.post(
+                "/resources/import",
+                json={
+                    "resources": [
+                        _model_spec("would-not-be-written"),
+                        {"apiVersion": "osa/v1alpha1", "kind": "Widget", "spec": {}},
+                    ],
+                },
+            )
+            assert response.status_code == 422
+            assert (await c.get("/resources/Model/would-not-be-written")).status_code == 404
+
+    async def test_import_rejects_duplicate_resources_without_writing(self) -> None:
+        async with await client() as c:
+            response = await c.post(
+                "/resources/import",
+                json={"resources": [_model_spec("duplicate"), _model_spec("duplicate", model_id="other")]},
+            )
+            assert response.status_code == 422
+            assert (await c.get("/resources/Model/duplicate")).status_code == 404
+
 
 class TestTemplates:
     async def test_templates_listed_read_only(self) -> None:

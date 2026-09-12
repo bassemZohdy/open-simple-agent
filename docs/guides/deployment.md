@@ -59,13 +59,12 @@ docker run -d -p 8000:8000 \
 
 - Without `OSA_CONTROL_PLANE_DATABASE_URL` the Control Plane runs in-memory
   (single process; state lost on restart).
-- With a DSN, agents/deployments/resources/audit events persist in PostgreSQL
-  and their records are shared across replicas. Resource catalogs are
-  materialized into each process only at startup, so resource reads and
-  validation can be stale between replicas. External-agent records remain
-  process-local, and the local deployment provider's child-process state is
-  not restart- or replica-safe yet; use BF17 in `TODO.md` when selecting a
-  production topology.
+- With a DSN, agents/deployments/resources/audit events/external-agent records
+  persist in PostgreSQL and are shared across replicas. Resource reads and
+  validation reconcile each process-local catalog from durable records. The
+  local deployment provider's child-process state is not restart- or
+  replica-safe yet; use BF17 in `TODO.md` when selecting a production
+  topology.
 
 ### Deployment configuration
 
@@ -129,10 +128,9 @@ never accepts process commands.
 
 ## Remaining deployment work
 
-- Safe, tenant-isolated, atomic bundle export and service-level deployment
-  retry/rollback/reconciliation (BF14–BF17 in `TODO.md`)
-- Resource-catalog cache coherence and durable external-agent records (BF13 and
-  BF19)
+- Local-provider restart/reconciliation and multi-replica ownership (BF17 in
+  `TODO.md`)
+- PostgreSQL cross-replica resource-catalog acceptance (BF19)
 - Packaged Kubernetes provider selection and real Kind acceptance (the first
   generic provider slice exists, but follow-up is paused)
 - Distributed A2A task state and cancellation semantics (P2.4)

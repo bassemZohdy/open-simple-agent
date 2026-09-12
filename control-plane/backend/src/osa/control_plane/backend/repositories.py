@@ -97,7 +97,7 @@ class AgentRepository(ABC):
         ...
 
     @abstractmethod
-    async def get_by_name(self, name: str) -> AgentRecord | None: ...
+    async def get_by_name(self, name: str, *, tenant_id: str | None = None) -> AgentRecord | None: ...
 
     @abstractmethod
     async def list_all(self) -> list[AgentRecord]: ...
@@ -161,8 +161,8 @@ class InMemoryAgentRepository(AgentRepository):
     async def get(self, agent_id: str) -> AgentRecord | None:
         return self._catalog.get(agent_id)
 
-    async def get_by_name(self, name: str) -> AgentRecord | None:
-        return self._catalog.get_by_name(name)
+    async def get_by_name(self, name: str, *, tenant_id: str | None = None) -> AgentRecord | None:
+        return self._catalog.get_by_name(name, tenant_id)
 
     async def list_all(self) -> list[AgentRecord]:
         return self._catalog.list_all()
@@ -251,7 +251,7 @@ class PostgresAgentRepository(AgentRepository):
     @staticmethod
     def _translate_integrity_error(exc: Exception, agent_name: str, version: str) -> AgentCatalogError:
         message = str(exc)
-        if "uq_osa_agents_name" in message:
+        if "uq_osa_agents_tenant_name" in message or "uq_osa_agents_name" in message:
             return DuplicateAgentError(agent_name)
         if "uq_osa_agent_versions_agent_version" in message:
             return DuplicateVersionError(agent_name, version)
@@ -271,13 +271,18 @@ class PostgresAgentRepository(AgentRepository):
                 return None
             return self._record_from_row(row, await self._fetch_versions(connection, agent_id))
 
-    async def get_by_name(self, name: str) -> AgentRecord | None:
+    async def get_by_name(self, name: str, *, tenant_id: str | None = None) -> AgentRecord | None:
         from sqlalchemy import select
 
         from osa.control_plane.backend.tables import agents_table
 
         async with self._engine.begin() as connection:
-            result = await connection.execute(select(agents_table).where(agents_table.c.name == name))
+            conditions = [agents_table.c.name == name]
+            if tenant_id is None:
+                conditions.append(agents_table.c.tenant_id.is_(None))
+            else:
+                conditions.append(agents_table.c.tenant_id == tenant_id)
+            result = await connection.execute(select(agents_table).where(*conditions))
             row = result.first()
             if row is None:
                 return None
@@ -490,6 +495,16 @@ class ResourceDefinitionRepository(ABC):
     ) -> None: ...
 
     @abstractmethod
+    async def upsert_many(
+        self,
+        items: list[tuple[str, str, dict[str, Any]]],
+        *,
+        tenant_id: str | None = None,
+    ) -> None:
+        """Atomically replace a batch of resource definitions."""
+        ...
+
+    @abstractmethod
     async def get(self, kind: str, name: str, *, tenant_id: str | None = None) -> dict[str, Any] | None: ...
 
     @abstractmethod
@@ -523,6 +538,18 @@ class InMemoryResourceDefinitionRepository(ResourceDefinitionRepository):
         tenant_id: str | None = None,
     ) -> None:
         self._items[(self._scope(tenant_id), kind, name)] = spec
+
+    async def upsert_many(
+        self,
+        items: list[tuple[str, str, dict[str, Any]]],
+        *,
+        tenant_id: str | None = None,
+    ) -> None:
+        staged = dict(self._items)
+        scope = self._scope(tenant_id)
+        for kind, name, spec in items:
+            staged[(scope, kind, name)] = spec
+        self._items = staged
 
     async def get(self, kind: str, name: str, *, tenant_id: str | None = None) -> dict[str, Any] | None:
         return self._items.get((self._scope(tenant_id), kind, name))
@@ -575,6 +602,31 @@ class PostgresResourceDefinitionRepository(ResourceDefinitionRepository):
                 .on_conflict_do_update(
                     index_elements=["tenant_id", "kind", "name"],
                     set_={"spec": spec, "updated_at": datetime.now(UTC)},
+                )
+            )
+
+    async def upsert_many(
+        self,
+        items: list[tuple[str, str, dict[str, Any]]],
+        *,
+        tenant_id: str | None = None,
+    ) -> None:
+        if not items:
+            return
+        from sqlalchemy.dialects.postgresql import insert
+
+        from osa.control_plane.backend.tables import resource_definitions_table
+
+        values = [
+            {"tenant_id": self._scope(tenant_id), "kind": kind, "name": name, "spec": spec}
+            for kind, name, spec in items
+        ]
+        statement = insert(resource_definitions_table).values(values)
+        async with self._engine.begin() as connection:
+            await connection.execute(
+                statement.on_conflict_do_update(
+                    index_elements=["tenant_id", "kind", "name"],
+                    set_={"spec": statement.excluded.spec, "updated_at": datetime.now(UTC)},
                 )
             )
 

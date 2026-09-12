@@ -78,9 +78,8 @@ health probe; startup failures carry the captured logs in the record detail.
 ## Remaining operational work
 
 - Durable runtime sessions and migration-owned memory schema (P1 in `TODO.md`)
-- Deployment export safety, retry/rollback consistency, and local-provider
-  shutdown/reconciliation (BF14–BF17)
-- Resource-cache coherence and durable external-agent records (BF13 and BF19)
+- Local-provider shutdown/reconciliation and multi-replica ownership (BF17)
+- PostgreSQL cross-replica resource-catalog acceptance (BF19)
 - Distributed A2A task state and cancellation semantics (P2.4)
 - Replica-safe rate limits and quotas (P2)
 - Packaged Kubernetes provider selection and real Kind acceptance; the first

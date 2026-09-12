@@ -31,7 +31,9 @@ from osa.generic_agent import (
     ResolvedOutboundCredential,
     SecretError,
     SecretResolver,
+    outbound_trust_env,
     resolve_outbound_credential,
+    validate_outbound_url,
 )
 from osa.generic_agent.errors import (
     McpConnectionError,
@@ -157,6 +159,8 @@ class McpConnection:
             cert=material.cert,
             headers=material.headers,
             timeout=httpx.Timeout(options.timeout_seconds),
+            follow_redirects=False,
+            trust_env=outbound_trust_env(),
         )
 
     async def _enter_streams(self, stack: Any) -> tuple[Any, Any]:
@@ -174,10 +178,14 @@ class McpConnection:
         if definition.transport == "streamable_http":
             if not definition.endpoint:
                 raise McpConnectionError(self.name, "streamable_http transport requires 'endpoint'")
+            try:
+                endpoint = validate_outbound_url(definition.endpoint, purpose=f"MCP server '{self.name}' endpoint")
+            except ValueError as exc:
+                raise McpConnectionError(self.name, str(exc)) from exc
             http_client = await stack.enter_async_context(await self._build_httpx_client())
             transport_stack: Any = await stack.enter_async_context(
                 streamable_http_client(
-                    url=definition.endpoint,
+                    url=endpoint,
                     http_client=http_client,
                     terminate_on_close=True,
                 )

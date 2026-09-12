@@ -114,6 +114,16 @@ class TestDeployContract:
             assert body["status"] == "running"
             assert body["deployment_id"] == "dep-1"
 
+    async def test_deploy_retry_returns_existing_running_record(self, provider: ScriptedProvider) -> None:
+        async with await client() as c:
+            agent_id = await _active_agent(c)
+            first = await c.post(f"/agents/{agent_id}/deploy", json={})
+            second = await c.post(f"/agents/{agent_id}/deploy", json={})
+            assert first.status_code == 201
+            assert second.status_code == 201
+            assert second.json()["deployment_id"] == first.json()["deployment_id"]
+            assert len(provider.requests) == 1
+
     async def test_deploy_without_invoke_url_template_omits_invoke_url(
         self, provider: ScriptedProvider, monkeypatch: pytest.MonkeyPatch
     ) -> None:
@@ -240,3 +250,26 @@ class TestDeploymentLifecycle:
             response = await c.post(f"/deployments/{deployment_id}/rollback")
             assert response.status_code == 422
             assert "no earlier version" in response.json()["error"]["message"]
+
+    async def test_rollback_relaunches_from_an_immutable_version(self, provider: ScriptedProvider) -> None:
+        async with await client() as c:
+            created = await c.post(
+                "/agents",
+                json={"name": "versioned", "definition": _definition("versioned", description="v1")},
+            )
+            agent_id = str(created.json()["agent_id"])
+            assert (await c.post(f"/agents/{agent_id}/versions", json={"version": "1.0.0"})).status_code == 201
+            updated = await c.patch(
+                f"/agents/{agent_id}",
+                json={"definition": _definition("versioned", description="v2")},
+            )
+            assert updated.status_code == 200
+            assert (await c.post(f"/agents/{agent_id}/versions", json={"version": "2.0.0"})).status_code == 201
+            assert (await c.post(f"/agents/{agent_id}/activate")).status_code == 200
+            deployed = await c.post(f"/agents/{agent_id}/deploy", json={})
+            deployment_id = deployed.json()["deployment_id"]
+
+            rolled_back = await c.post(f"/deployments/{deployment_id}/rollback")
+            assert rolled_back.status_code == 200, rolled_back.text
+            assert rolled_back.json()["version"] == "1.0.0"
+            assert rolled_back.json()["deployment_id"] == "dep-2"

@@ -486,6 +486,7 @@ def configure_control_plane_app(
         record_repository=InMemoryDeploymentRecordRepository(),
         agent_repository=agent_repository,
         resource_catalogs=resource_catalogs,
+        resource_repository=resource_repository,
     )
 
     @app.exception_handler(HTTPException)
@@ -732,6 +733,9 @@ def configure_control_plane_app(
         _owned_record(record, http_request)
         if record.definition is None:
             raise HTTPException(status_code=422, detail="Agent cannot be activated without a definition")
+        from osa.control_plane.backend.resources_api import reconcile_resource_catalogs
+
+        await reconcile_resource_catalogs(resource_catalogs, resource_repository, record.tenant_id)
         missing = _missing_resource_refs(resource_catalogs, record.definition, record.tenant_id)
         if missing:
             raise HTTPException(

@@ -113,6 +113,14 @@ from osa.generic_agent.observability import (
     redact_fields,
     redact_text,
 )
+from osa.generic_agent.outbound import (
+    OUTBOUND_ALLOW_PRIVATE_ENV,
+    OUTBOUND_ALLOWED_HOSTS_ENV,
+    OUTBOUND_TRUST_ENV_ENV,
+    OutboundUrlError,
+    outbound_trust_env,
+    validate_outbound_url,
+)
 from osa.generic_agent.runtime import AgentFactory, AgentRuntime, RuntimeDependencies
 from osa.generic_agent.secret import (
     EnvironmentSecretResolver,
@@ -221,6 +229,12 @@ __all__ = [
     "MtlsCredential",
     "OAuth2Credential",
     "OutboundCredential",
+    "OutboundUrlError",
+    "OUTBOUND_ALLOWED_HOSTS_ENV",
+    "OUTBOUND_ALLOW_PRIVATE_ENV",
+    "OUTBOUND_TRUST_ENV_ENV",
+    "outbound_trust_env",
+    "validate_outbound_url",
     "ModelResponse",
     "ModelRuntimeSettings",
     "JsonFormatter",

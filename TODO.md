@@ -1,43 +1,43 @@
 # Open Simple Agent — Active Backlog
 
-Updated 2026-09-06. This file contains only unfinished, deferred, or
+Updated 2026-09-12. This file contains only unfinished, deferred, or
 deliberately gated work. Completed implementation history is recorded in
 `CHANGELOG.md` and git history.
 
-A task is complete only when the implementation, automated tests, relevant
+A task is complete only when implementation, automated tests, relevant
 documentation, and appropriate failure/security behavior are complete.
 
 ## Current status
 
-The P0 runnable-agent gate, managed-platform foundation, Manager Agent
-management surface, current Control Panel, runtime/Control Plane images, and
-release-supply-chain automation are implemented and covered by CI.
+The runnable-agent gate, managed-platform foundation, Manager Agent surface,
+Control Plane, runtime images, release automation, and current English
+Control Panel are implemented and covered by CI.
 
-The current production-readiness limits are:
+Production-readiness limits are:
 
 - runtime sessions are in-memory unless a durable provider is selected and
   implemented;
 - memory PostgreSQL still uses transitional bootstrap DDL;
-- Control Plane resource records are durable, but per-process resource catalogs
-  are startup caches;
-- external-agent records and local deployment-provider process state are
-  process-local;
-- deployment export, retry, rollback, and restart reconciliation need stronger
-  safety guarantees;
-- outbound A2A destinations do not yet have an application-level SSRF policy;
-- A2A task state, capability-level telemetry, and HTTP capacity controls are
-  not replica-safe or fully defined;
-- translated-locale coverage, deployment-specific OIDC browser login, package
-  registry publication, and the first public release remain open; Kubernetes
-  follow-up is intentionally paused.
+- resource records are durable and route/deployment reads reconcile local
+  catalogs, while live PostgreSQL cross-replica acceptance remains gated;
+- PostgreSQL external-agent records are durable, while the default in-memory
+  registry and local provider process state remain process-local;
+- local deployment-provider restart reconciliation and multi-replica ownership
+  remain undefined;
+- outbound A2A, Streamable HTTP MCP, and OAuth token destinations have an
+  application-level URL/DNS/redirect policy, with network egress still
+  required as defense in depth;
+- A2A task state, capability telemetry, and HTTP capacity controls are not
+  replica-safe or fully defined;
+- translated locales, deployment-specific browser OIDC, package publication,
+  and the first public release remain open; Kubernetes follow-up is paused.
 
 ## Recommended next task
 
-Start with **BF14: secure and atomically stage deployment bundle exports**.
-It is a focused security/data-integrity fix on the active deployment path and
-is a prerequisite for trusting the local provider in multi-tenant or shared
-deployment roots. Follow it with BF18 (outbound A2A SSRF policy), then the
-related deployment reliability work BF15–BF17 and BF19.
+Run the PostgreSQL cross-replica acceptance workflow, then define local-provider
+recovery/ownership semantics. The next gated product decisions are durable
+sessions, migration-owned memory schema, packaged deployment topology, and
+distributed A2A task state.
 
 ---
 
@@ -45,121 +45,95 @@ related deployment reliability work BF15–BF17 and BF19.
 
 ## Persistent runtime sessions — PENDING
 
-`SessionProvider` currently defaults to the in-memory `SessionManager`. It
-enforces ownership, TTL, and bounded history, but state is lost with a runtime
-process and cannot provide cross-replica continuity.
+`SessionProvider` defaults to the in-memory `SessionManager`. It enforces
+ownership, TTL, and bounded history, but state is lost with a runtime process.
 
 - [ ] Select the persistent-provider contract and configuration semantics for
   `spec.session.persistence`, including database lifecycle and migration
   ownership.
-- [ ] Implement and wire a durable provider without weakening ownership checks,
-  TTL expiry, bounded history, or metadata redaction.
+- [ ] Implement and wire a durable provider without weakening ownership,
+  expiry, bounded history, or metadata redaction.
 - [ ] Add restart, expiry, ownership, concurrent-update, and cross-process
-  tests; document backup, upgrade, and failure-recovery behavior.
+  tests; document backup, upgrade, and recovery behavior.
 
 ## Memory schema ownership — PENDING
 
-`PostgresMemoryProvider` still creates `osa_memory_entries` with bootstrap DDL
-when `OSA_MEMORY_DATABASE_URL` is configured. PostgreSQL persistence works, but
-schema ownership and upgrade ordering are not yet migration-controlled.
+`PostgresMemoryProvider` still creates `osa_memory_entries` with bootstrap DDL.
 
 - [ ] Select migration ownership and operational commands for the independent
   memory database.
-- [ ] Replace runtime `CREATE TABLE IF NOT EXISTS` bootstrap behavior with an
-  explicit, versioned migration path.
-- [ ] Add upgrade/rollback coverage and document backup, migration, and startup
-  ordering requirements.
+- [ ] Replace runtime bootstrap DDL with an explicit versioned migration path.
+- [ ] Add upgrade/rollback coverage and document backup and startup ordering.
 
 ---
 
 # P1 — Managed platform
 
-## P1.5 Kubernetes deployment provider — PAUSED
+## Kubernetes deployment provider — PAUSED
 
-The first `kubectl`-backed provider slice exists: Deployment and Service
-generation, bundle ConfigMaps, Secret references, probes, hardened pod
-security, scale/restart/rollback/status/log operations, and OSA identity
-labels. Do not resume this work until it is explicitly reprioritized.
+Deployment/Service generation, bundle ConfigMaps, Secret references, probes,
+hardened pod security, scale/restart/rollback/status/log operations, and OSA
+identity labels exist. Resume only when explicitly reprioritized.
 
-- [ ] Wire packaged Control Plane provider selection and configuration to the
-  Kubernetes provider.
-- [ ] Validate deploy/readiness/scale/restart/rollback/recovery against a real
-  Kind cluster in CI or a dedicated acceptance workflow.
-- [ ] Add status-watch and recovery behavior for Control Plane restart and
-  already-running Kubernetes workloads.
-- [ ] Document production RBAC, namespaces, image-pull secrets, network
-  policies, resource limits, and upgrade requirements.
-- [ ] Keep OpenShift-specific behavior separate; do not introduce OpenShift
-  assumptions into the generic Kubernetes provider.
+- [ ] Wire packaged Control Plane provider selection/configuration.
+- [ ] Validate deploy/readiness/scale/restart/rollback/recovery against Kind or
+  another real cluster in CI.
+- [ ] Add status-watch and recovery behavior for Control Plane restarts and
+  already-running workloads.
+- [ ] Document RBAC, namespaces, image-pull secrets, network policy, resource
+  limits, and upgrades.
+- [ ] Keep OpenShift-specific behavior separate from generic Kubernetes code.
 
 ## Packaged Control Plane deployment launcher — PENDING
 
-The Control Plane image is management-only, while the default local deployment
-command invokes `osa-runtime`. That executable is not packaged in
-`Dockerfile.control-plane`, so an isolated Control Plane container cannot
-launch a runtime without an operator-provided launcher or colocated runtime.
+The management image does not package `osa-runtime`, while the default local
+deployment command invokes it.
 
-- [ ] Decide the supported production contract: package the runtime launcher,
-  require an operator-provided launcher/provider, or make provider selection
-  explicit instead of relying on the local default.
-- [ ] Add image-level integration coverage proving that the selected topology
-  can launch, probe, stop, and observe a runtime.
-- [ ] Document split-image and colocated-process topologies, including the
-  security boundary around `OSA_DEPLOY_COMMAND_TEMPLATE`.
+- [ ] Decide whether to package the launcher, require an external provider, or
+  make provider selection explicit.
+- [ ] Add image-level integration proving launch, probe, stop, and observation.
+- [ ] Document split-image and colocated-process topologies and command-template
+  security boundaries.
 
 ---
 
 # P2 — Production controls
 
-## P2.2 Enterprise identity lifecycle — PARTIALLY COMPLETE
+## Enterprise identity lifecycle — PARTIALLY COMPLETE
 
-ADR-007 defines claim-driven lifecycle semantics with the IdP as lifecycle
-authority. The shared validation path handles the `active` claim and opaque
-token introspection. Integration coverage remains blocked on selecting a
-concrete enterprise identity source.
+Claim-driven lifecycle semantics and opaque-token introspection validation are
+implemented; concrete identity-source acceptance remains open.
 
-- [ ] Add integration/contract tests for introspection liveness, key rotation,
-  disabled identities, and role-change propagation once an identity source is
-  selected.
+- [ ] Add introspection liveness, key rotation, disabled-identity, and
+  role-change propagation tests after selecting an identity source.
 
-## P2.4 Distributed A2A task state — PENDING
+## Distributed A2A task state — PENDING
 
-The runtime A2A executor and SDK task store are process-local. A runtime
-replica cannot observe task state created by another replica.
+The runtime A2A executor and SDK task store are process-local.
 
-- [ ] Select a durable task-store backend plus retention, ownership, and
-  recovery semantics compatible with the A2A SDK.
-- [ ] Implement and wire the store so task updates remain consistent across
-  runtime replicas and restarts.
-- [ ] Add multi-replica acceptance coverage for task creation, completion,
-  failure, lookup, and recovery without leaking tenant or caller state.
-- [ ] Define cancellation semantics for in-flight tasks, including safe
-  cancellation of the OSA run, terminal-state ordering, and protection against
-  late events or retries resurrecting a canceled task.
+- [ ] Select durable task storage, retention, ownership, and recovery rules.
+- [ ] Implement and wire replica-consistent task state.
+- [ ] Add multi-replica creation, completion, failure, lookup, and recovery
+  acceptance tests without tenant/caller leakage.
+- [ ] Define cancellation ordering and protection against late events/retries.
 
 ## Capability-level audit telemetry — PENDING
 
-The current audit path records management mutations, runtime/A2A boundaries,
-and authentication/authorization denials, but not redaction-safe per-capability
-events for model, native-tool, or MCP activity.
+Management, runtime-boundary, and auth-denial audits exist; per-capability
+model/native-tool/MCP telemetry does not.
 
-- [ ] Define event taxonomy, redaction rules, retention, sampling, and
-  performance policy.
-- [ ] Implement an optional sink and durable persistence path without storing
-  prompts, outputs, credentials, or unbounded tool payloads.
-- [ ] Add model/tool/MCP success, failure, timeout, and tenant-isolation tests
-  plus operational documentation.
+- [ ] Define taxonomy, redaction, retention, sampling, and performance policy.
+- [ ] Implement optional sink and durable persistence without prompts, outputs,
+  credentials, or unbounded tool payloads.
+- [ ] Add model/tool/MCP success, failure, timeout, and isolation tests/docs.
 
 ## Rate limiting and quotas — PENDING
 
-Neither HTTP application enforces per-principal or per-tenant rate limits,
-concurrency quotas, or a `429`/`Retry-After` contract. Until this is implemented,
-internet-facing deployments need an API gateway or service mesh for capacity
-controls.
+Neither HTTP application enforces replica-safe rate limits, concurrency quotas,
+or a `429`/`Retry-After` contract.
 
-- [ ] Define route, principal, and tenant limits, burst behavior, retry
-  semantics, and stable `429` response headers.
-- [ ] Select replica-safe enforcement and storage for streaming and long-running
+- [ ] Define route, principal, tenant, burst, retry, and response-header rules.
+- [ ] Select replica-safe enforcement/storage for streaming and long-running
   A2A/deployment operations.
 - [ ] Add isolation, burst, streaming, A2A, metrics, and documentation tests.
 
@@ -167,32 +141,27 @@ controls.
 
 # P3 — Product surface and distribution
 
-## P3.1 Control Panel — PARTIALLY COMPLETE
+## Control Panel — PARTIALLY COMPLETE
 
-The current English Control Panel includes the authenticated shell, agent and
-resource views, authoring, lifecycle/deployment views, audit/metrics, A2A and
-managed-runtime invocation consoles, safe snapshot inspection, responsive
-behavior, and loading/empty/error recovery states.
+The English panel includes authenticated shell, agents/resources, authoring,
+lifecycle/deployments, audit/metrics, A2A/runtime consoles, safe snapshots,
+responsive behavior, and loading/empty/error recovery.
 
-- [ ] Add translated-locale coverage while preserving accessible names,
-  validation meaning, and browser-locale timestamp behavior.
-- [ ] Define deployment-specific OIDC browser login/refresh semantics after an
-  issuer, client, and redirect contract is selected.
-- [ ] Decide whether public agent-definition bundle import/export APIs are in
-  scope; resource import/export and server-side deployment export exist today.
+- [ ] Add translated-locale coverage while preserving accessibility and
+  browser-locale timestamps.
+- [ ] Define deployment-specific OIDC browser login/refresh after issuer,
+  client, and redirect contracts are selected.
+- [ ] Decide whether public agent-definition bundle import/export belongs in
+  scope; resource import/export and server-side deployment export exist.
 
-## P3.3 Packaging, CI/CD, and release — PARTIALLY COMPLETE
+## Packaging, CI/CD, and release — PARTIALLY COMPLETE
 
-CI and release workflows validate lockstep versions, build Python distributions,
-publish signed/attested GHCR images, generate SBOMs, and support immutable
-digest rollback of the mutable `latest` channel. Live-provider acceptance is
-available as an opt-in job and remains offline-safe without its secret.
+Lockstep validation, Python distributions, signed/attested GHCR images, SBOMs,
+and digest rollback automation exist.
 
-- [ ] Decide whether Python distributions need PyPI or another package
-  registry; GitHub Release assets are the current distribution path.
-- [ ] Perform the first automated public release only after intentionally
-  selecting a release version and moving the relevant changelog entries out of
-  `Unreleased`.
+- [ ] Decide whether Python packages need PyPI or another registry.
+- [ ] Perform the first automated public release after intentionally selecting
+  a version and moving its changelog entries out of `Unreleased`.
 
 ---
 
@@ -201,125 +170,40 @@ available as an opt-in job and remains offline-safe without its secret.
 - [ ] Track upstream MCP SDK major changes and revisit the pin when MCP 2.x
   lands.
 - [ ] MCP resources/prompts exposure and legacy SSE transport support.
-- [ ] Configurable custom model-adapter registration until a second production
+- [ ] Configurable custom model-adapter registration after a second production
   adapter is required.
-- [ ] Complete the LangGraph-first technology selection with a bounded OSA
-  contract/security/durability POC (the programmatic runtime slice exists;
-  MCP/A2A, shared HTTP service, and durable checkpoint validation remain); see
-  the [weighted DAR-001 comparison](docs/DAR-001-adk-vs-langchain-langgraph.md).
+- [ ] Complete the bounded LangGraph contract/security/durability POC; see
+  `docs/DAR-001-adk-vs-langchain-langgraph.md`.
 - [ ] Multiple unrelated agents in one runtime process.
 - [ ] Dynamic runtime plugin installation.
-- [ ] Advanced semantic agent discovery and hosted marketplace.
+- [ ] Advanced semantic discovery and hosted marketplace.
 - [ ] Advanced multi-tenancy and multi-region deployment.
 - [ ] Agent delegation/consent beyond baseline A2A security.
 - [ ] General human approval beyond management operations.
-- [ ] Advanced memory extraction/consolidation and vector retrieval, including
-  pgvector.
-- [ ] Enterprise external policy engine until P2.2 selects a concrete need.
+- [ ] Advanced memory extraction/consolidation and vector retrieval.
+- [ ] Enterprise external policy engine until P2 identity work selects a need.
 
 ---
 
 # Active review findings
 
-These findings are unresolved and have concrete failure scenarios. They are
-ordered by the recommended implementation sequence. Resolved findings
-`F1–F15`, `I1–I7`, `BF1–BF12`, and `BI1–BI5` are recorded in `CHANGELOG.md` and
-are intentionally not duplicated here.
-
-## BF14 — Safe deployment bundle export
-
-`DeploymentService._export_bundle` builds paths from agent, version, and
-resource names below the shared `OSA_DEPLOY_ROOT`. A path separator can escape
-the root, while equal names in different tenants can collide during startup.
-
-- [ ] Use deployment-scoped opaque directories and safe filenames.
-- [ ] Enforce resolved-path containment, stage exports atomically, and clean up
-  partial exports.
-- [ ] Add traversal, cross-tenant, collision, and concurrency tests.
-
-## BF18 — Outbound A2A SSRF policy
-
-External-agent registration, refresh, invocation, and credential token requests
-accept arbitrary destinations without application-level SSRF, redirect, or
-DNS-rebinding controls.
-
-- [ ] Define allowed schemes/hosts, private-address policy, DNS-rebinding and
-  redirect handling, and equivalent rules for credential token URLs.
-- [ ] Add negative tests and document the operator escape hatch for private A2A
-  endpoints.
-
-## BF15 — Deployment retry idempotency
-
-`DeploymentService.deploy` allocates a fresh port for each request, so a retry
-after a lost response changes the command and can start a second runtime.
-
-- [ ] Define an idempotent desired-deployment identity and serialize concurrent
-  requests.
-- [ ] Test retries and duplicate requests for each provider.
-
-## BF16 — Rollback consistency
-
-Rollback does not consistently stop the existing provider deployment, forward
-the runtime environment, or persist a provider's replacement deployment ID and
-invoke URL.
-
-- [ ] Make rollback an atomic stop/relaunch/persist operation with failure
-  recovery.
-- [ ] Add regression tests for process count, URL/port, environment, and status.
+Resolved findings are recorded in `CHANGELOG.md` and git history. Only
+unresolved findings remain here.
 
 ## BF17 — Local-provider reconciliation
 
-The local provider is process-local, its `shutdown()` is not wired into the
-Control Plane lifespan, and a PostgreSQL-backed restart cannot rehydrate its
-child processes.
+The local provider is process-local, and PostgreSQL records cannot rehydrate
+child processes after restart. Graceful shutdown is wired, but recovery and
+multi-replica ownership remain undefined.
 
-- [ ] Define shutdown, orphan cleanup, restart/reconciliation, and multi-replica
+- [ ] Define shutdown, orphan cleanup, restart/reconciliation, and ownership
   semantics, or make an external provider mandatory for production.
 - [ ] Cover graceful shutdown, restart recovery, and persisted running records.
 
-## BF19 — Resource-catalog cache coherence
+## BF19 — Resource-catalog cross-replica acceptance
 
-PostgreSQL resource definitions are materialized into each process's
-`ResourceCatalogs` only at startup. Cross-replica create, replace, or delete can
-therefore leave reads, duplicate checks, activation validation, and bundle
-export stale or missing.
+Resource reads, activation, and deployment reconcile each tenant's local
+catalog from durable storage. An acceptance test covers create/update/delete,
+activation, and deployment across independently created app instances.
 
-- [ ] Add read-through or invalidation/notification semantics while preserving
-  tenant isolation and write consistency.
-- [ ] Cover cross-replica create/update/delete, activation, and deployment.
-
-## BF13 — Durable external-agent records
-
-External A2A records are always process-local: a restart loses registrations and
-replicas can have different endpoints and health state.
-
-- [ ] Add a tenant-scoped durable repository and migration, persisting only
-  credential references.
-- [ ] Cover restart, replica, health refresh, deletion, and tenant isolation.
-
-## BI8 — Documentation link validation
-
-The current contract tests validate routes and YAML examples but do not catch a
-renamed guide, ADR, or changelog link.
-
-- [ ] Add Markdown link and anchor validation to CI.
-
-## BI9 — Honest not-found route
-
-The frontend wildcard route still uses `PlaceholderPage` copy that says
-`Planned in P3.1`, which mislabels a typo or stale deep link as a planned
-product route.
-
-- [ ] Replace it with an accessible not-found/recovery page and add a route
-  smoke test.
-
-## Folded findings
-
-- **BI6** is tracked by the packaged Control Plane deployment launcher task.
-- **BI7** is tracked by the rate limiting and quotas task.
-
-## Review history
-
-The 2026-09-04 and 2026-09-05 review resolutions, evidence, and validation
-results remain in `CHANGELOG.md` and git history. New reviews should add only
-unresolved work here and record completed items in the changelog.
+- [ ] Run that acceptance test against PostgreSQL in CI and retain the evidence.

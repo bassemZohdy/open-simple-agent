@@ -109,6 +109,7 @@ class TestCredentialResolution:
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         monkeypatch.setenv("OAUTH_SECRET", "super-secret")
+        monkeypatch.setenv("OSA_OUTBOUND_ALLOWED_HOSTS", "issuer.example.test")
         captured: dict[str, object] = {}
 
         class Response:

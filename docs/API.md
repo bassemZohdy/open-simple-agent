@@ -3,12 +3,12 @@
 This document describes routes implemented on `main`. The Control Plane uses
 in-memory repositories by default and can use PostgreSQL; the runtime keeps
 session state in its configured provider and memory can use PostgreSQL. With a
-Control Plane DSN, agents, resources, deployment records, and audit events are
-shared through PostgreSQL, but resource catalog caches are materialized only at
-startup, external-agent records remain process-local, and local provider
-processes remain process-local. The corresponding durability and safety work is
-tracked in `TODO.md` (BF13–BF19). Neither application currently provides rate
-limiting. Both use the stable OSA error envelope `{"error": {"code", "message"}}`
+Control Plane DSN, agents, resources, deployment records, audit events, and
+external-agent records are shared through PostgreSQL; route and deployment
+reads reconcile local resource catalogs. Local provider processes remain
+process-local and cross-replica PostgreSQL acceptance is still gated in
+`TODO.md` (BF17/BF19). Neither application currently provides rate limiting.
+Both use the stable OSA error envelope `{"error": {"code", "message"}}`
 and share the optional JWT Bearer authentication boundary described below.
 
 ## Control Plane API
@@ -234,9 +234,8 @@ All reads and writes are restricted to the caller's tenant (or the shared scope
 when authentication is disabled). Equal names in different tenants are
 independent resources. Writes are validated against the domain schema (422 on
 violation) and persisted write-through to the `ResourceDefinitionRepository`,
-so resource records survive restarts. The process-local catalogs used by route
-validation and bundle export are currently materialized only at startup, so
-replica cache coherence remains pending. Secret values never appear:
+so resource records survive restarts. Route validation and bundle export
+reconcile their process-local catalogs from durable records. Secret values never appear:
 `credential_ref` exposes only non-secret coordinates (`source`, `key`,
 `env_var`) and is redacted defensively in every response.
 
@@ -268,9 +267,8 @@ Every transition persists intent and observed state through the
 `DeploymentRecordRepository` (in-memory by default, PostgreSQL when the
 Control Plane is configured with a database). This record durability does not
 make the local subprocess provider restart- or replica-safe; provider
-shutdown/reconciliation, service-level retry idempotency, and rollback
-consistency remain open as BF15–BF17. The Kubernetes provider and multi-host
-scheduling also remain open (see `TODO.md`).
+reconciliation and multi-replica ownership remain open as BF17. The Kubernetes
+provider and multi-host scheduling also remain open (see `TODO.md`).
 
 ### A2A and external agents (P2.1)
 
@@ -287,8 +285,8 @@ with the `osa-adk-runtime[a2a]` extra), the runtime API serves:
   session per conversation.
 
 External agents are A2A servers outside OSA, tracked as records distinct
-from managed agents (they are never deployed). The current registry is
-process-local even when the Control Plane uses PostgreSQL. Registration may include a
+from managed agents (they are never deployed). The PostgreSQL-backed registry
+is durable; the default in-memory registry is process-local. Registration may include a
 redacted credential reference, for example:
 
 ```json
@@ -322,8 +320,9 @@ agents are never deployed by OSA. A2A JSON-RPC uses the same shared
 bearer/OIDC enforcement as the runtime invoke route, and protected Agent
 Cards advertise the required `osa_oidc` scheme. Outbound remote-agent calls can
 attach the configured API-key, OAuth2, or mTLS credential. Application-level
-SSRF, private-address, DNS-rebinding, and redirect policy is not yet enforced;
-restrict egress at the deployment boundary until BF18 in `TODO.md` is complete.
+URL/DNS/private-address and redirect policy is enforced for outbound A2A, MCP,
+and OAuth requests; restrict egress at the deployment boundary as defense in
+depth.
 
 ## Runtime API
 

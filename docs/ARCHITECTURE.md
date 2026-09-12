@@ -219,13 +219,14 @@ and `ResourceDefinitionRepository` contracts (ADR-004): by default in-memory
 (`create_control_plane_app()`). PG writes are transactional; agent names and
 `(agent_id, version)` are unique constraints; updates compare-and-set on
 `current_version`; transitions lock the row and validate the move. Persisted
-resource definitions materialize into the catalogs at startup. Schema is
+resource definitions initially materialize into the catalogs at startup and
+are refreshed on route, activation, and deployment reads. Schema is
 managed by Alembic (`osa-cp-migrate`, explicit ops step — the app verifies
 connectivity and never migrates, avoiding multi-replica races). Records and
 version history survive restarts, and agent records/version history share state
-across replicas. Resource records are durable, but the process-local catalogs
-used for resource reads and validation are currently materialized only at
-startup; replica cache coherence remains open in `TODO.md`.
+across replicas. Resource records are durable, and route/activation/deployment
+reads reconcile the process-local catalogs from them; live PostgreSQL
+cross-replica acceptance remains open in `TODO.md`.
 
 Routes enforce create/transition validation, cumulative list filters with
 pagination/sorting, immutable version snapshots, optimistic concurrency, and
@@ -326,8 +327,8 @@ to an OSA session. The Control Plane tracks **external** A2A agents as
 records distinct from managed agents: registration fetches and validates the
 remote Agent Card, refresh re-checks health, and invocation goes through the
 A2A client with bounded timeouts and `a2a_remote_failed` error mapping. The
-registry is currently process-local even when Control Plane records use
-PostgreSQL; durable registry state remains a pending follow-up.
+registry is durable when the PostgreSQL repository is configured; the
+in-memory default remains process-local.
 External records are structurally barred from deployment. Inbound A2A uses the
 same authentication and route-permission middleware as `/v1/invoke`, including
 subject/tenant propagation. Outbound remote-agent credentials use the shared

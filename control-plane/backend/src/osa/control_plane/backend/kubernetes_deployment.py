@@ -87,6 +87,7 @@ class KubernetesDeploymentProvider(DeploymentProvider):
             agent_id=spec.agent_id,
             status=DeploymentStatus.STARTING,
             label=spec.label,
+            port=spec.port or _RUNTIME_PORT,
         )
         self._deployments[deployment_id] = deployment
         name = self._resource_name(deployment_id)

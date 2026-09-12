@@ -18,6 +18,7 @@ from osa.generic_agent.credentials import (
     resolve_outbound_credential,
 )
 from osa.generic_agent.errors import OsaError
+from osa.generic_agent.outbound import OutboundUrlError, outbound_trust_env, validate_outbound_url
 
 if TYPE_CHECKING:
     from osa.generic_agent.config import OutboundCredential, SecretReference
@@ -77,12 +78,15 @@ async def resolve_agent_card(
 
     client: httpx.AsyncClient | None = None
     try:
+        url = validate_outbound_url(url, purpose="A2A agent URL")
         material = await _resolve_http_credentials(credential, credential_ref, secret_resolver)
         client = httpx.AsyncClient(
             timeout=timeout_seconds,
             headers=material.headers,
             verify=material.verify if material.verify is not None else True,
             cert=material.cert,
+            follow_redirects=False,
+            trust_env=outbound_trust_env(),
         )
         resolver = A2ACardResolver(httpx_client=client, base_url=url.rstrip("/"))
         card = await resolver.get_agent_card()
@@ -130,15 +134,21 @@ async def invoke_remote_agent(
 
     base_url = url.rstrip("/")
     try:
+        base_url = validate_outbound_url(base_url, purpose="A2A agent URL").rstrip("/")
         material = await _resolve_http_credentials(credential, credential_ref, secret_resolver)
         async with httpx.AsyncClient(
             timeout=timeout_seconds,
             headers=material.headers,
             verify=material.verify if material.verify is not None else True,
             cert=material.cert,
+            follow_redirects=False,
+            trust_env=outbound_trust_env(),
         ) as http:
             resolver = A2ACardResolver(httpx_client=http, base_url=base_url)
             card = await resolver.get_agent_card()
+            card_url = getattr(card, "url", None)
+            if isinstance(card_url, str):
+                validate_outbound_url(card_url, purpose="A2A Agent Card endpoint")
             config = ClientConfig(httpx_client=http, streaming=False)
             client = ClientFactory(config).create(card)
             request = SendMessageRequest(
@@ -174,6 +184,8 @@ async def invoke_remote_agent(
             return "\n".join(output_parts)
     except RemoteA2aError:
         raise
+    except OutboundUrlError as exc:
+        raise RemoteA2aError(url, str(exc), cause=exc) from exc
     except TimeoutError as exc:
         raise RemoteA2aError(url, "invocation timed out", cause=exc) from exc
     except Exception as exc:

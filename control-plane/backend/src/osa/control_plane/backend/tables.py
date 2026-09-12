@@ -11,6 +11,7 @@ from sqlalchemy import (
     Column,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     MetaData,
     Table,
@@ -46,7 +47,13 @@ agents_table = Table(
     Column("labels", JSON, nullable=False),
     Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
     Column("updated_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
-    UniqueConstraint("name", name="uq_osa_agents_name"),
+)
+
+Index(
+    "uq_osa_agents_tenant_name",
+    func.coalesce(agents_table.c.tenant_id, ""),
+    agents_table.c.name,
+    unique=True,
 )
 
 agent_versions_table = Table(
@@ -100,4 +107,21 @@ audit_events_table = Table(
     Column("target", Text, nullable=False),
     Column("occurred_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
     Column("detail", JSON, nullable=False),
+)
+
+external_agents_table = Table(
+    "osa_external_agents",
+    METADATA,
+    Column("external_id", Text, primary_key=True),
+    Column("tenant_id", Text, nullable=False, server_default=""),
+    Column("name", Text, nullable=False),
+    Column("url", Text, nullable=False),
+    Column("card", JSON, nullable=False),
+    Column("status", Text, nullable=False),
+    Column("detail", Text, nullable=False, server_default=""),
+    Column("last_checked_at", DateTime(timezone=True), nullable=True),
+    Column("credential", JSON, nullable=True),
+    Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    Column("updated_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    UniqueConstraint("tenant_id", "name", name="uq_osa_external_agents_tenant_name"),
 )

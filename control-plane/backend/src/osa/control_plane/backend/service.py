@@ -111,6 +111,11 @@ def create_control_plane_app(
         try:
             yield
         finally:
+            deployment_service = getattr(fastapi_app.state, "deployment_service", None)
+            provider = getattr(deployment_service, "_provider", None)
+            shutdown = getattr(provider, "shutdown", None)
+            if shutdown is not None:
+                await shutdown()
             await agents.close()
             await resources.close()
             if engine is not None:
@@ -127,6 +132,10 @@ def create_control_plane_app(
         observability=observability,
         audit_repository=audit_repository,
     )
+    if dsn:
+        from osa.control_plane.backend.external_agents import PostgresExternalAgentRepository
+
+        configured.state.external_agent_repository = PostgresExternalAgentRepository(engine)
     if deployment_records is not None:
         from osa.control_plane.backend.deployment import LocalDeploymentProvider
         from osa.control_plane.backend.deployment_service import DeploymentService
@@ -136,5 +145,6 @@ def create_control_plane_app(
             record_repository=deployment_records,
             agent_repository=agents,
             resource_catalogs=resource_catalogs,
+            resource_repository=resources,
         )
     return configured

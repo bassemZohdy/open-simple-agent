@@ -238,6 +238,34 @@ async def _referencing_agents(
     return referencing
 
 
+async def _refresh_catalog(
+    binding: _KindBinding,
+    catalogs: ResourceCatalogs,
+    repository: ResourceDefinitionRepository,
+    tenant_id: str | None,
+) -> None:
+    """Reconcile one process-local catalog from durable storage."""
+    persisted = await repository.list(binding.kind, tenant_id=tenant_id)
+    present = set(persisted)
+    for definition in binding.list(catalogs):
+        name = binding.get_name(definition)
+        if name not in present:
+            binding.delete(catalogs, name)
+    for name, spec in persisted.items():
+        binding.register(catalogs, _validate_spec(binding, spec, name))
+
+
+async def reconcile_resource_catalogs(
+    resource_catalogs: ResourceCatalogs,
+    resource_repository: ResourceDefinitionRepository,
+    tenant_id: str | None,
+) -> None:
+    """Reconcile every resource kind for one tenant from durable storage."""
+    catalogs = resource_catalogs.for_tenant(tenant_id)
+    for binding in _KIND_BINDINGS.values():
+        await _refresh_catalog(binding, catalogs, resource_repository, tenant_id)
+
+
 def configure_resource_routes(
     app: FastAPI,
     *,
@@ -265,18 +293,25 @@ def configure_resource_routes(
         envelopes: list[dict[str, Any]] = []
         tenant_id = request_tenant(http_request)
         catalogs = scoped_catalogs(http_request)
+        seen: set[tuple[str, str]] = set()
+        updates: list[tuple[str, str, dict[str, Any]]] = []
         for index, document in enumerate(request.resources):
             try:
                 kind, definition = parse_resource_document(document, origin=f"resources[{index}]")
             except InvalidBundleError as exc:
                 raise HTTPException(status_code=422, detail=str(exc)) from exc
             binding = _binding(kind)
-            binding.register(catalogs, definition)
             serialized = _serialize(definition)
             name = binding.get_name(definition)
-            await resource_repository.upsert(kind, name, serialized, tenant_id=tenant_id)
+            if (kind, name) in seen:
+                raise HTTPException(status_code=422, detail=f"duplicate resource in import: {kind}/{name}")
+            seen.add((kind, name))
+            updates.append((kind, name, serialized))
             imported.setdefault(kind, []).append(name)
             envelopes.append({"apiVersion": API_VERSION, "kind": kind, "spec": serialized})
+        await resource_repository.upsert_many(updates, tenant_id=tenant_id)
+        for kind in imported:
+            await _refresh_catalog(_binding(kind), catalogs, resource_repository, tenant_id)
         await record_audit_event(
             http_request,
             action="resource.import",
@@ -290,6 +325,7 @@ def configure_resource_routes(
         """Export every resource as bundle-compatible envelopes."""
         envelopes: list[dict[str, Any]] = []
         catalogs = scoped_catalogs(http_request)
+        await reconcile_resource_catalogs(resource_catalogs, resource_repository, request_tenant(http_request))
         for binding in _KIND_BINDINGS.values():
             for definition in sorted(binding.list(catalogs), key=lambda d: d.name):
                 envelopes.append(_envelope(binding.kind, definition))
@@ -303,6 +339,9 @@ def configure_resource_routes(
     ) -> ResourceListResponse:
         """List resources of one kind (optionally filtered by name substring)."""
         binding = _binding(kind)
+        await _refresh_catalog(
+            binding, scoped_catalogs(http_request), resource_repository, request_tenant(http_request)
+        )
         definitions = binding.list(scoped_catalogs(http_request))
         if q is not None:
             needle = q.lower()
@@ -321,12 +360,13 @@ def configure_resource_routes(
         name = _spec_name(binding.kind, request.spec)
         catalogs = scoped_catalogs(http_request)
         tenant_id = request_tenant(http_request)
+        await _refresh_catalog(binding, catalogs, resource_repository, tenant_id)
         if binding.has(catalogs, name):
             raise HTTPException(status_code=409, detail=f"{binding.kind} '{name}' already exists")
         definition = _validate_spec(binding, request.spec, name)
-        binding.register(catalogs, definition)
         serialized = _serialize(definition)
         await resource_repository.upsert(kind, name, serialized, tenant_id=tenant_id)
+        binding.register(catalogs, definition)
         await record_audit_event(http_request, action="resource.create", target=f"{binding.kind}/{name}")
         return {"apiVersion": API_VERSION, "kind": kind, "spec": serialized}
 
@@ -335,6 +375,7 @@ def configure_resource_routes(
         """Get one resource."""
         binding = _binding(kind)
         catalogs = scoped_catalogs(http_request)
+        await _refresh_catalog(binding, catalogs, resource_repository, request_tenant(http_request))
         if not binding.has(catalogs, name):
             raise HTTPException(status_code=404, detail=f"{binding.kind} not found: {name}")
         return _envelope(kind, binding.get(catalogs, name))
@@ -347,6 +388,7 @@ def configure_resource_routes(
         binding = _binding(kind)
         catalogs = scoped_catalogs(http_request)
         tenant_id = request_tenant(http_request)
+        await _refresh_catalog(binding, catalogs, resource_repository, tenant_id)
         if not binding.has(catalogs, name):
             raise HTTPException(status_code=404, detail=f"{binding.kind} not found: {name}")
         spec_name = _spec_name(binding.kind, request.spec)
@@ -356,9 +398,9 @@ def configure_resource_routes(
                 detail=f"spec.name '{spec_name}' does not match resource name '{name}'",
             )
         definition = _validate_spec(binding, request.spec, name)
-        binding.register(catalogs, definition)
         serialized = _serialize(definition)
         await resource_repository.upsert(kind, name, serialized, tenant_id=tenant_id)
+        binding.register(catalogs, definition)
         await record_audit_event(http_request, action="resource.replace", target=f"{binding.kind}/{name}")
         return {"apiVersion": API_VERSION, "kind": kind, "spec": serialized}
 
@@ -368,6 +410,7 @@ def configure_resource_routes(
         binding = _binding(kind)
         catalogs = scoped_catalogs(http_request)
         tenant_id = request_tenant(http_request)
+        await _refresh_catalog(binding, catalogs, resource_repository, tenant_id)
         if not binding.has(catalogs, name):
             raise HTTPException(status_code=404, detail=f"{binding.kind} not found: {name}")
         referencing = await _referencing_agents(agent_repository, binding, name, tenant_id)
@@ -380,9 +423,9 @@ def configure_resource_routes(
                     + "; update or delete those agents first"
                 ),
             )
+        await resource_repository.delete(kind, name, tenant_id=tenant_id)
         if not binding.delete(catalogs, name):
             raise HTTPException(status_code=404, detail=f"{binding.kind} not found: {name}")
-        await resource_repository.delete(kind, name, tenant_id=tenant_id)
         await record_audit_event(http_request, action="resource.delete", target=f"{binding.kind}/{name}")
 
     @app.get("/templates", response_model=list[TemplateResponse])

@@ -126,7 +126,7 @@ class AgentCatalog:
 
     def create(self, record: AgentRecord) -> AgentRecord:
         """Create a new agent record."""
-        if record.name in {r.name for r in self._records.values()}:
+        if any(r.name == record.name and r.tenant_id == record.tenant_id for r in self._records.values()):
             raise DuplicateAgentError(record.name)
         self._records[record.agent_id] = record
         return record
@@ -135,10 +135,10 @@ class AgentCatalog:
         """Get an agent record by ID."""
         return self._records.get(agent_id)
 
-    def get_by_name(self, name: str) -> AgentRecord | None:
+    def get_by_name(self, name: str, tenant_id: str | None = None) -> AgentRecord | None:
         """Get an agent record by name."""
         for record in self._records.values():
-            if record.name == name:
+            if record.name == name and record.tenant_id == tenant_id:
                 return record
         return None
 

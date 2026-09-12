@@ -13,11 +13,17 @@ No ADK internals are imported: the runtime is an external process.
 
 from __future__ import annotations
 
+import asyncio
+import hashlib
+import os
 import shlex
+import shutil
 import socket
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
+from uuid import uuid4
 
 import yaml
 
@@ -37,6 +43,7 @@ from osa.control_plane.backend.resource_catalogs import (  # noqa: TC001 - ctor 
 from osa.generic_agent import bounded_text
 
 if TYPE_CHECKING:
+    from osa.control_plane.backend.repositories import ResourceDefinitionRepository
     from osa.generic_agent import AgentDefinition
 
 API_VERSION = "osa/v1alpha1"
@@ -126,52 +133,78 @@ class DeploymentService:
         record_repository: DeploymentRecordRepository,
         agent_repository: AgentRepository,
         resource_catalogs: ResourceCatalogs,
+        resource_repository: ResourceDefinitionRepository | None = None,
     ) -> None:
         self._provider = provider
         self._records = record_repository
         self._agents = agent_repository
         self._catalogs = resource_catalogs
+        self._resource_repository = resource_repository
+        self._agent_locks: dict[str, Any] = {}
+
+    def _agent_lock(self, agent_id: str) -> Any:
+        lock = self._agent_locks.get(agent_id)
+        if lock is None:
+            lock = asyncio.Lock()
+            self._agent_locks[agent_id] = lock
+        return lock
 
     async def deploy(self, agent_id: str) -> DeploymentRecord:
         """Export the agent's current definition and launch a runtime."""
-        record = await self._agents.get(agent_id)
-        if record is None:
-            raise KeyError(f"Agent not found: {agent_id}")
-        if record.definition is None:
-            raise DeploymentError(f"Agent '{record.name}' has no definition to deploy")
-        if record.status is not AgentRecordStatus.ACTIVE:
-            raise DeploymentError(
-                f"Agent '{record.name}' must be active before deployment (status: {record.status.value})"
-            )
-        if getattr(record, "agent_type", "managed") == "external":
-            raise DeploymentError(
-                f"Agent '{record.name}' is an external A2A agent; external agents are never deployed by OSA"
-            )
+        async with self._agent_lock(agent_id):
+            record = await self._agents.get(agent_id)
+            if record is None:
+                raise KeyError(f"Agent not found: {agent_id}")
+            if record.definition is None:
+                raise DeploymentError(f"Agent '{record.name}' has no definition to deploy")
+            if record.status is not AgentRecordStatus.ACTIVE:
+                raise DeploymentError(
+                    f"Agent '{record.name}' must be active before deployment (status: {record.status.value})"
+                )
+            if getattr(record, "agent_type", "managed") == "external":
+                raise DeploymentError(
+                    f"Agent '{record.name}' is an external A2A agent; external agents are never deployed by OSA"
+                )
 
-        bundle_path = self._export_bundle(record)
-        port = _free_port()
-        health_url = f"http://127.0.0.1:{port}/health/ready"
-        command = shlex.split(command_template().format(bundle_path=bundle_path, port=port))
-        spec = DeploymentSpec(
-            agent_id=agent_id,
-            command=command,
-            env=_runtime_env(),
-            health_check_url=health_url,
-            label=record.current_version,
-        )
-        deployment = await self._provider.deploy(spec)
-        record_row = DeploymentRecord(
-            deployment_id=deployment.deployment_id,
-            agent_id=agent_id,
-            tenant_id=record.tenant_id,
-            agent_name=record.name,
-            version=record.current_version,
-            status=deployment.status.value,
-            detail=deployment.error or "",
-            invoke_url=public_invoke_url(deployment.deployment_id, agent_id, record.current_version, port),
-        )
-        await self._records.upsert(record_row)
-        return record_row
+            desired_identity = f"{agent_id}:{record.current_version}"
+            for existing in await self._records.list_for_agent(agent_id):
+                if existing.version != record.current_version or existing.status != "running":
+                    continue
+                try:
+                    observed = await self._provider.status(existing.deployment_id)
+                except KeyError:
+                    continue
+                if observed.status.value == "running":
+                    return existing
+
+            await self._reconcile_resources(record.tenant_id)
+            bundle_path = self._export_bundle(record)
+            port = _free_port()
+            health_url = f"http://127.0.0.1:{port}/health/ready"
+            command = shlex.split(command_template().format(bundle_path=bundle_path, port=port))
+            spec = DeploymentSpec(
+                agent_id=agent_id,
+                command=command,
+                env=_runtime_env(),
+                health_check_url=health_url,
+                label=record.current_version,
+                identity=desired_identity,
+                port=port,
+            )
+            deployment = await self._provider.deploy(spec)
+            actual_port = deployment.port or port
+            record_row = DeploymentRecord(
+                deployment_id=deployment.deployment_id,
+                agent_id=agent_id,
+                tenant_id=record.tenant_id,
+                agent_name=record.name,
+                version=record.current_version,
+                status=deployment.status.value,
+                detail=deployment.error or "",
+                invoke_url=public_invoke_url(deployment.deployment_id, agent_id, record.current_version, actual_port),
+            )
+            await self._records.upsert(record_row)
+            return record_row
 
     async def status(self, deployment_id: str) -> DeploymentRecord:
         observed = await self._provider.status(deployment_id)
@@ -205,33 +238,61 @@ class DeploymentService:
         stored = await self._records.get(deployment_id)
         if stored is None:
             raise KeyError(f"Deployment not found: {deployment_id}")
-        agent = await self._agents.get(stored.agent_id)
-        if agent is None:
-            raise DeploymentError(f"Agent '{stored.agent_id}' no longer exists")
-        target = to_version
-        if target is None:
-            previous = [v for v in agent.versions if v.version != agent.current_version]
-            if not previous:
-                raise DeploymentError(f"Agent '{agent.name}' has no earlier version to roll back to")
-            target = previous[-1].version
-        snapshot = next((v for v in agent.versions if v.version == target), None)
-        if snapshot is None or snapshot.definition is None:
-            raise DeploymentError(f"Version '{target}' has no definition snapshot")
+        async with self._agent_lock(stored.agent_id):
+            stored = await self._records.get(deployment_id)
+            if stored is None:
+                raise KeyError(f"Deployment not found: {deployment_id}")
+            agent = await self._agents.get(stored.agent_id)
+            if agent is None:
+                raise DeploymentError(f"Agent '{stored.agent_id}' no longer exists")
+            target = to_version
+            if target is None:
+                previous = [v for v in agent.versions if v.version != agent.current_version]
+                if not previous:
+                    raise DeploymentError(f"Agent '{agent.name}' has no earlier version to roll back to")
+                target = previous[-1].version
+            snapshot = next((v for v in agent.versions if v.version == target), None)
+            if snapshot is None or snapshot.definition is None:
+                raise DeploymentError(f"Version '{target}' has no definition snapshot")
+            try:
+                stopped = await self._provider.stop(deployment_id)
+            except KeyError:
+                raise
+            except Exception as exc:
+                raise DeploymentError("Unable to stop the existing deployment for rollback") from exc
+            stored.status = stopped.status.value
+            stored.detail = stopped.error or ""
+            await self._records.upsert(stored)
 
-        bundle_path = self._export_bundle(agent, override_definition=snapshot.definition)
-        port = _free_port()
-        spec = DeploymentSpec(
-            agent_id=stored.agent_id,
-            command=shlex.split(command_template().format(bundle_path=bundle_path, port=port)),
-            health_check_url=f"http://127.0.0.1:{port}/health/ready",
-            label=target,
-        )
-        deployment = await self._provider.deploy(spec)
-        stored.version = target
-        stored.status = deployment.status.value
-        stored.detail = deployment.error or ""
-        await self._records.upsert(stored)
-        return stored
+            await self._reconcile_resources(agent.tenant_id)
+            bundle_path = self._export_bundle(agent, override_definition=snapshot.definition, version=target)
+            port = _free_port()
+            spec = DeploymentSpec(
+                agent_id=stored.agent_id,
+                command=shlex.split(command_template().format(bundle_path=bundle_path, port=port)),
+                env=_runtime_env(),
+                health_check_url=f"http://127.0.0.1:{port}/health/ready",
+                label=target,
+                identity=f"{stored.agent_id}:{target}",
+                port=port,
+            )
+            try:
+                deployment = await self._provider.deploy(spec)
+            except Exception as exc:
+                raise DeploymentError(f"Rollback to version '{target}' failed to start") from exc
+            actual_port = deployment.port or port
+            replacement = DeploymentRecord(
+                deployment_id=deployment.deployment_id,
+                agent_id=stored.agent_id,
+                tenant_id=agent.tenant_id,
+                agent_name=agent.name,
+                version=target,
+                status=deployment.status.value,
+                detail=deployment.error or "",
+                invoke_url=public_invoke_url(deployment.deployment_id, stored.agent_id, target, actual_port),
+            )
+            await self._records.upsert(replacement)
+            return replacement
 
     async def logs(self, deployment_id: str, tail: int = 200) -> list[str]:
         if await self._records.get(deployment_id) is None:
@@ -245,62 +306,106 @@ class DeploymentService:
     async def list_for_agent(self, agent_id: str) -> list[DeploymentRecord]:
         return await self._records.list_for_agent(agent_id)
 
+    async def _reconcile_resources(self, tenant_id: str | None) -> None:
+        if self._resource_repository is None:
+            return
+        from osa.control_plane.backend.resources_api import reconcile_resource_catalogs
+
+        await reconcile_resource_catalogs(self._catalogs, self._resource_repository, tenant_id)
+
     # -- bundle export --
 
-    def _export_bundle(self, record: AgentRecord, *, override_definition: AgentDefinition | None = None) -> str:
+    def _export_bundle(
+        self,
+        record: AgentRecord,
+        *,
+        override_definition: AgentDefinition | None = None,
+        version: str | None = None,
+    ) -> str:
         """Write the agent plus referenced resources as a bundle directory."""
         from osa.generic_agent import McpDefinition, MemoryPolicy, ModelDefinition, SkillDefinition, ToolDefinition
 
         definition = override_definition if override_definition is not None else record.definition
         assert definition is not None
         catalogs = self._catalogs.for_tenant(record.tenant_id)
-        root = deploy_root() / f"{record.name}-{record.current_version or 'draft'}"
-        root.mkdir(parents=True, exist_ok=True)
-        (root / "agent.yaml").write_text(
-            yaml.safe_dump(definition.model_dump(mode="json", by_alias=True), sort_keys=False),
-            encoding="utf-8",
-        )
+        deployment_root = deploy_root().resolve()
+        deployment_root.mkdir(parents=True, exist_ok=True)
+        bundle_id = uuid4().hex
+        staging = Path(tempfile.mkdtemp(prefix=f".{bundle_id}.", dir=deployment_root))
+        final = deployment_root / bundle_id
 
-        spec = definition.spec
-        exporters: list[tuple[str, Any, str]] = [
-            ("Model", ModelDefinition, "models"),
-            ("Tool", ToolDefinition, "tools"),
-            ("Skill", SkillDefinition, "skills"),
-            ("Mcp", McpDefinition, "mcps"),
-            ("MemoryPolicy", MemoryPolicy, "memory-policies"),
-        ]
-        wanted: dict[str, set[str]] = {
-            "Model": {spec.model.ref} if spec.model is not None else set(),
-            "Tool": {ref.ref for ref in spec.tools},
-            "Skill": {ref.ref for ref in spec.skills},
-            "Mcp": {ref.ref for ref in spec.mcps},
-            "MemoryPolicy": {spec.memory.policy} if spec.memory.enabled and spec.memory.policy else set(),
-        }
-        for kind, _model_cls, directory in exporters:
-            names = wanted[kind]
-            if not names:
-                continue
-            target = root / directory
-            target.mkdir(exist_ok=True)
-            for name in sorted(names):
-                if not self._catalogs_has(catalogs, kind, name):
-                    raise DeploymentError(
-                        f"Agent '{record.name}' references {kind.lower()} '{name}' "
-                        "which is not present in the resource catalogs"
+        def contained(path: Path) -> Path:
+            resolved = path.resolve()
+            try:
+                resolved.relative_to(deployment_root)
+            except ValueError as exc:
+                raise DeploymentError("deployment bundle path escaped OSA_DEPLOY_ROOT") from exc
+            return resolved
+
+        root = contained(staging)
+        try:
+            (root / "agent.yaml").write_text(
+                yaml.safe_dump(definition.model_dump(mode="json", by_alias=True), sort_keys=False),
+                encoding="utf-8",
+            )
+            (root / "bundle.yaml").write_text(
+                yaml.safe_dump(
+                    {
+                        "apiVersion": API_VERSION,
+                        "kind": "AgentBundle",
+                        "metadata": {"name": record.name, "version": version or record.current_version or "draft"},
+                    },
+                    sort_keys=False,
+                ),
+                encoding="utf-8",
+            )
+
+            spec = definition.spec
+            exporters: list[tuple[str, Any, str]] = [
+                ("Model", ModelDefinition, "models"),
+                ("Tool", ToolDefinition, "tools"),
+                ("Skill", SkillDefinition, "skills"),
+                ("Mcp", McpDefinition, "mcps"),
+                ("MemoryPolicy", MemoryPolicy, "memory-policies"),
+            ]
+            wanted: dict[str, set[str]] = {
+                "Model": {spec.model.ref} if spec.model is not None else set(),
+                "Tool": {ref.ref for ref in spec.tools},
+                "Skill": {ref.ref for ref in spec.skills},
+                "Mcp": {ref.ref for ref in spec.mcps},
+                "MemoryPolicy": {spec.memory.policy} if spec.memory.enabled and spec.memory.policy else set(),
+            }
+            for kind, _model_cls, directory in exporters:
+                names = wanted[kind]
+                if not names:
+                    continue
+                target = contained(root / directory)
+                target.mkdir(exist_ok=True)
+                for name in sorted(names):
+                    if not self._catalogs_has(catalogs, kind, name):
+                        raise DeploymentError(
+                            f"Agent '{record.name}' references {kind.lower()} '{name}' "
+                            "which is not present in the resource catalogs"
+                        )
+                    definition_obj = self._catalogs_get(catalogs, kind, name)
+                    filename = f"{hashlib.sha256(name.encode('utf-8')).hexdigest()}.yaml"
+                    contained(target / filename).write_text(
+                        yaml.safe_dump(
+                            {
+                                "apiVersion": API_VERSION,
+                                "kind": kind,
+                                "spec": definition_obj.model_dump(mode="json", by_alias=True),
+                            },
+                            sort_keys=False,
+                        ),
+                        encoding="utf-8",
                     )
-                definition_obj = self._catalogs_get(catalogs, kind, name)
-                (target / f"{name}.yaml").write_text(
-                    yaml.safe_dump(
-                        {
-                            "apiVersion": API_VERSION,
-                            "kind": kind,
-                            "spec": definition_obj.model_dump(mode="json", by_alias=True),
-                        },
-                        sort_keys=False,
-                    ),
-                    encoding="utf-8",
-                )
-        return str(root)
+            contained(final)
+            os.replace(root, final)
+        except Exception:
+            shutil.rmtree(staging, ignore_errors=True)
+            raise
+        return str(final)
 
     def _catalogs_has(self, catalogs: ResourceCatalogs, kind: str, name: str) -> bool:
         checks = {

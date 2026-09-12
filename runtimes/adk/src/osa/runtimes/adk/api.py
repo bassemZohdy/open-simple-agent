@@ -14,6 +14,7 @@ Error responses use the stable OSA schema ``{"error": {"code", "message"}}``.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import os
@@ -371,7 +372,7 @@ def configure_runtime_app(
         request: Request, call_next: Callable[[Request], Awaitable[Response]]
     ) -> Response:
         """Audit runtime/A2A boundary outcomes without capturing payloads."""
-        tracked = request.url.path in {"/v1/invoke", "/a2a"}
+        tracked = request.url.path in {"/v1/invoke", "/v1/invoke/stream", "/a2a"}
         try:
             response = await call_next(request)
         except Exception as exc:
@@ -566,23 +567,48 @@ def configure_runtime_app(
         observation: Observability = http_request.app.state.observability
 
         async def event_source() -> AsyncIterator[bytes]:
-            async with observation.span(
-                "invocation.stream",
-                labels={"agent": _agent.metadata.name},
-                attributes={
-                    "osa.agent": _agent.metadata.name,
-                    "osa.invocation_id": str(agent_request.invocation_id),
-                },
-            ):
-                async for event in _agent.stream_invoke(agent_request):
-                    payload = json.dumps(event.to_payload())
-                    yield f"event: {event.type}\ndata: {payload}\n\n".encode()
+            terminal_type: str | None = None
+            try:
+                async with observation.span(
+                    "invocation.stream",
+                    labels={"agent": _agent.metadata.name},
+                    attributes={
+                        "osa.agent": _agent.metadata.name,
+                        "osa.invocation_id": str(agent_request.invocation_id),
+                    },
+                ):
+                    async for event in _agent.stream_invoke(agent_request):
+                        if event.type in {"osa.message", "osa.error"}:
+                            terminal_type = event.type
+                        payload = json.dumps(event.to_payload())
+                        yield f"event: {event.type}\ndata: {payload}\n\n".encode()
+            except asyncio.CancelledError:
+                await _record_runtime_audit(
+                    http_request,
+                    action="runtime.invoke.stream",
+                    target=_agent.metadata.name,
+                    decision="failed",
+                    status_code=499,
+                    error_code="client_disconnected",
+                )
+                raise
+            except Exception as exc:
+                await _record_runtime_audit(
+                    http_request,
+                    action="runtime.invoke.stream",
+                    target=_agent.metadata.name,
+                    decision="failed",
+                    status_code=500,
+                    error_code=getattr(exc, "code", "internal_error"),
+                )
+                raise
             await _record_runtime_audit(
                 http_request,
                 action="runtime.invoke.stream",
                 target=_agent.metadata.name,
-                decision="succeeded",
-                status_code=200,
+                decision="failed" if terminal_type != "osa.message" else "succeeded",
+                status_code=502 if terminal_type == "osa.error" else (200 if terminal_type else 500),
+                error_code="stream_missing_terminal_event" if terminal_type is None else None,
             )
 
         return StreamingResponse(

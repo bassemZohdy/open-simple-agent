@@ -71,6 +71,13 @@ class TestAgentCatalog:
         with pytest.raises(DuplicateAgentError, match="already exists"):
             catalog.create(_make_record("support"))
 
+    def test_same_name_is_allowed_in_different_tenants(self) -> None:
+        catalog = AgentCatalog()
+        catalog.create(_make_record("support", tenant_id="tenant-a"))
+        catalog.create(_make_record("support", tenant_id="tenant-b"))
+        assert catalog.get_by_name("support", "tenant-a") is not None
+        assert catalog.get_by_name("support", "tenant-b") is not None
+
     def test_get_by_name(self) -> None:
         catalog = AgentCatalog()
         record = _make_record("billing")

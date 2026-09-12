@@ -53,10 +53,10 @@ OSA_CONTROL_PLANE_DATABASE_URL=... uv run osa-cp-migrate
   immutable version snapshot of the agent definition — use it to revert a
   bad agent-definition rollout independently of image rollouts.
 
-The local provider's retry identity, rollback stop/relaunch/persist ordering,
-and Control Plane restart reconciliation are still being hardened. Treat
-Control Plane-managed local deployments as a single-process topology until
-BF15–BF17 in `TODO.md` are complete.
+Deployment retry identity, rollback stop/relaunch/persist ordering, and bundle
+publication are hardened. Control Plane restart reconciliation for local
+child processes remains open; treat Control Plane-managed local deployments as
+a single-process topology until BF17 in `TODO.md` is complete.
 
 ## Agent definitions
 

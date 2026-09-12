@@ -324,8 +324,8 @@ MCP definitions and external A2A agent records may use a `credential` object.
 It contains references only; the configured `SecretResolver` resolves values
 when the connection is created. Resolved values are never stored in a
 definition, returned by an API, logged, or included in an error. Outbound
-destinations are not yet protected by an application-level SSRF, redirect, or
-DNS-rebinding policy; see BF18 in `TODO.md` and the security guide.
+destinations use the shared URL/DNS/private-network and redirect policy;
+deployment-level egress restrictions remain required defense in depth.
 
 API keys are sent in a named HTTP header. An optional
 `environment_variable` is useful for stdio MCP servers:

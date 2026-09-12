@@ -12,6 +12,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Fixed — Control Plane safety and state coherence
+- Hardened deployment bundle export with opaque staging paths, containment
+  checks, hashed resource filenames, atomic publication, and cleanup on
+  failure; deployment retries are identity-aware and rollback persists the
+  stop/relaunch sequence consistently.
+- Scoped agent-name uniqueness by tenant, added durable external-agent
+  records, and made resource reads, activation, deployment, import, and export
+  reconcile from durable storage.
+- Added shared outbound URL/DNS/private-network/redirect policy for A2A,
+  Streamable HTTP MCP, and OAuth token requests, with explicit egress defense
+  in depth.
+- Completed local-provider shutdown wiring, LangGraph checkpointer ownership,
+  terminal ADK stream auditing, and an honest Control Panel not-found page.
+
+### Added — Hardening coverage
+- Added focused tests for outbound policy, tenant isolation, external-agent
+  persistence, atomic resource imports, deployment retry/rollback/export
+  behavior, and frontend routing.
+- Added migrations `0008_agent_tenant_name` and `0009_external_agents`.
+
 ### Added — LangChain/LangGraph runtime backend
 - Added the `osa-langgraph-runtime` workspace package with LangChain chat-model
   adapters and a LangGraph `StateGraph` model/tool pipeline.
@@ -32,7 +52,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   resolved review findings remain in this changelog and git history.
 - Aligned the README, project definition, architecture, API reference,
   configuration reference, and operational guides with the current deployment
-  limitations and recommended BF14 next task.
+  limitations and remaining BF17/BF19 acceptance work.
 
 ### Added — P3.1: Managed-agent runtime invocation from Control Panel
 - Runtime CORS support: opt-in `OSA_RUNTIME_ALLOWED_ORIGINS` environment

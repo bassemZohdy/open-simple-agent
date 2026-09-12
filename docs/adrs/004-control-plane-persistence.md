@@ -87,11 +87,11 @@ SQLAlchemy 2.0 async, Alembic.
   the shared abstract interface plus a common contract test suite covers
   this.
 - Operations must run migrations before/with rollouts (explicit policy).
-- Resource definition records are durable, but the catalogs materialized from
-  them are currently process-local startup caches; cache coherence is tracked
-  separately in `TODO.md` (BF19).
-- External A2A agent records are outside this ADR's repository set and remain
-  process-local until the durable external-agent work in `TODO.md` (BF13).
+- Resource definition records are durable, and route/activation/deployment
+  reads reconcile the process-local catalogs from them; live cross-replica
+  PostgreSQL acceptance remains tracked separately in `TODO.md` (BF19).
+- External A2A agent records are durable in the PostgreSQL repository; the
+  in-memory default remains process-local.
 
 ## Validation
 

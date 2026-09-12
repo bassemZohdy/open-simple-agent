@@ -58,6 +58,10 @@ class DeploymentSpec:
     startup_timeout_seconds: float = DEFAULT_HEALTH_TIMEOUT_SECONDS
     #: Label used for idempotency and display (e.g. the agent version).
     label: str = ""
+    #: Stable desired-deployment identity used for retry-safe reconciliation.
+    identity: str = ""
+    #: Port selected by the caller, retained in provider state.
+    port: int | None = None
 
 
 @dataclass
@@ -71,6 +75,7 @@ class Deployment:
     error: str | None = None
     label: str = ""
     health_check_url: str | None = None
+    port: int | None = None
 
 
 def _drain_stream(stream: Any, sink: deque[str], lock: Any) -> None:
@@ -144,8 +149,13 @@ class LocalDeploymentProvider(DeploymentProvider):
         self._locks: dict[str, Any] = {}
         self._threads: dict[str, list[Any]] = {}
         self._stop_markers: set[str] = set()
+        self._deploy_lock = asyncio.Lock()
 
     async def deploy(self, spec: DeploymentSpec) -> Deployment:
+        async with self._deploy_lock:
+            return await self._deploy(spec)
+
+    async def _deploy(self, spec: DeploymentSpec) -> Deployment:
         # Idempotency: re-deploying the same (agent, command) while running
         # returns the existing deployment instead of spawning a twin.
         for deployment in self._deployments.values():
@@ -154,7 +164,10 @@ class LocalDeploymentProvider(DeploymentProvider):
                 deployment.agent_id == spec.agent_id
                 and deployment.status is DeploymentStatus.RUNNING
                 and existing_spec is not None
-                and existing_spec.command == spec.command
+                and (
+                    (spec.identity and existing_spec.identity == spec.identity)
+                    or (not spec.identity and existing_spec.command == spec.command)
+                )
             ):
                 return deployment
 
@@ -164,6 +177,7 @@ class LocalDeploymentProvider(DeploymentProvider):
             status=DeploymentStatus.STARTING,
             label=spec.label,
             health_check_url=spec.health_check_url,
+            port=spec.port,
         )
         self._logs[deployment.deployment_id] = deque(maxlen=self._log_lines)
         self._locks[deployment.deployment_id] = threading.Lock()

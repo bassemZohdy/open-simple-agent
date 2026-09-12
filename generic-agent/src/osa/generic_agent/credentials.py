@@ -11,6 +11,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
+from osa.generic_agent.outbound import OutboundUrlError, outbound_trust_env, validate_outbound_url
 from osa.generic_agent.secret import SecretError
 
 if TYPE_CHECKING:
@@ -157,11 +158,16 @@ async def _request_client_credentials_token(
         form["audience"] = credential.audience
 
     try:
-        async with httpx.AsyncClient(timeout=credential.timeout_seconds) as client:
-            response = await client.post(credential.token_url, data=form)
+        token_url = validate_outbound_url(credential.token_url, purpose="OAuth token URL")
+        async with httpx.AsyncClient(
+            timeout=credential.timeout_seconds,
+            follow_redirects=False,
+            trust_env=outbound_trust_env(),
+        ) as client:
+            response = await client.post(token_url, data=form)
             response.raise_for_status()
             payload = response.json()
-    except (httpx.HTTPError, ValueError, TypeError) as exc:
+    except (httpx.HTTPError, ValueError, TypeError, OutboundUrlError) as exc:
         raise CredentialResolutionError(credential.type, "token endpoint request failed") from exc
 
     if not isinstance(payload, dict):

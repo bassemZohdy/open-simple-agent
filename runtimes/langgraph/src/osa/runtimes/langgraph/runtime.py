@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import inspect
 import logging
 from typing import TYPE_CHECKING, Annotated, Any, TypedDict
 
@@ -69,6 +70,16 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 _DEFAULT_MAX_TOOL_ITERATIONS = 3
+
+
+async def _close_owned_resource(resource: Any) -> None:
+    """Close either async or synchronous resources without double-closing."""
+    closer = getattr(resource, "aclose", None) or getattr(resource, "close", None)
+    if closer is None:
+        return
+    result = closer()
+    if inspect.isawaitable(result):
+        await result
 
 
 class OsaGraphState(TypedDict):
@@ -572,6 +583,9 @@ class OsaLangGraphAgent(AbstractAgent):
 
     async def shutdown(self) -> None:
         """Release backend resources owned by this agent."""
+        # Model instances, adapter registries, and shared OSA dependencies are
+        # caller-owned. The runtime owns only the checkpointer, if supplied.
+        return None
 
 
 def _stream_update(
@@ -634,6 +648,7 @@ class LangGraphRuntime(AgentRuntime):
         )
         self._model_adapters = model_adapters
         self._checkpointer = checkpointer
+        self._checkpointer_closed = False
         self._agents: list[OsaLangGraphAgent] = []
 
     async def create(self, definition: AgentDefinition) -> OsaLangGraphAgent:
@@ -674,6 +689,9 @@ class LangGraphRuntime(AgentRuntime):
         for agent in self._agents:
             await agent.shutdown()
         self._agents.clear()
+        if self._checkpointer is not None and not self._checkpointer_closed:
+            await _close_owned_resource(self._checkpointer)
+            self._checkpointer_closed = True
         logger.info("LangGraph runtime shut down")
 
 
