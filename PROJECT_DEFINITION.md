@@ -186,10 +186,11 @@ registry are implemented. Durable task records can use PostgreSQL, and the
 runtime adds tenant/caller-scoped ownership leases, fencing, durable
 cancellation requests, explicit schema migration, fenced SDK task saves,
 remote-handler cancellation waiting, expired-owner cancellation takeover,
-read-only terminal replay, and fail-closed owner-loss handling; process-boundary
-PostgreSQL acceptance covers task creation, lookup, cancellation, and crash
-recovery, while the SDK active-task registry, multi-process streaming/late-event
-acceptance, and non-idempotent replay remain backlog work. Future work may
+read-only terminal replay, terminal-event drain-before-release, and fail-closed
+owner-loss handling; process-boundary PostgreSQL acceptance covers task
+creation, lookup, cancellation, and crash recovery, while the SDK active-task
+registry and multi-process streaming/late-event acceptance remain backlog work.
+Expired-owner retries never replay unknown model/tool side effects. Future work may
 deepen delegation/consent semantics without turning A2A into a management
 protocol.
 

@@ -109,6 +109,6 @@ health probe; startup failures carry the captured logs in the record detail.
 ## Remaining operational work
 
 - Replica-safe deployment-operation ownership
-- Complete true multi-process A2A active-task replica acceptance, streaming and
-  late-event ordering, and the non-idempotent owner-loss/replay policy (P2.4)
+- Complete true multi-process A2A active-task replica acceptance for streaming
+  and late-event ordering (P2.4)
 - Replica-wide capability telemetry and gateway-level quota policy

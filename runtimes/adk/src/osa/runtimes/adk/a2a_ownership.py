@@ -34,6 +34,7 @@ class TaskOwnership:
     session_id: str | None
     cancel_requested: bool
     state: str
+    reclaimed: bool = False
 
 
 class A2aTaskOwnershipStore:
@@ -141,6 +142,7 @@ class A2aTaskOwnershipStore:
                     None,
                     False,
                     "running",
+                    False,
                 )
 
             if row["scope_key"] != scope_key:
@@ -181,6 +183,7 @@ class A2aTaskOwnershipStore:
                 row["session_id"],
                 cancel_requested,
                 "running",
+                True,
             )
 
     async def heartbeat(self, ownership: TaskOwnership) -> bool:

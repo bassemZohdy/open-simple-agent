@@ -67,11 +67,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   saves carry the acquired fence through the SDK call context and hold the
   ownership-row lock during mutation; expired or superseded workers fail
   closed without publishing synthetic failures.
-- Added focused conflict, expiry, fencing, cancellation, terminal-state, and
-  unmigrated-startup tests. Independent-handler lookup, remote cancellation
-  waiting, expired-owner cancellation takeover, and read-only terminal replay
-  are now covered; multi-process streaming/late-event acceptance and
-  non-idempotent owner-loss replay remain open P2.4 work.
+- Added focused conflict, expiry, fencing, cancellation, terminal-state,
+  owner-loss, terminal-event drain, and unmigrated-startup tests.
+  Independent-handler lookup, remote cancellation waiting, expired-owner
+  cancellation takeover, read-only terminal replay, and fail-closed
+  non-idempotent owner-loss handling are now covered; multi-process
+  streaming/late-event acceptance remains open P2.4 work.
 - Added a PostgreSQL-gated replica task-store acceptance covering creation,
   completion, failure, lookup, recovery, and tenant/caller isolation across
   independent ownership workers.

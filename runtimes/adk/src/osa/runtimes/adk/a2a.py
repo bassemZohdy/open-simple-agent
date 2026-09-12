@@ -69,6 +69,7 @@ DEFAULT_A2A_TASK_LEASE_SECONDS = 30
 DEFAULT_A2A_TASK_CANCEL_WAIT_SECONDS = 30.0
 DEFAULT_INPUT_MODES = ["text/plain"]
 DEFAULT_OUTPUT_MODES = ["text/plain"]
+A2A_OWNER_LOST_MESSAGE = "A2A task execution owner was lost; automatic replay is disabled"
 
 from osa.generic_agent.a2a_client import (  # noqa: E402, F401 - re-exported
     A2aError,
@@ -281,7 +282,8 @@ class OsaA2aAgentExecutor:
                     current = await active_store.get(ownership.task_id, ownership.scope_key)
                     if current is not None and current.cancel_requested:
                         terminal_state = "canceled"
-                await active_store.release(ownership, terminal_state)
+                if await _wait_for_task_events_to_persist(event_queue):
+                    await active_store.release(ownership, terminal_state)
 
     @staticmethod
     async def _ownership_stop_reason(store: A2aTaskOwnershipStore, ownership: TaskOwnership) -> str | None:
@@ -310,6 +312,11 @@ class OsaA2aAgentExecutor:
             return None
         ownership = await self._ownership_store.acquire(task_id, context_id, scope_key)
         if ownership is not None:
+            if ownership.reclaimed and self._task_store is not None:
+                task = await self._task_store.get(task_id, context.call_context)
+                if task is not None:
+                    await self._finalize_owner_lost_task(context, event_queue, ownership, task)
+                    return None
             return ownership
         if self._task_store is None:
             return None
@@ -330,6 +337,11 @@ class OsaA2aAgentExecutor:
             if current is None or current.state == "released":
                 ownership = await self._ownership_store.acquire(task_id, context_id, scope_key)
                 if ownership is not None:
+                    if ownership.reclaimed:
+                        task = await self._task_store.get(task_id, context.call_context)
+                        if task is not None:
+                            await self._finalize_owner_lost_task(context, event_queue, ownership, task)
+                            return None
                     return ownership
             elif current.state in {"completed", "failed", "canceled"}:
                 if task is not None:
@@ -360,6 +372,38 @@ class OsaA2aAgentExecutor:
                 metadata=task.metadata,
             )
         )
+
+    async def _finalize_owner_lost_task(
+        self,
+        context: Any,
+        event_queue: Any,
+        ownership: TaskOwnership,
+        task: Any,
+    ) -> None:
+        """Fail an abandoned task without replaying model/tool side effects."""
+        from a2a.types import TaskState
+
+        assert self._ownership_store is not None
+        assert self._task_store is not None
+        terminal_state_names = {
+            TaskState.TASK_STATE_COMPLETED: "completed",
+            TaskState.TASK_STATE_FAILED: "failed",
+            TaskState.TASK_STATE_CANCELED: "canceled",
+        }
+        existing_terminal_state = terminal_state_names.get(task.status.state)
+        if existing_terminal_state is not None:
+            await self._ownership_store.release(ownership, existing_terminal_state)
+            await self._enqueue_replayed_task(context, event_queue, task)
+            return
+
+        task.status.state = TaskState.TASK_STATE_FAILED
+        task.status.timestamp.FromDatetime(datetime.now(UTC))
+        task.status.message.CopyFrom(_failure_message(A2A_OWNER_LOST_MESSAGE))
+        bind_task_ownership(context.call_context, ownership)
+        await self._task_store.save(task, context.call_context)
+        if not await self._ownership_store.release(ownership, "failed"):
+            raise RuntimeError("A2A owner-loss finalization lost its fencing lease")
+        await self._enqueue_replayed_task(context, event_queue, task)
 
     async def _wait_for_remote_cancellation(
         self,
@@ -512,6 +556,22 @@ def _failure_message(text: str) -> Any:
         message_id=str(uuid4()),
         parts=[Part(text=text)],
     )
+
+
+async def _wait_for_task_events_to_persist(event_queue: Any) -> bool:
+    """Wait until the SDK consumer has drained events before releasing a fence."""
+    queue = getattr(event_queue, "queue", None)
+    join = getattr(queue, "join", None)
+    if not callable(join):
+        return True
+    try:
+        await asyncio.wait_for(
+            join(),
+            timeout=max(5.0, _task_cancel_wait_seconds()),
+        )
+    except TimeoutError:
+        return False
+    return True
 
 
 def _a2a_task_owner(context: Any) -> str:

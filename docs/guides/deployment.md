@@ -164,8 +164,9 @@ coordination.
   durable terminal state and can safely finalize cancellation after lease
   expiry; terminal replay is read-only. The SDK active-task registry and
   process-boundary acceptance for creation/lookup/cancellation/recovery are
-  covered; multi-process streaming/late-event acceptance and non-idempotent
-  owner-loss recovery remain open P2.4 work. Tune
+  covered; terminal events drain before lease release, and expired-owner
+  retries fail closed without replaying unknown side effects. Multi-process
+  streaming/late-event acceptance remains open P2.4 work. Tune
   `OSA_A2A_TASK_CANCEL_WAIT_SECONDS` when owner shutdown routinely exceeds the
   default wait, keeping it bounded for client retries.
 - Optional HTTP rate limits are available in-process; production replicas
@@ -190,5 +191,5 @@ never accepts process commands.
 - The real Kind-cluster lifecycle acceptance job passes in CI; Control Plane
   restart recovery is covered by provider reconciliation tests, while
   distributed deployment-operation ownership remains a deployment gate.
-- Complete true multi-process A2A active-task replica acceptance, streaming and
-  late-event ordering, and the non-idempotent owner-loss/replay policy (P2.4)
+- Complete true multi-process A2A active-task replica acceptance for streaming
+  and late-event ordering (P2.4)

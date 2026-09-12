@@ -334,10 +334,14 @@ write a duplicate task history. The SDK active-task registry is still
 process-local. Durable SDK task saves carry the acquired ownership snapshot
 through the call context and are committed while the ownership-row lock is
 held; expired or superseded workers therefore fail closed without publishing
-a synthetic failure. Process-boundary PostgreSQL acceptance covers shared task
-creation, lookup, cancellation, and crash recovery. Multi-process
-streaming/late-event acceptance and non-idempotent replay remain open
-distributed-runtime work.
+a synthetic failure. Before releasing an ownership lease, the executor waits
+for the SDK consumer to drain the terminal event so the durable task state is
+authoritative. Process-boundary PostgreSQL acceptance covers shared task
+creation, lookup, cancellation, and crash recovery. If an owner lease
+expires, a replacement finalizes a non-terminal task as failed with a stable
+owner-loss message and never replays unknown model/tool side effects.
+Multi-process streaming/late-event acceptance remains open distributed-runtime
+work.
 
 External agents are A2A servers outside OSA, tracked as records distinct
 from managed agents (they are never deployed). The PostgreSQL-backed registry

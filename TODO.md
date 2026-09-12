@@ -47,10 +47,10 @@ Production-readiness limits are:
   store. Tenant/caller-scoped ownership leases, fencing, durable cancellation,
   expired-lease takeover, explicit schema migration, fenced SDK task saves,
   remote-handler cancellation waiting, expired-owner cancellation, read-only
-  terminal replay, and fail-closed owner-loss handling are implemented. The SDK
-  active-task registry, multi-process streaming/late-event acceptance,
-  non-idempotent owner-loss policy, and replica-wide telemetry collection are
-  not complete;
+  terminal replay, terminal-event drain-before-release, and fail-closed
+  owner-loss handling are implemented. The SDK active-task registry and
+  multi-process streaming/late-event acceptance remain incomplete; replica-wide
+  telemetry collection is also open;
   long-running deployment-operation ownership and global gateway quotas remain
   deployment concerns;
 - deployment-specific browser OIDC, package publication, and the first public
@@ -67,10 +67,9 @@ The following are the current blockers or decision gates:
   The real Kind lifecycle workflow passes in CI; OpenShift behavior remains a
   separate provider gate.
 - **Architecture-gated:** completing the remaining distributed A2A
-  multi-process/active-task and non-idempotent owner-loss contract requires
-  approval of `docs/adrs/011-distributed-operation-ownership.md`;
-  replica-wide capability telemetry additionally needs a retention/ordering
-  decision.
+  multi-process/active-task streaming and late-event contract requires approval
+  of `docs/adrs/011-distributed-operation-ownership.md`; replica-wide
+  capability telemetry additionally needs a retention/ordering decision.
 - **Product-gated:** browser OIDC issuer/client/redirect semantics, package
   registry publication, and the first public release need explicit product
   decisions. English and Arabic are the currently supported Control Panel
@@ -83,10 +82,10 @@ The following are the current blockers or decision gates:
 Complete true multi-process A2A active-task acceptance. The persistence
 provider hierarchy, shared-policy gate, scoped A2A leases, fenced SDK task
 saves, independent-handler lookup/cancellation acceptance, expired-owner
-cancellation, and terminal read-only replay are implemented and covered by
-focused tests. The remaining architecture gate is PostgreSQL-backed
-multi-process handler/active-task recovery, streaming/late-event acceptance,
-and the non-idempotent replay contract.
+cancellation, terminal read-only replay, and the conservative fail-closed
+owner-loss policy are implemented and covered by focused tests. The remaining
+architecture gate is PostgreSQL-backed multi-process handler/active-task
+streaming and late-event acceptance.
 
 ---
 
@@ -132,7 +131,7 @@ safely take over an expired owner lease; terminal snapshots are replayed through
 read-only SDK events so a second handler does not write duplicate task history.
 Process-boundary PostgreSQL acceptance covers task creation, lookup, remote
 cancellation, and crash/lease-expiry recovery. Multi-process streaming and
-late-event acceptance, plus non-idempotent replay policy, remain open.
+late-event acceptance remain open; owner loss is fail-closed by default.
 
 - [x] Fence SDK task mutations and add explicit owner-loss handling. The
   database adapter rejects missing, expired, or superseded fences without
@@ -152,9 +151,11 @@ late-event acceptance, plus non-idempotent replay policy, remain open.
   active-task registry remains local to each process.
 - [ ] Add multi-process/multi-worker PostgreSQL acceptance for streaming and
   late events; the SDK active-task registry remains local to each process.
-- [ ] Decide and implement the non-idempotent owner-loss/retry policy; default
-  behavior must remain fail-closed until side-effect replay semantics are
-  explicitly approved.
+- [x] Decide and implement the non-idempotent owner-loss/retry policy: an
+  expired owner is fenced out, the durable task is finalized as failed with a
+  stable owner-loss message, and the replacement never replays unknown
+  model/tool side effects. Explicit idempotent replay remains a future opt-in
+  contract, not a default.
 
 ## Capability-level audit telemetry — PARTIALLY COMPLETE
 

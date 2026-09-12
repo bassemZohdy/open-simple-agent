@@ -31,10 +31,12 @@ failure. Independent handlers can look up shared active tasks, wait for a
 remote owner to publish cancellation, and safely finalize cancellation after
 an owner lease expires. Terminal replay is read-only and does not duplicate
 task history. Process-boundary PostgreSQL acceptance covers shared task
-creation, lookup, cancellation, and crash recovery. The SDK active-task
-registry, multi-process streaming/late-event acceptance, and safe replay policy
-for non-idempotent work are still open, so this ADR remains proposed until the
-full acceptance criteria and open review questions are resolved.
+creation, lookup, cancellation, and crash recovery. Terminal events drain
+through the SDK consumer before lease release. Expired-owner retries fail
+closed with a stable terminal failure and never replay unknown model/tool side
+effects. The SDK active-task registry and multi-process streaming/late-event
+acceptance are still open, so this ADR remains proposed until the full
+acceptance criteria and open review questions are resolved.
 
 ## Decision drivers
 
@@ -104,10 +106,10 @@ concurrency rules.
   lease expires first, it may acquire the next fencing epoch and finalize the
   task as `canceled` without invoking the agent or replaying its side effects.
   The terminal snapshot is then delivered through read-only protocol events.
-- If the owner disappears, the next lease holder may finalize the task as
-  `failed` with a stable owner-loss error. It must not replay an agent call
-  whose tool/model side effects have no idempotency guarantee. Safe replay is a
-  separate executor capability and must be explicitly declared before use.
+- If the owner disappears, the next lease holder finalizes the task as `failed`
+  with the stable owner-loss error. It must not replay an agent call whose
+  tool/model side effects have no idempotency guarantee. Safe replay is a
+  separate executor capability and is not enabled by the current contract.
 - A late completion after cancellation or owner loss cannot win the fenced
   update. Repeated cancel requests return the already durable terminal task;
   they do not enqueue another cancellation event.
@@ -178,8 +180,8 @@ implementations only.
 
 ## Open review questions
 
-- Should owner-loss tasks fail closed as proposed, or may selected tools/models
-  opt into idempotent replay?
+- If a future executor capability opts into idempotent replay, what explicit
+  declaration and side-effect evidence are required?
 - What lease/heartbeat durations and takeover limits fit the supported runtime
   timeout range?
 - Which shared telemetry collector owns retention, ordering, and tenant

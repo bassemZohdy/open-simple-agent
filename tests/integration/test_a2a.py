@@ -921,6 +921,47 @@ class TestA2aDistributedHandlerAcceptance:
             assert isinstance(recovered, Task)
             assert recovered.status.state == TaskState.TASK_STATE_CANCELED
             assert agent_two.call_count == 0
+
+            owner_loss_task = Task(
+                id="handler-acceptance-owner-loss",
+                context_id="handler-acceptance-owner-loss-context",
+                status=TaskStatus(state=TaskState.TASK_STATE_WORKING),
+            )
+            owner_loss_context = ServerCallContext()
+            owner_loss_lease = await ownership_one.acquire(
+                owner_loss_task.id,
+                owner_loss_task.context_id,
+                "anonymous",
+            )
+            assert owner_loss_lease is not None
+            bind_task_ownership(owner_loss_context, owner_loss_lease)
+            await store_one.save(owner_loss_task, owner_loss_context)
+            async with engine_one.begin() as connection:
+                await connection.execute(
+                    update(ownership_one._table)  # noqa: SLF001 - expiry is acceptance setup
+                    .where(ownership_one._table.c.task_id == owner_loss_task.id)
+                    .values(lease_until=datetime.now(UTC) - timedelta(seconds=1))
+                )
+
+            owner_loss_result = await handler_two.on_message_send(
+                SendMessageRequest(
+                    message=Message(
+                        message_id="handler-acceptance-owner-loss-message",
+                        role=Role.ROLE_USER,
+                        task_id=owner_loss_task.id,
+                        context_id=owner_loss_task.context_id,
+                        parts=[Part(text="retry abandoned task")],
+                    ),
+                ),
+                ServerCallContext(),
+            )
+            assert isinstance(owner_loss_result, Task)
+            assert owner_loss_result.status.state == TaskState.TASK_STATE_FAILED
+            assert "automatic replay is disabled" in owner_loss_result.status.message.parts[0].text
+            assert agent_two.call_count == 0
+            durable_owner_loss = await store_two.get(owner_loss_task.id, ServerCallContext())
+            assert durable_owner_loss is not None
+            assert durable_owner_loss.status.state == TaskState.TASK_STATE_FAILED
         finally:
             await handler_one.aclose()
             await handler_two.aclose()

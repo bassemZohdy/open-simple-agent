@@ -301,10 +301,12 @@ terminal snapshots replay through read-only SDK events without a duplicate
 write. The SDK active-task registry is still process-local. Durable SDK task
 saves carry the ownership fence and hold the ownership-row lock through the
 write, so an expired or superseded worker cannot persist a late task mutation.
-Process-boundary PostgreSQL acceptance covers shared task creation, lookup,
-cancellation, and crash recovery. Multi-process streaming/late-event acceptance
-and a safe contract for replaying non-idempotent model/tool side effects remain
-open. Deployment owners should
+Terminal events drain through the SDK consumer before the owner releases its
+lease. Process-boundary PostgreSQL acceptance covers shared task creation,
+lookup, cancellation, and crash recovery. Expired-owner retries finalize
+non-terminal tasks as failed with a stable owner-loss message and do not replay
+unknown model/tool side effects. Multi-process streaming/late-event acceptance
+remains open. Deployment owners should
 provision a dedicated database/schema and back it up according to their
 operational policy.
 

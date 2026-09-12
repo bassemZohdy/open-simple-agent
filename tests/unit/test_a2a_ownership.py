@@ -61,6 +61,7 @@ async def test_ownership_conflict_fencing_cancellation_and_terminal_state(tmp_pa
     assert reclaimed is not None
     assert reclaimed.owner_id == second.owner_id
     assert reclaimed.fence == expiring.fence + 1
+    assert reclaimed.reclaimed
     assert not await first.heartbeat(expiring)
     assert await second.release(reclaimed, "completed")
 
