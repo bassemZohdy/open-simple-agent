@@ -61,6 +61,9 @@ backlog.
   in-memory store. There is no implicit SQLite fallback. SQLite would require
   a separate explicit provider with local-only concurrency and migration
   semantics, and is not part of this ADR.
+- The provider boundary rejects malformed, empty, SQLite, and in-memory URLs
+  before constructing the PostgreSQL engine. Error messages do not echo the
+  configured URL, which may contain credentials.
 - Per-scope limits (`max_entries`) and retention (`retention_days`) are
   enforced in SQL through the provider contract's `enforce()`; the runtime
   applies them after every write and before reads, from the resolved

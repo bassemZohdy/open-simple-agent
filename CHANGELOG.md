@@ -36,6 +36,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Added locale tests covering Arabic switching, session restoration, document
   language/direction, and translated navigation.
 
+### Hardened — Persistence provider selection
+- PostgreSQL-only Control Plane, memory, and durable-session selectors now
+  reject malformed, empty, SQLite, and in-memory DSNs before provider setup;
+  configured database failures remain fail-closed without fallback.
+
 ### Added — Runtime durability, capacity, and deployment hardening
 - Added an explicit, versioned PostgreSQL runtime-session provider with strict
   ownership, TTL, bounded history, optimistic concurrency, and the

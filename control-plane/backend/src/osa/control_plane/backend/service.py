@@ -96,7 +96,7 @@ def create_control_plane_app(
     engine: Any = None
     deployment_records: Any
     audit_repository: Any
-    if dsn:
+    if dsn is not None:
         engine = create_db_engine(dsn)
         agents: AgentRepository = PostgresAgentRepository(engine)
         resources: ResourceDefinitionRepository = PostgresResourceDefinitionRepository(engine)

@@ -2,6 +2,7 @@
 
 import pytest
 
+from osa.control_plane.backend.agent_catalog import AgentCatalogError
 from osa.control_plane.backend.deployment import LocalDeploymentProvider
 from osa.control_plane.backend.deployment_service import DeploymentError, create_deployment_provider
 from osa.control_plane.backend.repositories import (
@@ -18,6 +19,11 @@ def test_dsn_selects_postgres_deployment_records(monkeypatch: pytest.MonkeyPatch
     app = create_control_plane_app(database_url="postgresql+asyncpg://osa:osa@localhost:5432/osa")
 
     assert isinstance(app.state.deployment_service._records, PostgresDeploymentRecordRepository)
+
+
+def test_control_plane_rejects_sqlite_dsn() -> None:
+    with pytest.raises(AgentCatalogError, match="must use PostgreSQL"):
+        create_control_plane_app(database_url="sqlite+aiosqlite:///control-plane.db")
 
 
 def test_in_memory_app_keeps_in_memory_deployment_records() -> None:

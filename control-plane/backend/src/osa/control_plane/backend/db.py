@@ -36,14 +36,33 @@ def database_url_from_env() -> str | None:
 def create_db_engine(dsn: str) -> Any:
     """Create the async engine for the Control Plane database."""
     _require_postgres_stack()
+    _validate_postgres_dsn(dsn)
     from sqlalchemy.ext.asyncio import create_async_engine
 
     return create_async_engine(dsn)
 
 
+def _validate_postgres_dsn(dsn: str) -> None:
+    """Reject unsupported or malformed configured database URLs early."""
+    from sqlalchemy.engine import make_url
+    from sqlalchemy.exc import ArgumentError
+
+    from osa.control_plane.backend.agent_catalog import AgentCatalogError
+
+    try:
+        backend = make_url(dsn).get_backend_name()
+    except (ArgumentError, ValueError) as exc:
+        raise AgentCatalogError("Control Plane database URL must be a valid PostgreSQL DSN") from exc
+    if backend != "postgresql":
+        raise AgentCatalogError(
+            "Control Plane database URL must use PostgreSQL; SQLite and in-memory URLs are unsupported"
+        )
+
+
 def alembic_config(dsn: str) -> Any:
     """Build an Alembic config pointing at the packaged migrations."""
     _require_postgres_stack()
+    _validate_postgres_dsn(dsn)
     from alembic.config import Config
 
     config = Config()

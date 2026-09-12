@@ -78,8 +78,10 @@ async def create_memory_provider() -> MemoryProvider | None:
     the in-memory provider is used (single-process deployments only).
     """
     dsn = os.environ.get(MEMORY_DATABASE_URL_ENV_VAR)
-    if not dsn:
+    if dsn is None:
         return None
+    if not dsn.strip():
+        raise MemoryConfigurationError(f"{MEMORY_DATABASE_URL_ENV_VAR} must not be empty")
     from osa.runtimes.adk.postgres_memory import PostgresMemoryProvider
 
     provider = PostgresMemoryProvider(dsn)
@@ -97,9 +99,9 @@ def create_session_provider(*, persistence: bool) -> SessionProvider:
     if not persistence:
         return SessionManager()
     dsn = os.environ.get(SESSION_DATABASE_URL_ENV_VAR)
-    if not dsn:
+    if dsn is None or not dsn.strip():
         raise SessionConfigurationError(
-            "spec.session.persistence is enabled but OSA_SESSION_DATABASE_URL is not configured"
+            "spec.session.persistence is enabled but OSA_SESSION_DATABASE_URL is not configured or is empty"
         )
     from osa.runtimes.adk.postgres_session import PostgresSessionProvider
 

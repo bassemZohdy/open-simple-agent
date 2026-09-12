@@ -33,6 +33,21 @@ def _require_sqlalchemy() -> None:
         )
 
 
+def _validate_postgres_dsn(dsn: str) -> None:
+    """Reject unsupported or malformed configured database URLs early."""
+    from sqlalchemy.engine import make_url
+    from sqlalchemy.exc import ArgumentError
+
+    try:
+        backend = make_url(dsn).get_backend_name()
+    except (ArgumentError, ValueError) as exc:
+        raise MemoryConfigurationError("Memory database URL must be a valid PostgreSQL DSN") from exc
+    if backend != "postgresql":
+        raise MemoryConfigurationError(
+            "Memory database URL must use PostgreSQL; SQLite and in-memory URLs are unsupported"
+        )
+
+
 def _escape_like(query: str) -> str:
     return query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
@@ -46,6 +61,7 @@ class PostgresMemoryProvider(MemoryProvider):
 
     def __init__(self, dsn: str, *, connect_args: dict[str, Any] | None = None) -> None:
         _require_sqlalchemy()
+        _validate_postgres_dsn(dsn)
         from sqlalchemy.ext.asyncio import create_async_engine
 
         self._engine = create_async_engine(dsn, connect_args=connect_args or {})

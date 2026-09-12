@@ -65,6 +65,21 @@ def _require_dependencies() -> None:
         )
 
 
+def _validate_postgres_dsn(dsn: str) -> None:
+    """Reject unsupported or malformed configured database URLs early."""
+    from sqlalchemy.engine import make_url
+    from sqlalchemy.exc import ArgumentError
+
+    try:
+        backend = make_url(dsn).get_backend_name()
+    except (ArgumentError, ValueError) as exc:
+        raise SessionConfigurationError("Session database URL must be a valid PostgreSQL DSN") from exc
+    if backend != "postgresql":
+        raise SessionConfigurationError(
+            "Session database URL must use PostgreSQL; SQLite and in-memory URLs are unsupported"
+        )
+
+
 def _sync_dsn(dsn: str) -> str:
     """Accept the asyncpg DSN used by the other OSA stores as input."""
     if "+asyncpg" in dsn:
@@ -87,6 +102,7 @@ class PostgresSessionProvider(SessionProvider):
 
     def __init__(self, dsn: str) -> None:
         _require_dependencies()
+        _validate_postgres_dsn(dsn)
         from sqlalchemy import create_engine
 
         self._engine = create_engine(_sync_dsn(dsn), pool_pre_ping=True)

@@ -111,9 +111,9 @@ explicit single-process option with its own migration and backup guidance.
 - [ ] Add explicit SQLite providers only for local single-process use, with
   backend-specific migrations, locking/busy-timeout settings, file permissions,
   backup guidance, and clear rejection for shared-replica deployments.
-- [ ] Add provider-policy validation so durable/production surfaces reject
-  memory or SQLite, and configured-database connectivity or migration failures
-  fail startup/readiness without fallback.
+- [ ] Add deployment-policy validation so durable/production surfaces reject
+  process-local memory or SQLite providers, and add an explicit policy mode for
+  deployments that require shared durable state.
 - [ ] Add a provider matrix covering Control Plane, memory, sessions, A2A task
   records, and rate limits across PostgreSQL, SQLite where supported, and
   in-memory development modes, including restart and failure behavior.

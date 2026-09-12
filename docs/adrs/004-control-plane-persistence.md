@@ -71,6 +71,9 @@ SQLAlchemy 2.0 async, Alembic.
   unchanged for tests and development). A configured DSN is authoritative:
   invalid or unavailable PostgreSQL fails startup/readiness and never silently
   downgrades to SQLite or in-memory state.
+- The provider boundary rejects malformed, empty, SQLite, and in-memory URLs
+  before constructing the PostgreSQL engine. Error messages do not echo the
+  configured URL, which may contain credentials.
 
 ## Consequences
 
