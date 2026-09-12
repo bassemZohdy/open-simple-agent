@@ -29,9 +29,14 @@ the same version.
 OSA_CONTROL_PLANE_DATABASE_URL=... uv run osa-cp-migrate
 OSA_MEMORY_DATABASE_URL=... uv run osa-memory-migrate
 OSA_SESSION_DATABASE_URL=... uv run osa-session-migrate
+OSA_A2A_TASK_DATABASE_URL=... uv run osa-a2a-migrate
 ```
 
 - Migrations are forward-only in normal operation; each has a `downgrade()`.
+- Run `osa-a2a-migrate` when durable inbound A2A task state is configured;
+  it provisions the SDK task table and OSA ownership table before any runtime
+  replica is rolled out. Runtime startup validates the schema and does not
+  auto-create it.
 - Apply migrations **before** rolling out the new replicas — the policy is
   explicit migration, never auto-migrate at startup.
 - Migrations are additive-first: new columns/tables land with server

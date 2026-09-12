@@ -9,6 +9,9 @@ Built on the pinned ``a2a-sdk`` 1.x line (protobuf-typed protocol messages):
   invocation, completed with the agent's output as an artifact, failures
   mapped to task failure states. The A2A context id is used as the OSA
   session id so multi-turn conversations respect session ownership.
+- When a database-backed task store is selected, a separate OSA ownership
+  lease/fencing record serializes active execution and persists cancellation;
+  the schema is provisioned by ``osa-a2a-migrate``.
 - :func:`invoke_remote_agent` calls a remote A2A agent (managed or external)
   with a bounded timeout; :class:`RemoteA2aError` maps remote failures to a
   deterministic OSA error.
@@ -18,6 +21,8 @@ Requires the optional ``a2a`` extra (``osa-adk-runtime[a2a]``).
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
 import os
 import re
 import warnings
@@ -28,12 +33,15 @@ from uuid import uuid4
 if TYPE_CHECKING:
     from osa.generic_agent import AgentDefinition, AuthSettings, SkillDefinition
 
+from osa.runtimes.adk.a2a_ownership import A2aTaskOwnershipStore, TaskOwnership, heartbeat_loop
+
 __all__ = [
     "A2aError",
     "A2aNotInstalledError",
     "A2A_WELL_KNOWN_PATH",
     "A2A_TASK_DATABASE_URL_ENV_VAR",
     "A2A_TASK_TABLE_ENV_VAR",
+    "A2A_TASK_LEASE_SECONDS_ENV_VAR",
     "OsaA2aAgentExecutor",
     "RemoteA2aError",
     "attach_a2a_routes",
@@ -47,7 +55,9 @@ __all__ = [
 A2A_WELL_KNOWN_PATH = "/.well-known/agent-card.json"
 A2A_TASK_DATABASE_URL_ENV_VAR = "OSA_A2A_TASK_DATABASE_URL"
 A2A_TASK_TABLE_ENV_VAR = "OSA_A2A_TASK_TABLE"
+A2A_TASK_LEASE_SECONDS_ENV_VAR = "OSA_A2A_TASK_LEASE_SECONDS"
 DEFAULT_A2A_TASK_TABLE = "osa_a2a_tasks"
+DEFAULT_A2A_TASK_LEASE_SECONDS = 30
 DEFAULT_INPUT_MODES = ["text/plain"]
 DEFAULT_OUTPUT_MODES = ["text/plain"]
 
@@ -150,9 +160,17 @@ class OsaA2aAgentExecutor:
         keep one session per A2A conversation.
     """
 
-    def __init__(self, agent: Any) -> None:
+    def __init__(
+        self,
+        agent: Any,
+        *,
+        ownership_store: A2aTaskOwnershipStore | None = None,
+        task_store: Any | None = None,
+    ) -> None:
         self._agent = agent
         self._sessions: dict[str, str] = {}
+        self._ownership_store = ownership_store
+        self._task_store = task_store
 
     async def execute(self, context: Any, event_queue: Any) -> None:
         from a2a.server.tasks import TaskUpdater
@@ -161,6 +179,7 @@ class OsaA2aAgentExecutor:
         user_text = context.get_user_input()
         context_id = context.context_id or str(uuid4())
         task_id = context.task_id or str(uuid4())
+        scope_key = _a2a_task_owner(context)
         updater = TaskUpdater(event_queue, task_id, context_id)
 
         # The 1.x consumer requires the initial Task event before any
@@ -173,22 +192,128 @@ class OsaA2aAgentExecutor:
             )
         )
 
+        ownership_store = self._ownership_store
+        ownership = await self._acquire_or_replay(context, event_queue, task_id, context_id, scope_key)
+        if ownership_store is not None and ownership is None:
+            return
+        active_store = cast("A2aTaskOwnershipStore", ownership_store)
+
+        heartbeat_task: asyncio.Task[None] | None = None
+        terminal_state = "released"
+        if ownership is not None:
+            heartbeat_task = asyncio.create_task(heartbeat_loop(active_store, ownership))
         try:
-            session_id = self._sessions.get(context_id)
+            if ownership is not None:
+                stop_reason = await self._ownership_stop_reason(active_store, ownership)
+                if stop_reason is not None:
+                    if stop_reason == "canceled":
+                        await updater.cancel()
+                        terminal_state = "canceled"
+                    return
+            session_id = ownership.session_id if ownership is not None else self._sessions.get(context_id)
             request = self._build_request(user_text, session_id)
             response = await self._agent.invoke(request)
+            if ownership is not None:
+                stop_reason = await self._ownership_stop_reason(active_store, ownership)
+                if stop_reason is not None:
+                    if stop_reason == "canceled":
+                        await updater.cancel()
+                        terminal_state = "canceled"
+                    return
             if response.error:
                 await updater.failed(_failure_message(response.error))
+                terminal_state = "failed"
                 return
-            self._sessions[context_id] = str(response.session_id)
+            if response.session_id is not None:
+                self._sessions[context_id] = str(response.session_id)
+                if ownership is not None and not await active_store.bind_session(ownership, str(response.session_id)):
+                    return
+            if ownership is not None:
+                stop_reason = await self._ownership_stop_reason(active_store, ownership)
+                if stop_reason is not None:
+                    if stop_reason == "canceled":
+                        await updater.cancel()
+                        terminal_state = "canceled"
+                    return
             await updater.add_artifact(
                 parts=[Part(text=response.output)],
                 artifact_id=str(uuid4()),
                 name="response",
             )
             await updater.complete()
+            terminal_state = "completed"
+        except asyncio.CancelledError:
+            if ownership is not None:
+                current = await active_store.get(ownership.task_id, ownership.scope_key)
+                if current is not None and current.cancel_requested:
+                    terminal_state = "canceled"
+            raise
         except Exception as exc:  # noqa: BLE001 - mapped into task failure
             await updater.failed(_failure_message(f"agent execution failed: {exc}"))
+            terminal_state = "failed"
+        finally:
+            if heartbeat_task is not None:
+                heartbeat_task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await heartbeat_task
+            if ownership is not None:
+                if terminal_state == "released":
+                    current = await active_store.get(ownership.task_id, ownership.scope_key)
+                    if current is not None and current.cancel_requested:
+                        terminal_state = "canceled"
+                await active_store.release(ownership, terminal_state)
+
+    @staticmethod
+    async def _ownership_stop_reason(store: A2aTaskOwnershipStore, ownership: TaskOwnership) -> str | None:
+        current = await store.get(ownership.task_id, ownership.scope_key)
+        if (
+            current is None
+            or current.fence != ownership.fence
+            or current.owner_id != store.owner_id
+            or current.state != "running"
+        ):
+            return "lost"
+        return "canceled" if current.cancel_requested else None
+
+    async def _acquire_or_replay(
+        self,
+        context: Any,
+        event_queue: Any,
+        task_id: str,
+        context_id: str,
+        scope_key: str,
+    ) -> TaskOwnership | None:
+        """Claim a task or replay the terminal event produced by its owner."""
+        if self._ownership_store is None:
+            return None
+        ownership = await self._ownership_store.acquire(task_id, context_id, scope_key)
+        if ownership is not None:
+            return ownership
+        if self._task_store is None:
+            return None
+
+        from a2a.types import TaskState
+
+        terminal_states = {
+            TaskState.TASK_STATE_COMPLETED,
+            TaskState.TASK_STATE_FAILED,
+            TaskState.TASK_STATE_CANCELED,
+        }
+        while True:
+            task = await self._task_store.get(task_id, context.call_context)
+            if task is not None and task.status.state in terminal_states:
+                await event_queue.enqueue_event(task)
+                return None
+            current = await self._ownership_store.get(task_id, scope_key)
+            if current is None or current.state == "released":
+                ownership = await self._ownership_store.acquire(task_id, context_id, scope_key)
+                if ownership is not None:
+                    return ownership
+            elif current.state in {"completed", "failed", "canceled"}:
+                if task is not None:
+                    await event_queue.enqueue_event(task)
+                return None
+            await asyncio.sleep(0.25)
 
     @staticmethod
     def _build_request(user_text: str, session_id: str | None) -> Any:
@@ -213,13 +338,16 @@ class OsaA2aAgentExecutor:
         The SDK cancels the producer task before calling this method. The
         updater event is therefore the single terminal transition emitted by
         the executor; late agent output cannot be published after cancellation.
-        Replica-wide ownership and recovery remain a separate deployment
-        concern.
+        With durable ownership, the cancel request is persisted for the active
+        worker and takeover path; complete fencing of SDK task mutations remains
+        a separate distributed-runtime concern.
         """
         from a2a.server.tasks import TaskUpdater
 
         context_id = context.context_id or str(uuid4())
         task_id = context.task_id or str(uuid4())
+        if self._ownership_store is not None:
+            await self._ownership_store.request_cancel(task_id, _a2a_task_owner(context))
         updater = TaskUpdater(event_queue, task_id, context_id)
         await updater.cancel()
 
@@ -265,6 +393,17 @@ def _validate_task_table_name(table_name: str) -> str:
     return table_name
 
 
+def _task_lease_seconds() -> int:
+    raw = os.environ.get(A2A_TASK_LEASE_SECONDS_ENV_VAR, str(DEFAULT_A2A_TASK_LEASE_SECONDS))
+    try:
+        lease_seconds = int(raw)
+    except ValueError as exc:
+        raise ValueError(f"{A2A_TASK_LEASE_SECONDS_ENV_VAR} must be an integer") from exc
+    if lease_seconds < 5:
+        raise ValueError(f"{A2A_TASK_LEASE_SECONDS_ENV_VAR} must be at least 5 seconds")
+    return lease_seconds
+
+
 def _task_store_and_engine(app: Any) -> tuple[Any, Any | None]:
     """Return the configured SDK task store and its optional owned engine."""
     existing_store = getattr(app.state, "osa_a2a_task_store", None)
@@ -278,6 +417,7 @@ def _task_store_and_engine(app: Any) -> tuple[Any, Any | None]:
         store: Any = InMemoryTaskStore(owner_resolver=_a2a_task_owner)
         app.state.osa_a2a_task_store = store
         app.state.osa_a2a_task_engine = None
+        app.state.osa_a2a_ownership_store = None
         return store, None
 
     _require_a2a_sdk()
@@ -301,12 +441,18 @@ def _task_store_and_engine(app: Any) -> tuple[Any, Any | None]:
         )
         store = DatabaseTaskStore(
             engine,
-            create_table=True,
+            create_table=False,
             table_name=table_name,
             owner_resolver=_a2a_task_owner,
         )
+    ownership_store = A2aTaskOwnershipStore(
+        engine,
+        table_name=f"{table_name}_ownership",
+        lease_seconds=_task_lease_seconds(),
+    )
     app.state.osa_a2a_task_store = store
     app.state.osa_a2a_task_engine = engine
+    app.state.osa_a2a_ownership_store = ownership_store
     return store, engine
 
 
@@ -316,6 +462,16 @@ async def initialize_a2a_task_store(app: Any) -> None:
     initialize = getattr(store, "initialize", None)
     if initialize is not None:
         await initialize()
+    ownership_store = getattr(app.state, "osa_a2a_ownership_store", None)
+    if ownership_store is not None:
+        from osa.runtimes.adk.a2a_migrations import ensure_a2a_schema
+
+        task_table_name = os.environ.get(A2A_TASK_TABLE_ENV_VAR, DEFAULT_A2A_TASK_TABLE)
+        await ensure_a2a_schema(
+            app.state.osa_a2a_task_engine,
+            task_table_name=task_table_name,
+            ownership_store=ownership_store,
+        )
 
 
 async def close_a2a_task_store(app: Any) -> None:
@@ -337,6 +493,7 @@ async def close_a2a_task_store(app: Any) -> None:
     app.state.osa_a2a_handler = None
     app.state.osa_a2a_task_store = None
     app.state.osa_a2a_task_engine = None
+    app.state.osa_a2a_ownership_store = None
 
 
 def attach_a2a_routes(
@@ -362,9 +519,17 @@ def attach_a2a_routes(
     # The interface URL is the client-facing JSON-RPC endpoint.
     interface_url = url.rstrip("/") + "/a2a"
     card = build_agent_card(agent.definition, agent.skills, interface_url, auth_settings=auth_settings)
+    task_store, _ = _task_store_and_engine(app)
     handler = DefaultRequestHandler(
-        agent_executor=cast("AgentExecutor", OsaA2aAgentExecutor(agent)),
-        task_store=_task_store_and_engine(app)[0],
+        agent_executor=cast(
+            "AgentExecutor",
+            OsaA2aAgentExecutor(
+                agent,
+                ownership_store=getattr(app.state, "osa_a2a_ownership_store", None),
+                task_store=task_store,
+            ),
+        ),
+        task_store=task_store,
         agent_card=card,
     )
     app.state.osa_a2a_handler = handler

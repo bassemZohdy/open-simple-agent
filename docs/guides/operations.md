@@ -71,7 +71,8 @@ health probe; startup failures carry the captured logs in the record detail.
   They also support explicit file-backed SQLite for local single-process use.
   Back up every configured database. Apply `osa-cp-migrate`,
   `osa-memory-migrate`, and `osa-session-migrate` as separate pre-start steps;
-  all three runtimes validate schema versions and do not auto-migrate.
+  configured persistence services validate schema versions and do not
+  auto-migrate.
 - A configured DSN is authoritative: connection or migration failure must stop
   readiness rather than downgrade to another provider. SQLite files use WAL,
   foreign keys, a five-second busy timeout, and private POSIX permissions when
@@ -81,12 +82,17 @@ health probe; startup failures carry the captured logs in the record detail.
 - `OSA_PERSISTENCE_POLICY=shared` is the explicit production guard. It rejects
   process-local and SQLite state for enabled surfaces and requires PostgreSQL;
   the Control Plane additionally requires the Kubernetes deployment provider.
+- When inbound A2A task persistence is configured, run
+  `OSA_A2A_TASK_DATABASE_URL=... uv run osa-a2a-migrate` before rollout. The
+  runtime validates the SDK task table and OSA ownership table at startup;
+  it does not create them. Set `OSA_A2A_TASK_LEASE_SECONDS` consistently across
+  replicas when tuning takeover behavior.
 
 ## Upgrades
 
 1. Bump the version once across the workspace root and the four member
    manifests (lockstep is enforced by `tests/unit/test_versioning.py`).
-2. Run `osa-cp-migrate` and, when configured, the memory/session migration
+2. Run `osa-cp-migrate` and, when configured, the memory/session/A2A migration
    commands against their target databases.
 3. Roll images: the runtime and Control Plane images are built separately;
    the Control Plane image includes `osa-runtime` for local development, while
@@ -100,5 +106,6 @@ health probe; startup failures carry the captured logs in the record detail.
 ## Remaining operational work
 
 - Replica-safe deployment-operation ownership
-- Distributed A2A active-task state and cancellation semantics (P2.4)
+- Complete distributed A2A active-task fencing, cancellation ordering, and
+  owner-loss recovery (P2.4)
 - Replica-wide capability telemetry and gateway-level quota policy

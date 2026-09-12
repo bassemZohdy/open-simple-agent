@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed — requires architecture review before implementation
+Proposed — A2A lease slice implemented; full decision and acceptance pending
 
 ## Date
 
@@ -20,6 +20,12 @@ replicas from issuing competing stop, restart, rollback, or deploy actions.
 The missing contract must protect tenant boundaries, prevent stale replicas
 from publishing late results, make cancellation deterministic, and avoid
 silently replaying agent or provider side effects after a lease expires.
+
+The first A2A slice now implements the scoped lease/fencing/cancellation
+primitive and explicit schema validation described below. It does not yet
+fence every SDK task update or define safe replay for non-idempotent work, so
+this ADR remains proposed until the full acceptance criteria and open review
+questions are resolved.
 
 ## Decision drivers
 

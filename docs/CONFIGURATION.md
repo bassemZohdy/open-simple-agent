@@ -206,7 +206,7 @@ subsystem:
 | Control Plane | `OSA_CONTROL_PLANE_DATABASE_URL` | In-memory repositories | Explicit file-backed `sqlite+aiosqlite:///...` with `osa-cp-migrate`; `:memory:` rejected | PostgreSQL survives restart and is shared across replicas; SQLite survives restart but is single-process; in-memory is process-local |
 | Runtime memory | `OSA_MEMORY_DATABASE_URL` | In-memory provider | Explicit file-backed `sqlite+aiosqlite:///...` with `osa-memory-migrate`; `:memory:` rejected | PostgreSQL survives restart and is shareable after migration; SQLite survives restart but is single-process; in-memory is ephemeral |
 | Runtime sessions | `spec.session.persistence: true` plus `OSA_SESSION_DATABASE_URL` | `SessionManager` when persistence is false; missing DSN fails when true | Explicit file-backed `sqlite:///...` with `osa-session-migrate`; `:memory:` rejected | PostgreSQL preserves ownership/history across restart and replicas; SQLite preserves it in one process; in-memory is process-local |
-| A2A task records | `OSA_A2A_TASK_DATABASE_URL` | SDK in-memory task store | Explicit SQLite is exercised for local tests where the SDK supports it; not a shared-production guarantee | Durable task records survive restart, but active executor ownership remains process-local |
+| A2A task records | `OSA_A2A_TASK_DATABASE_URL` | SDK in-memory task store | Explicit SQLite is supported for local testing where the SDK supports it; not a shared-production provider | PostgreSQL task records and OSA ownership leases survive restart and coordinate replicas; the SDK active-task registry remains process-local |
 | HTTP rate limits | `OSA_RATE_LIMIT_DATABASE_URL` | In-memory limiter | Explicit SQLite is exercised for local tests through SQLAlchemy; PostgreSQL is required for cross-replica production limits | Shared PostgreSQL windows coordinate replicas; in-memory/SQLite are local-only |
 
 For every row, an explicitly selected durable provider is authoritative. Invalid,
@@ -282,13 +282,24 @@ OSA_A2A_TASK_DATABASE_URL=postgresql+asyncpg://... \
 
 Durable records are scoped by the validated OSA tenant and subject when the
 shared authentication boundary is active; unauthenticated embedded callers
-use the A2A protocol user scope. This makes completed task lookup survive
-process restarts and allows replicas to share the task record. In-flight
-executor ownership, cancellation ordering, retries, and recovery after a
-replica failure remain a separate distributed-runtime requirement. The
-database-backed store currently creates its table through the pinned A2A SDK;
-deployment owners should provision a dedicated database/schema and back it up
-according to their operational policy.
+use the A2A protocol user scope. Run the explicit schema step before startup:
+
+```bash
+OSA_A2A_TASK_DATABASE_URL=postgresql+asyncpg://... \
+  OSA_A2A_TASK_TABLE=osa_a2a_tasks \
+  uv run osa-a2a-migrate
+```
+
+The migration provisions the SDK task table, a version row, and the OSA
+ownership table `<task_table>_ownership`. Startup validates all three without
+creating or altering them. The ownership row uses the same bounded tenant /
+caller scope as task lookup, a worker lease, heartbeats, a fencing token on
+takeover, and a durable cancellation request. A retry can replay a durable
+terminal task or reclaim an expired lease. The SDK active-task registry is
+still process-local, so this is not yet a guarantee of safe replay for
+non-idempotent model/tool side effects or complete suppression of late SDK
+events after owner loss. Deployment owners should provision a dedicated
+database/schema and back it up according to their operational policy.
 
 Timeouts, TTLs, limits, and iterations carry positive/range validation
 (`timeout_seconds > 0`, `ttl_seconds > 0`, `max_iterations >= 1`,
@@ -317,6 +328,7 @@ The runtime also accepts these service-level controls:
 | `OSA_SESSION_DATABASE_URL` | PostgreSQL DSN for shared sessions or file-backed `sqlite:///...` DSN for local sessions when persistence is enabled | required only for persistent agents |
 | `OSA_A2A_TASK_DATABASE_URL` | Async SQLAlchemy DSN for durable A2A task records | unset (in-memory) |
 | `OSA_A2A_TASK_TABLE` | SQL identifier used by the A2A SDK task store | `osa_a2a_tasks` |
+| `OSA_A2A_TASK_LEASE_SECONDS` | Ownership lease duration before takeover; must be at least 5 seconds | `30` |
 | `OSA_RATE_LIMIT_REQUESTS` | Per-route, per-caller fixed-window request budget; `0` disables | `0` |
 | `OSA_RATE_LIMIT_WINDOW_SECONDS` | Rate-limit window length | `60` |
 | `OSA_RATE_LIMIT_BURST` | Optional per-window burst capacity | request budget |

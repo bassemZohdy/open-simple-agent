@@ -319,13 +319,17 @@ with the `osa-adk-runtime[a2a]` extra), the runtime API serves:
 
 By default A2A task records are process-local. Set
 `OSA_A2A_TASK_DATABASE_URL` to use the SDK's SQLAlchemy-backed
-`DatabaseTaskStore`; PostgreSQL is recommended for shared production, while
-SQLite may be selected explicitly for local testing. Records are scoped by
-validated tenant and subject and the table is initialized before runtime
-readiness. This makes completed-task lookup restart-safe and shareable across
-replicas when the selected database is shared. In-flight executor
-ownership, cancellation ordering, retries, and replica-failure recovery are
-not implied by the durable record and remain open distributed-runtime work.
+`DatabaseTaskStore`; PostgreSQL is required for shared production, while
+SQLite may be selected explicitly for local testing. Run `osa-a2a-migrate`
+before startup; runtime startup validates the task and OSA ownership schemas
+without creating or altering them. Records and ownership leases are scoped by
+validated tenant and subject. The ownership table provides one worker lease,
+heartbeats, a monotonically increasing fencing token on takeover, and a
+durable cancellation request. A retry waits for a terminal task, replays that
+terminal record, or reclaims an expired lease. The SDK active-task registry is
+still process-local, and full fencing of SDK task updates, cancellation
+ordering, non-idempotent replay, and replica-failure recovery remain open
+distributed-runtime work.
 
 External agents are A2A servers outside OSA, tracked as records distinct
 from managed agents (they are never deployed). The PostgreSQL-backed registry

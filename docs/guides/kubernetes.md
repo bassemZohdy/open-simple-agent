@@ -64,8 +64,8 @@ The provider does not synthesize CPU/memory requests or limits yet, so enforce
 those through a namespace `LimitRange`/`ResourceQuota` policy until the
 workload resource contract is selected.
 
-For upgrades, apply `osa-cp-migrate` and any runtime memory/session migrations
-before serving the new image, use an immutable runtime image tag or digest,
+For upgrades, apply `osa-cp-migrate` and any runtime memory/session/A2A
+migrations before serving the new image, use an immutable runtime image tag or digest,
 wait for the generated Deployment readiness rollout, and retain the previous
 Deployment revision for `rollback`. The Control Plane image and runtime image
 are released separately; durable runtime sessions require a shared migrated

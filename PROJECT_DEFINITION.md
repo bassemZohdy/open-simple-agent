@@ -182,10 +182,12 @@ Supported configuration scopes currently are `user`, `agent`, `tenant`, and
 A2A is the interoperability protocol used for Agent Cards, discovery, skills,
 and remote agent invocation. It belongs to the data plane and is separate from
 deployment management. The initial A2A server/client and external-agent
-registry are implemented; the current external-agent registry and A2A task
-store are process-local, so durable multi-replica behavior remains backlog work.
-Future work may deepen delegation/consent semantics without turning A2A into a
-management protocol.
+registry are implemented. Durable task records can use PostgreSQL, and the
+runtime adds tenant/caller-scoped ownership leases, fencing, durable
+cancellation requests, and explicit schema migration; the SDK active-task
+registry and fully fenced late-event recovery remain backlog work. Future work
+may deepen delegation/consent semantics without turning A2A into a management
+protocol.
 
 ## Major components
 

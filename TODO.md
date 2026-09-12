@@ -44,9 +44,12 @@ Production-readiness limits are:
   application-level URL/DNS/redirect policy, with network egress still
   required as defense in depth;
 - A2A task records can be durable/shareable with the opt-in SDK PostgreSQL
-  store, but active-task ownership/cancellation/recovery and replica-wide
-  telemetry collection are not distributed-safe; long-running operation
-  ownership and global gateway quotas remain deployment concerns;
+  store. Tenant/caller-scoped ownership leases, fencing, durable cancellation,
+  expired-lease takeover, and explicit schema migration are implemented, but
+  the SDK active-task registry, complete late-event fencing, non-idempotent
+  owner-loss policy, and replica-wide telemetry collection are not complete;
+  long-running deployment-operation ownership and global gateway quotas remain
+  deployment concerns;
 - deployment-specific browser OIDC, package publication, and the first public
   release remain open; the Kubernetes lifecycle acceptance passes in CI, while
   this workstation cannot run it locally because Docker is unavailable.
@@ -60,10 +63,10 @@ The following are the current blockers or decision gates:
   identity-source acceptance requires a selected provider and test tenant.
   The real Kind lifecycle workflow passes in CI; OpenShift behavior remains a
   separate provider gate.
-- **Architecture-gated:** distributed A2A active-task ownership/cancellation
-  and replica-wide capability telemetry require approval of the proposed
-  ownership contract in `docs/adrs/011-distributed-operation-ownership.md`,
-  plus the telemetry retention/ordering decision.
+- **Architecture-gated:** completing distributed A2A active-task fencing,
+  cancellation, and owner-loss recovery requires approval of the remaining
+  contract in `docs/adrs/011-distributed-operation-ownership.md`; replica-wide
+  capability telemetry additionally needs a retention/ordering decision.
 - **Product-gated:** browser OIDC issuer/client/redirect semantics, package
   registry publication, and the first public release need explicit product
   decisions. English and Arabic are the currently supported Control Panel
@@ -73,10 +76,11 @@ The following are the current blockers or decision gates:
 
 ## Recommended next task
 
-Implement distributed A2A active-task ownership and recovery. The persistence
-provider hierarchy and shared-policy gate are now implemented and covered by
-focused SQLite/production-policy tests; distributed operation ownership is the
-next architecture gate.
+Complete distributed A2A active-task fencing and recovery. The persistence
+provider hierarchy, shared-policy gate, and first scoped A2A lease/fence slice
+are implemented and covered by focused local/production-policy tests; the
+remaining architecture gate is full PostgreSQL multi-replica acceptance and
+the late-event/non-idempotent replay contract.
 
 ---
 
@@ -111,15 +115,19 @@ route. Concrete identity-source acceptance remains open.
 ## Distributed A2A active-task state — PENDING
 
 The SDK task record can be persisted in PostgreSQL with
-`OSA_A2A_TASK_DATABASE_URL`, but the active executor registry is process-local.
-Completed-task lookup is restart-safe only when the durable store is enabled;
-in-flight work still needs an ownership and recovery protocol.
+`OSA_A2A_TASK_DATABASE_URL`. OSA now adds an explicit versioned ownership table
+with tenant/caller scope, leases, fencing, durable cancellation, and expired
+lease takeover; run `osa-a2a-migrate` before startup. The active executor
+registry remains process-local, and late SDK task updates/non-idempotent
+owner-loss recovery still need an end-to-end protocol.
 
-- [ ] Implement and wire replica-consistent task state.
+- [ ] Complete replica-consistent task state with fenced SDK task mutations and
+  explicit owner-loss handling.
 - [ ] Add multi-replica creation, completion, failure, lookup, and recovery
   acceptance tests without tenant/caller leakage.
-- [ ] Define cross-replica cancellation ordering and protection against late
-  events/retries; the local runtime now emits one canceled terminal state.
+- [ ] Complete cross-replica cancellation ordering and protection against late
+  events/retries; durable cancellation requests and local terminal emission
+  are implemented, but the SDK update boundary is not yet fenced.
 
 ## Capability-level audit telemetry — PARTIALLY COMPLETE
 

@@ -342,11 +342,17 @@ invocation through `GenericAdkAgent.invoke`, with the A2A context id mapped
 to an OSA session. The SDK task store is process-local by default; when
 `OSA_A2A_TASK_DATABASE_URL` is set, OSA wires the SDK's SQLAlchemy
 `DatabaseTaskStore` with tenant/subject ownership and initializes it before
-readiness. PostgreSQL is the shared-production choice; SQLite is an explicit
-local-testing option where the SDK supports it. The durable record is
-shareable across replicas when the selected database is shared, but active
-executor ownership and cancellation/recovery are not yet distributed. The
-runtime drains the handler's active tasks before closing agent and database
+readiness. A separate versioned OSA ownership table (`<task_table>_ownership`)
+stores the tenant/caller scope, worker lease, fencing epoch, bound session, and
+durable cancellation flag. Only the current lease holder invokes the agent;
+healthy workers heartbeat, while retries may reclaim an expired lease or replay
+a durable terminal task. Run `osa-a2a-migrate` before startup; runtime startup
+only validates the task and ownership schema. PostgreSQL is the
+shared-production choice; SQLite is an explicit local-only option where the
+SDK supports it. The SDK active-task registry remains process-local, and its
+task updates do not yet carry OSA fencing predicates, so non-idempotent
+owner-loss replay and complete late-event suppression remain open. The runtime
+drains the handler's active tasks before closing agent and database
 dependencies. The Control Plane tracks **external** A2A agents as
 records distinct from managed agents: registration fetches and validates the
 remote Agent Card, refresh re-checks health, and invocation goes through the

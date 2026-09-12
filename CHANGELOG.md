@@ -57,6 +57,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Added focused restart, migration, ownership, and policy tests; removed the
   completed persistence items from `TODO.md`.
 
+### Added — A2A ownership leases and explicit schema migration
+- Added tenant/caller-scoped A2A ownership rows with worker leases,
+  heartbeats, fencing tokens, durable cancellation requests, expired-lease
+  takeover, and terminal-state protection.
+- Added `osa-a2a-migrate`; runtime startup now validates the SDK task table,
+  schema version, and ownership table without mutating them.
+- Added focused conflict, expiry, fencing, cancellation, terminal-state, and
+  unmigrated-startup tests. Full multi-replica SDK late-event fencing and
+  non-idempotent owner-loss replay remain open P2.4 work.
+
 ### Added — Runtime durability, capacity, and deployment hardening
 - Added an explicit, versioned PostgreSQL runtime-session provider with strict
   ownership, TTL, bounded history, optimistic concurrency, and the

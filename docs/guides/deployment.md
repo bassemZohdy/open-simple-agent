@@ -30,6 +30,9 @@ Environment variables:
 | `OSA_MODEL_REF` | Override the agent's model reference at start time |
 | `OSA_ALLOW_FAKE_PROVIDER` | Opt-in deterministic fake model (`1`); never enabled by default |
 | `OSA_A2A_URL` | Public URL advertised in the Agent Card when `spec.a2a.enabled` |
+| `OSA_A2A_TASK_DATABASE_URL` | Async SQLAlchemy DSN for durable A2A tasks and ownership; unset keeps the process-local SDK store |
+| `OSA_A2A_TASK_TABLE` | A2A task table name; ownership uses the `<name>_ownership` companion table |
+| `OSA_A2A_TASK_LEASE_SECONDS` | A2A ownership lease duration; minimum 5 seconds, default 30 |
 | `OSA_PERSISTENCE_POLICY` | `local` (default) or `shared`; shared requires PostgreSQL for enabled state and Kubernetes for the durable Control Plane |
 | `OSA_MEMORY_DATABASE_URL` | PostgreSQL DSN for shared memory, or file-backed `sqlite+aiosqlite:///...` for local memory (optional; in-memory without it) |
 | `OSA_AUTH_*` | Bearer/OIDC validation for inbound calls (see the security guide) |
@@ -119,12 +122,16 @@ Runtime persistence has independent migration commands and startup ordering:
 ```bash
 OSA_MEMORY_DATABASE_URL=... uv run osa-memory-migrate
 OSA_SESSION_DATABASE_URL=... uv run osa-session-migrate
+OSA_A2A_TASK_DATABASE_URL=... uv run osa-a2a-migrate
 ```
 
 Run the memory command when `OSA_MEMORY_DATABASE_URL` is configured. Run the
 session command before deploying any bundle whose `spec.session.persistence`
 is `true`. Runtime startup validates both schemas but never creates or alters
-them.
+them. Run the A2A command when `OSA_A2A_TASK_DATABASE_URL` is configured and
+any enabled runtime serves inbound A2A tasks; it provisions the SDK task table
+and OSA's versioned ownership table. Runtime startup validates those tables but
+never creates or alters them.
 
 For local SQLite, the same commands use the file-backed subsystem providers:
 
@@ -132,6 +139,7 @@ For local SQLite, the same commands use the file-backed subsystem providers:
 OSA_CONTROL_PLANE_DATABASE_URL=sqlite+aiosqlite:///./osa-control-plane.db uv run osa-cp-migrate
 OSA_MEMORY_DATABASE_URL=sqlite+aiosqlite:///./osa-memory.db uv run osa-memory-migrate
 OSA_SESSION_DATABASE_URL=sqlite:///./osa-sessions.db uv run osa-session-migrate
+OSA_A2A_TASK_DATABASE_URL=sqlite+aiosqlite:///./osa-a2a.db uv run osa-a2a-migrate
 ```
 
 Keep SQLite files on private local storage, use mode `0600` on POSIX hosts,
@@ -148,6 +156,10 @@ coordination.
   status from identity-labelled workloads after Control Plane restarts.
 - Runtime replicas need `spec.session.persistence: true` plus a shared,
   migrated `OSA_SESSION_DATABASE_URL` for cross-replica session continuity.
+- A2A replicas need a shared, migrated PostgreSQL `OSA_A2A_TASK_DATABASE_URL`.
+  OSA ownership leases serialize active execution and durable cancellation;
+  expired leases can be reclaimed, but the SDK active-task registry and
+  complete late-event fencing remain open P2.4 work.
 - Optional HTTP rate limits are available in-process; production replicas
   should enforce the same policy at an API gateway or service mesh.
 
@@ -170,4 +182,5 @@ never accepts process commands.
 - The real Kind-cluster lifecycle acceptance job passes in CI; Control Plane
   restart recovery is covered by provider reconciliation tests, while
   distributed deployment-operation ownership remains a deployment gate.
-- Distributed A2A task state and cancellation semantics (P2.4)
+- Complete distributed A2A active-task fencing, cancellation ordering, and
+  owner-loss recovery (P2.4)
