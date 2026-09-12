@@ -189,9 +189,9 @@ remote-handler cancellation waiting, expired-owner cancellation takeover,
 read-only terminal replay, terminal-event drain-before-release, and fail-closed
 owner-loss handling; process-boundary PostgreSQL acceptance covers task
 creation, lookup, cancellation, and crash recovery. Schema version 2 now also
-provisions a migration-owned append-only event cursor, while the SDK
-active-task registry and multi-process streaming/late-event acceptance remain
-backlog work.
+provisions a migration-owned append-only event cursor and bounded polling
+relay foundation, while route integration, the SDK active-task registry, and
+multi-process streaming/late-event acceptance remain backlog work.
 Expired-owner retries never replay unknown model/tool side effects. Future work may
 deepen delegation/consent semantics without turning A2A into a management
 protocol.

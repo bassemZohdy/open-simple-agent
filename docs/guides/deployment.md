@@ -138,9 +138,10 @@ is `true`. Runtime startup validates both schemas but never creates or alters
 them. Run the A2A command when `OSA_A2A_TASK_DATABASE_URL` is configured and
 any enabled runtime serves inbound A2A tasks; it provisions the SDK task table
 and OSA's versioned ownership and append-only event tables. Runtime startup
-validates those tables but never creates or alters them. The event table is a
-storage foundation only; cross-process A2A streaming remains disabled pending
-the ADR-011 acceptance suite.
+validates those tables but never creates or alters them. The event table and
+bounded polling relay are storage foundations only; relay route integration
+and cross-process A2A streaming remain disabled pending the ADR-011 acceptance
+suite.
 
 Run `osa-capability-telemetry-migrate` when
 `OSA_CAPABILITY_TELEMETRY_DATABASE_URL` is configured. It provisions the

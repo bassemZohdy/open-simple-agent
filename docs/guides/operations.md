@@ -86,7 +86,8 @@ health probe; startup failures carry the captured logs in the record detail.
   `OSA_A2A_TASK_DATABASE_URL=... uv run osa-a2a-migrate` before rollout. The
   runtime validates the SDK task, OSA ownership, and paired event tables at
   startup; it does not create them. Set `OSA_A2A_TASK_LEASE_SECONDS`
-  consistently across replicas when tuning takeover behavior. Remote cancellation waits up to
+  consistently across replicas when tuning takeover behavior. Remote
+  cancellation waits up to
   `OSA_A2A_TASK_CANCEL_WAIT_SECONDS` for the current owner, then returns a
   retryable cancellation error unless the owner lease has expired and safe
   cancellation takeover is possible.

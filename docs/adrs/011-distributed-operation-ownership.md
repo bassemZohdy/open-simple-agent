@@ -35,7 +35,8 @@ creation, lookup, cancellation, and crash recovery. Terminal events drain
 through the SDK consumer before lease release. Expired-owner retries fail
 closed with a stable terminal failure and never replay unknown model/tool side
 effects. Schema version 2 now provisions the migration-owned append-only event
-cursor foundation, but no runtime stream relay consumes it yet. The SDK
+cursor and bounded polling-relay foundations; the relay consumes durable
+events by cursor but is not attached to a runtime stream route yet. The SDK
 active-task registry and multi-process streaming/late-event acceptance are
 still open, so this ADR remains proposed until the full
 acceptance criteria and open review questions are resolved.
@@ -166,7 +167,8 @@ concrete without silently enabling a weaker distributed contract.
   sequence. Store the protocol event under the existing A2A task-persistence
   contract; do not put bearer tokens, credentials, or unrelated telemetry
   payloads in the row. The current implementation provides the fenced storage
-  primitive; relay integration remains acceptance-gated.
+  primitive, and the bounded polling relay now provides resumable cursor reads;
+  route integration and acceptance remain gated.
 - The owner appends an event only while holding its current fence. The append
   and the ownership check share one transaction. A stale or terminal owner
   receives a conflict, and its HTTP stream must stop forwarding new events.

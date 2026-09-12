@@ -11,6 +11,7 @@ otherwise so default test runs stay clean without protocol dependencies.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import multiprocessing as mp
 import os
 import socket
@@ -170,6 +171,8 @@ async def _run_a2a_process_worker(
     from sqlalchemy.ext.asyncio import create_async_engine
 
     from osa.runtimes.adk.a2a import OsaA2aAgentExecutor, _a2a_task_owner, build_agent_card
+    from osa.runtimes.adk.a2a_event_relay import A2aTaskEventRelay
+    from osa.runtimes.adk.a2a_event_store import A2aTaskEventStore, event_table_name
     from osa.runtimes.adk.a2a_ownership import A2aTaskOwnershipStore
     from osa.runtimes.adk.a2a_task_store import FencedDatabaseTaskStore
 
@@ -185,7 +188,12 @@ async def _run_a2a_process_worker(
         table_name=task_table_name,
         owner_resolver=_a2a_task_owner,
     )
-    task_store = FencedDatabaseTaskStore(sdk_store, ownership_store)
+    event_store = A2aTaskEventStore(
+        engine,
+        table_name=event_table_name(task_table_name),
+    )
+    task_store = FencedDatabaseTaskStore(sdk_store, ownership_store, event_store)
+    event_relay = A2aTaskEventRelay(event_store, ownership_store, timeout_seconds=15)
     agent = _ProcessControlledAgent(f"process-{role}", release_event)
     card = build_agent_card(agent.definition, [], "http://127.0.0.1/a2a")
     handler = DefaultRequestHandler(
@@ -195,6 +203,7 @@ async def _run_a2a_process_worker(
                 agent,
                 ownership_store=ownership_store,
                 task_store=task_store,
+                event_store=event_store,
             ),
         ),
         task_store=cast("Any", task_store),
@@ -203,6 +212,26 @@ async def _run_a2a_process_worker(
 
     await task_store.initialize()
     result_queue.put({"event": "ready", "role": role})
+    stream_tasks: set[asyncio.Task[None]] = set()
+
+    async def stream_events(task_id: str) -> None:
+        from a2a.types import TaskStatusUpdateEvent
+
+        event_types: list[str] = []
+        states: list[int] = []
+        async for event in event_relay.stream(scope_key="anonymous", task_id=task_id, timeout_seconds=15):
+            event_types.append(type(event).__name__)
+            if isinstance(event, TaskStatusUpdateEvent):
+                states.append(int(event.status.state))
+        result_queue.put(
+            {
+                "event": "streamed",
+                "task_id": task_id,
+                "event_types": event_types,
+                "states": states,
+            }
+        )
+
     try:
         while True:
             command = await asyncio.to_thread(command_queue.get)
@@ -221,6 +250,11 @@ async def _run_a2a_process_worker(
                     raise AssertionError("process acceptance did not create an A2A task")
                 await asyncio.wait_for(agent.started.wait(), timeout=10)
                 result_queue.put({"event": "started", "role": role, "task_id": initial.id})
+            elif operation == "stream":
+                stream_task = asyncio.create_task(stream_events(str(command["task_id"])))
+                stream_tasks.add(stream_task)
+                stream_task.add_done_callback(stream_tasks.discard)
+                result_queue.put({"event": "stream-started", "task_id": command["task_id"]})
             elif operation == "lookup":
                 task = await handler.on_get_task(
                     GetTaskRequest(id=command["task_id"]),
@@ -253,6 +287,11 @@ async def _run_a2a_process_worker(
             else:
                 raise AssertionError(f"unknown A2A process command: {operation!r}")
     finally:
+        for stream_task in stream_tasks:
+            stream_task.cancel()
+        for stream_task in stream_tasks:
+            with contextlib.suppress(asyncio.CancelledError):
+                await stream_task
         await handler.aclose()
         await engine.dispose()
 
@@ -1055,6 +1094,10 @@ class TestA2aPostgresProcessAcceptance:
             assert started["event"] == "started"
             task_id = str(started["task_id"])
 
+            observer_commands.put({"op": "stream", "task_id": task_id})
+            stream_started = await _read_process_result(observer_results)
+            assert stream_started["event"] == "stream-started"
+
             observer_commands.put({"op": "lookup", "task_id": task_id})
             observed = await _read_process_result(observer_results)
             assert observed["event"] == "lookup"
@@ -1074,11 +1117,18 @@ class TestA2aPostgresProcessAcceptance:
                 raise AssertionError(f"remote cancellation completed before owner release: {unexpected_result!r}")
 
             owner_release.set()
-            canceled = await _read_process_result(observer_results, timeout=15)
-            assert canceled["event"] == "cancelled"
+            observer_results_seen: dict[str, dict[str, Any]] = {}
+            while {"cancelled", "streamed"} - observer_results_seen.keys():
+                result = await _read_process_result(observer_results, timeout=15)
+                observer_results_seen[str(result["event"])] = result
+            canceled = observer_results_seen["cancelled"]
+            streamed = observer_results_seen["streamed"]
             assert canceled["task_id"] == task_id
             assert canceled["state"] == int(TaskState.TASK_STATE_CANCELED)
             assert canceled["agent_calls"] == 0
+            assert streamed["task_id"] == task_id
+            assert streamed["event_types"] == ["Task", "TaskStatusUpdateEvent"]
+            assert streamed["states"][-1] == int(TaskState.TASK_STATE_CANCELED)
 
             observer_commands.put({"op": "lookup", "task_id": task_id})
             final = await _read_process_result(observer_results)

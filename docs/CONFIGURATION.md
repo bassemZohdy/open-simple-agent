@@ -324,9 +324,10 @@ terminal snapshots replay through read-only SDK events without a duplicate
 write. The SDK active-task registry is still process-local. Durable SDK task
 saves carry the ownership fence and hold the ownership-row lock through the
 write, so an expired or superseded worker cannot persist a late task mutation.
-The event table is a migration-owned storage foundation for the future
-cross-process A2A stream relay; inbound A2A streaming remains disabled until
-the architecture-gated acceptance suite passes.
+The event table and bounded polling relay are migration-owned foundations for
+the future cross-process A2A stream handler; the relay supports resumable
+sequence cursors but is not attached to a public route. Inbound A2A streaming
+remains disabled until the architecture-gated acceptance suite passes.
 Terminal events drain through the SDK consumer before the owner releases its
 lease. Process-boundary PostgreSQL acceptance covers shared task creation,
 lookup, cancellation, and crash recovery. Expired-owner retries finalize

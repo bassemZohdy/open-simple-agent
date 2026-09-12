@@ -48,11 +48,11 @@ Production-readiness limits are:
   expired-lease takeover, explicit schema migration, fenced SDK task saves,
   remote-handler cancellation waiting, expired-owner cancellation, read-only
   terminal replay, terminal-event drain-before-release, and fail-closed
-  owner-loss handling are implemented. The SDK active-task registry and
-  migration-owned event-cursor storage is now provisioned as schema version 2,
-  but multi-process streaming/late-event acceptance remains incomplete;
-  replica-wide
-  capability telemetry now has an optional migration-owned PostgreSQL sink
+  owner-loss handling are implemented. Migration-owned event-cursor storage is
+  provisioned as schema version 2 and a bounded cursor-relay foundation is
+  available, but public multi-process streaming/late-event acceptance remains
+  incomplete; replica-wide capability telemetry now has an optional
+  migration-owned PostgreSQL sink
   with deduplication, ordering, and tenant-retention controls;
   deployment-operation ownership now has a migration-owned PostgreSQL lease,
   fencing, and stale-write guard for exposed mutations; independent-worker
@@ -84,7 +84,8 @@ The following are the current blockers or decision gates:
 ## Recommended next task
 
 Return to the architecture-gated A2A streaming and late-event acceptance after
-the ADR review. Deployment-operation ownership is implemented and its
+the ADR review; the durable cursor relay is ready to support that handler
+integration. Deployment-operation ownership is implemented and its
 independent-worker PostgreSQL acceptance passes in CI for the exposed
 deploy/stop/restart/rollback paths, including takeover, stale-result fencing,
 tenant isolation, and recovery.
@@ -150,8 +151,9 @@ route. Concrete identity-source acceptance remains open.
 The SDK task record can be persisted in PostgreSQL with
 `OSA_A2A_TASK_DATABASE_URL`. OSA now adds an explicit versioned ownership table
 with tenant/caller scope, leases, fencing, durable cancellation, and expired
-lease takeover, plus a schema-version-2 migration-owned append-only event
-cursor; run `osa-a2a-migrate` before startup. Durable task mutations
+lease takeover, plus schema-version-2 migration-owned append-only event-cursor
+and bounded polling-relay foundations; run `osa-a2a-migrate` before startup.
+Durable task mutations
 now carry the acquired ownership snapshot through the SDK call context and
 hold the ownership-row lock while saving, so stale workers fail closed. The
 active executor registry remains process-local. Independent handlers can look
@@ -178,6 +180,8 @@ late-event acceptance remain open; owner loss is fail-closed by default.
 - [x] Add process-boundary PostgreSQL acceptance for active-task creation,
   shared lookup, remote cancellation, and crash/lease-expiry recovery; the SDK
   active-task registry remains local to each process.
+- [x] Add a migration-owned event cursor and bounded polling relay foundation
+  with tenant-scoped reconnect cursors and terminal-event handling.
 - [ ] Add multi-process/multi-worker PostgreSQL acceptance for streaming and
   late events; the SDK active-task registry remains local to each process.
 - [x] Decide and implement the non-idempotent owner-loss/retry policy: an
