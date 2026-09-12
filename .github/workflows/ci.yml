@@ -193,7 +193,7 @@ jobs:
           VIRTUAL_ENV=/tmp/lic-venv uv pip install -r requirements-audit.txt
           uvx --from pip-licenses pip-licenses --python /tmp/lic-venv/bin/python \
             --from mixed --order=license \
-            --allow-only "MIT;MIT License;MIT-0;Apache Software License;Apache-2.0;Apache License 2.0;BSD License;BSD-3-Clause;BSD-2-Clause;Python Software Foundation License;PSF-2.0;Mozilla Public License 2.0 (MPL 2.0);Apache-2.0 AND MIT;Apache-2.0 OR BSD-3-Clause;Apache-2.0 OR BSD-2-Clause;Apache Software License; MIT License;MPL-2.0 AND MIT;Apache-2.0 AND CNRI-Python"
+            --allow-only "MIT;MIT License;MIT-0;Apache Software License;Apache-2.0;Apache License 2.0;BSD License;BSD-3-Clause;BSD-2-Clause;Python Software Foundation License;PSF-2.0;Mozilla Public License 2.0 (MPL 2.0);Apache-2.0 AND MIT;Apache-2.0 OR BSD-3-Clause;Apache-2.0 OR BSD-2-Clause;Apache Software License; MIT License;MPL-2.0 AND MIT;Apache-2.0 AND CNRI-Python;MPL-2.0 AND (Apache-2.0 OR MIT)"
       - name: Generate CycloneDX SBOM for Python dependencies
         run: |
           uvx --from cyclonedx-bom cyclonedx-py requirements requirements-audit.txt \
