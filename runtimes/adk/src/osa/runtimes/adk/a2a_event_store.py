@@ -17,6 +17,8 @@ if TYPE_CHECKING:
     from osa.runtimes.adk.a2a_ownership import A2aTaskOwnershipStore, TaskOwnership
 
 A2A_EVENT_TABLE_SUFFIX = "_events"
+POSTGRES_IDENTIFIER_MAX_LENGTH = 63
+MAX_A2A_TASK_TABLE_NAME_LENGTH = POSTGRES_IDENTIFIER_MAX_LENGTH - len("_ownership")
 MAX_A2A_EVENT_TYPE_LENGTH = 64
 MAX_A2A_EVENT_PAYLOAD_BYTES = 1024 * 1024
 
@@ -36,8 +38,10 @@ class A2aTaskEvent:
 
 def event_table_name(task_table_name: str) -> str:
     """Return the event table paired with one configured task table."""
-    _validate_identifier(task_table_name)
-    return f"{task_table_name}{A2A_EVENT_TABLE_SUFFIX}"
+    _validate_identifier(task_table_name, max_length=MAX_A2A_TASK_TABLE_NAME_LENGTH)
+    event_name = f"{task_table_name}{A2A_EVENT_TABLE_SUFFIX}"
+    _validate_identifier(event_name)
+    return event_name
 
 
 class A2aTaskEventStore:
@@ -241,9 +245,11 @@ class A2aTaskEventStore:
         )
 
 
-def _validate_identifier(value: str) -> str:
+def _validate_identifier(value: str, *, max_length: int = POSTGRES_IDENTIFIER_MAX_LENGTH) -> str:
     if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", value) is None:
         raise ValueError("A2A event table names must be simple SQL identifiers")
+    if len(value) > max_length:
+        raise ValueError(f"A2A event table names must be at most {max_length} characters")
     return value
 
 
@@ -269,6 +275,8 @@ __all__ = [
     "A2A_EVENT_TABLE_SUFFIX",
     "A2aTaskEvent",
     "A2aTaskEventStore",
+    "MAX_A2A_TASK_TABLE_NAME_LENGTH",
     "MAX_A2A_EVENT_PAYLOAD_BYTES",
+    "POSTGRES_IDENTIFIER_MAX_LENGTH",
     "event_table_name",
 ]

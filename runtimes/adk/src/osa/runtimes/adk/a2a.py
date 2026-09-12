@@ -36,6 +36,7 @@ if TYPE_CHECKING:
 
     from osa.generic_agent import AgentDefinition, AuthSettings, SkillDefinition
 
+from osa.runtimes.adk.a2a_event_store import MAX_A2A_TASK_TABLE_NAME_LENGTH
 from osa.runtimes.adk.a2a_ownership import A2aTaskOwnershipStore, TaskOwnership, heartbeat_loop
 from osa.runtimes.adk.a2a_task_store import (
     FencedDatabaseTaskStore,
@@ -623,6 +624,8 @@ def _a2a_task_owner(context: Any) -> str:
 def _validate_task_table_name(table_name: str) -> str:
     if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", table_name) is None:
         raise ValueError(f"{A2A_TASK_TABLE_ENV_VAR} must be a simple SQL identifier")
+    if len(table_name) > MAX_A2A_TASK_TABLE_NAME_LENGTH:
+        raise ValueError(f"{A2A_TASK_TABLE_ENV_VAR} must be at most {MAX_A2A_TASK_TABLE_NAME_LENGTH} characters")
     return table_name
 
 

@@ -12,6 +12,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Hardened — A2A table-name portability
+- Durable A2A configuration now rejects oversized task/ownership/event table
+  identifiers before startup. The task-table limit leaves room for derived
+  names under PostgreSQL's 63-byte identifier limit instead of relying on
+  backend-specific truncation.
+
 ### Hardened — A2A relay scope authorization
 - Durable A2A cursor reads now verify the complete tenant-and-subject task
   ownership scope before reading tenant-indexed event pages, preventing a

@@ -363,7 +363,7 @@ The runtime also accepts these service-level controls:
 | `OSA_MEMORY_DATABASE_URL` | PostgreSQL DSN for shared memory or file-backed `sqlite+aiosqlite:///...` DSN for local memory | unset (in-memory) |
 | `OSA_SESSION_DATABASE_URL` | PostgreSQL DSN for shared sessions or file-backed `sqlite:///...` DSN for local sessions when persistence is enabled | required only for persistent agents |
 | `OSA_A2A_TASK_DATABASE_URL` | Async SQLAlchemy DSN for durable A2A task records | unset (in-memory) |
-| `OSA_A2A_TASK_TABLE` | SQL identifier used by the A2A SDK task store | `osa_a2a_tasks` |
+| `OSA_A2A_TASK_TABLE` | ASCII SQL identifier used by the A2A SDK task store; maximum 53 characters so derived PostgreSQL names remain valid | `osa_a2a_tasks` |
 | `OSA_A2A_TASK_LEASE_SECONDS` | Ownership lease duration before takeover; must be at least 5 seconds | `30` |
 | `OSA_A2A_TASK_CANCEL_WAIT_SECONDS` | Maximum time a remote cancellation waits for the owner before returning a retryable cancellation error | `30` |
 | `OSA_RATE_LIMIT_REQUESTS` | Per-route, per-caller fixed-window request budget; `0` disables | `0` |

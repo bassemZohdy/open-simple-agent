@@ -122,11 +122,17 @@ async def test_event_store_orders_events_and_rejects_stale_fences(
 
 
 def test_event_table_name_and_payload_validation() -> None:
-    from osa.runtimes.adk.a2a_event_store import A2aTaskEventStore, event_table_name
+    from osa.runtimes.adk.a2a_event_store import (
+        MAX_A2A_TASK_TABLE_NAME_LENGTH,
+        A2aTaskEventStore,
+        event_table_name,
+    )
 
     assert event_table_name("osa_a2a_tasks") == "osa_a2a_tasks_events"
     with pytest.raises(ValueError, match="simple SQL identifiers"):
         event_table_name("tasks;drop")
+    with pytest.raises(ValueError, match="at most"):
+        event_table_name("x" * (MAX_A2A_TASK_TABLE_NAME_LENGTH + 1))
     with pytest.raises(ValueError, match="positive"):
         A2aTaskEventStore(object(), table_name="events", max_payload_bytes=0)
 

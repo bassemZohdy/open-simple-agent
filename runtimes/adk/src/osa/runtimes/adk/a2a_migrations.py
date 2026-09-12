@@ -5,7 +5,11 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from osa.runtimes.adk.a2a_event_store import A2aTaskEventStore, event_table_name
+from osa.runtimes.adk.a2a_event_store import (
+    MAX_A2A_TASK_TABLE_NAME_LENGTH,
+    A2aTaskEventStore,
+    event_table_name,
+)
 
 A2A_SCHEMA_VERSION_TABLE = "osa_a2a_schema_versions"
 CURRENT_SCHEMA_VERSION = 2
@@ -14,6 +18,8 @@ CURRENT_SCHEMA_VERSION = 2
 def _validate_table_name(table_name: str) -> str:
     if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", table_name) is None:
         raise ValueError("A2A table names must be simple SQL identifiers")
+    if len(table_name) > MAX_A2A_TASK_TABLE_NAME_LENGTH:
+        raise ValueError(f"A2A task table names must be at most {MAX_A2A_TASK_TABLE_NAME_LENGTH} characters")
     return table_name
 
 

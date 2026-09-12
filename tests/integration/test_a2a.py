@@ -767,6 +767,10 @@ class TestA2aTaskStore:
         with pytest.raises(ValueError, match="simple SQL identifier"):
             _task_store_and_engine(FastAPI())
 
+        monkeypatch.setenv("OSA_A2A_TASK_TABLE", "x" * 54)
+        with pytest.raises(ValueError, match="at most 53"):
+            _task_store_and_engine(FastAPI())
+
 
 class TestA2aDistributedHandlerAcceptance:
     async def test_independent_handlers_lookup_and_cancel_shared_active_task(self, tmp_path: Path) -> None:

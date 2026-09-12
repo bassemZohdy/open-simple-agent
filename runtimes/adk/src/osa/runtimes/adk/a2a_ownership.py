@@ -17,6 +17,8 @@ from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
+from osa.runtimes.adk.a2a_event_store import POSTGRES_IDENTIFIER_MAX_LENGTH
+
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
 
@@ -45,6 +47,8 @@ class A2aTaskOwnershipStore:
             raise ValueError("A2A task lease must be at least 5 seconds")
         if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", table_name) is None:
             raise ValueError("A2A ownership table name must be a simple SQL identifier")
+        if len(table_name) > POSTGRES_IDENTIFIER_MAX_LENGTH:
+            raise ValueError(f"A2A ownership table name must be at most {POSTGRES_IDENTIFIER_MAX_LENGTH} characters")
         from sqlalchemy import Boolean, Column, DateTime, Integer, MetaData, String, Table, Text
 
         self._engine = engine
