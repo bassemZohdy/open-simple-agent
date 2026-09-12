@@ -52,8 +52,9 @@ Production-readiness limits are:
   multi-process streaming/late-event acceptance remain incomplete; replica-wide
   capability telemetry now has an optional migration-owned PostgreSQL sink
   with deduplication, ordering, and tenant-retention controls;
-  long-running deployment-operation ownership and global gateway quotas remain
-  deployment concerns;
+  deployment-operation ownership now has a migration-owned PostgreSQL lease,
+  fencing, and stale-write guard for exposed mutations; two-worker provider
+  acceptance and global gateway quotas remain deployment concerns;
 - deployment-specific browser OIDC, package publication, and the first public
   release remain open; the Kubernetes lifecycle acceptance passes in CI, while
   this workstation cannot run it locally because Docker is unavailable.
@@ -79,12 +80,12 @@ The following are the current blockers or decision gates:
 
 ## Recommended next task
 
-Complete true multi-process A2A active-task acceptance. The persistence
-provider hierarchy, shared-policy gate, scoped A2A leases, fenced SDK task
-saves, independent-handler lookup/cancellation acceptance, expired-owner
-cancellation, terminal read-only replay, and the conservative fail-closed
-owner-loss policy are implemented and covered by focused tests. The remaining
-architecture gate is PostgreSQL-backed multi-process handler/active-task
+Complete the two-worker PostgreSQL deployment-operation acceptance. The
+tenant/resource lease, fencing, stable operation IDs, heartbeat, takeover, and
+fenced durable writes are implemented and covered by focused tests; the
+remaining infrastructure-gated proof is provider-side-effect serialization,
+expiry/cancellation, late-result rejection, tenant isolation, and restart/
+reconciliation recovery. After that, return to the architecture-gated A2A
 streaming and late-event acceptance.
 
 ---
@@ -108,12 +109,12 @@ is unavailable.
 
 ## Distributed deployment-operation ownership — PENDING
 
-Deployment intent, provider reconciliation, and Kubernetes lifecycle acceptance
-exist, but mutating deployment operations are not yet serialized across
-multiple Control Plane replicas. The implementation must reuse the
-lease/fencing boundary proposed in ADR-011, keep provider observation separate
-from owned intent, and fail closed on stale workers rather than replaying
-unknown side effects.
+Deployment intent, provider reconciliation, and Kubernetes lifecycle
+acceptance exist. PostgreSQL now serializes the exposed mutating deployment
+operations with the lease/fencing boundary proposed in ADR-011, keeps provider
+observation separate from owned intent, and fails closed on stale workers
+rather than replaying unknown side effects. The remaining task is the
+multi-worker acceptance proof.
 
 - [x] Decide that all mutating operations for one deployment serialize under
   one key while read-only observations remain concurrent. Deploy creation uses
