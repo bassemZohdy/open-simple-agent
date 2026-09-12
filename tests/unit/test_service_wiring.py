@@ -35,3 +35,11 @@ def test_durable_control_plane_requires_shared_provider(monkeypatch: pytest.Monk
     monkeypatch.delenv("OSA_DEPLOY_PROVIDER", raising=False)
     with pytest.raises(DeploymentError, match="requires OSA_DEPLOY_PROVIDER=kubernetes"):
         create_deployment_provider(require_shared=True)
+
+
+def test_openshift_requires_a_dedicated_provider(monkeypatch: pytest.MonkeyPatch) -> None:
+    """OpenShift-specific behavior must not be silently routed through Kubernetes."""
+    monkeypatch.setenv("OSA_DEPLOY_PROVIDER", "openshift")
+
+    with pytest.raises(DeploymentError, match="dedicated deployment provider"):
+        create_deployment_provider()

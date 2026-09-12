@@ -12,6 +12,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Hardened — Kubernetes provider boundary
+
+- Explicitly reject `OSA_DEPLOY_PROVIDER=openshift` until a dedicated
+  OpenShift provider is implemented, preventing OpenShift-specific behavior
+  from being mixed into the generic Kubernetes provider.
+- Added regression coverage and documented the provider boundary.
+
+### Added — Enterprise identity acceptance harness
+
+- Added provider-neutral opt-in acceptance coverage for real JWT/JWKS and
+  RFC 7662 tokens, expected subject/tenant binding, and a protected Control
+  Plane route.
+- Added a manual CI workflow that remains disabled until a selected provider,
+  test tenant, and repository credentials are configured.
+
 ### Added — Control Panel locale coverage
 - Added centralized English/Arabic messages for the Control Panel shell and
   management views, including localized accessible names, route titles, and

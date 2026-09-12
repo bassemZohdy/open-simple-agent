@@ -305,7 +305,9 @@ runtimes are external processes: no ADK internals are imported. Kubernetes
 status/list operations rehydrate workloads from OSA identity labels after a
 Control Plane restart; real Kind validation passes in CI, while distributed
 operation ownership remains open in `TODO.md`.
-OpenShift-specific provider work is intentionally deferred.
+The provider factory rejects `OSA_DEPLOY_PROVIDER=openshift` until a separate
+OpenShift provider is implemented; OpenShift API and admission behavior must
+not be added as conditional paths to the generic Kubernetes provider.
 
 Deployment records expose an optional public runtime invoke URL synthesized
 from `OSA_DEPLOY_INVOKE_URL_TEMPLATE` (ADR-008, migration 0007). The Control

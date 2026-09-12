@@ -56,6 +56,7 @@ RUNTIME_CORS_ENV_VAR = "OSA_DEPLOY_RUNTIME_ALLOWED_ORIGINS"
 RUNTIME_CORS_PASSTHROUGH_ENV_VAR = "OSA_RUNTIME_ALLOWED_ORIGINS"
 DEPLOY_PROVIDER_ENV_VAR = "OSA_DEPLOY_PROVIDER"
 KUBERNETES_IMAGE_ENV_VAR = "OSA_KUBERNETES_IMAGE"
+OPENSHIFT_PROVIDER_NAME = "openshift"
 
 
 def create_deployment_provider(*, require_shared: bool = False) -> DeploymentProvider:
@@ -85,6 +86,10 @@ def create_deployment_provider(*, require_shared: bool = False) -> DeploymentPro
             replicas=_positive_env_int("OSA_KUBERNETES_REPLICAS", 1),
             kubectl=os.environ.get("OSA_KUBECTL", "kubectl"),
             rollout_timeout_seconds=_positive_env_int("OSA_KUBERNETES_ROLLOUT_TIMEOUT_SECONDS", 60),
+        )
+    if provider_name == OPENSHIFT_PROVIDER_NAME:
+        raise DeploymentError(
+            "OpenShift requires a dedicated deployment provider; it is not an alias for the generic Kubernetes provider"
         )
     raise DeploymentError(f"Unsupported {DEPLOY_PROVIDER_ENV_VAR} value: {provider_name}")
 

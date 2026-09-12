@@ -128,6 +128,27 @@ selected.
 
 - Live-provider acceptance is available as an opt-in CI job and requires the
   explicitly configured `OSA_LIVE_PROVIDER_API_KEY` repository secret.
-- Live identity-provider certification requires provider credentials.
-- Integration tests against a concrete enterprise identity source remain open
-  until that source is selected.
+- A provider-neutral enterprise identity acceptance harness is available at
+  `tests/acceptance/test_enterprise_identity.py`. It accepts a real signed JWT
+  or opaque RFC 7662 token, validates the configured issuer/audience and
+  expected subject/tenant, and calls a protected Control Plane route without
+  recording the token. The manual
+  `.github/workflows/identity-acceptance.yml` workflow runs it only when the
+  documented repository secret and variables are configured.
+- To enable the workflow, configure the secret
+  `OSA_ENTERPRISE_IDENTITY_ACCESS_TOKEN` and the repository variables
+  `OSA_ENTERPRISE_IDENTITY_ISSUER`, `OSA_ENTERPRISE_IDENTITY_AUDIENCE`,
+  `OSA_ENTERPRISE_IDENTITY_EXPECTED_SUBJECT`, and
+  `OSA_ENTERPRISE_IDENTITY_EXPECTED_TENANT`. Optional variables include
+  `OSA_ENTERPRISE_IDENTITY_JWKS_URL`,
+  `OSA_ENTERPRISE_IDENTITY_DISCOVERY_URL`,
+  `OSA_ENTERPRISE_IDENTITY_REQUIRED_SCOPES`,
+  `OSA_ENTERPRISE_IDENTITY_ENFORCE_PERMISSIONS`,
+  `OSA_ENTERPRISE_IDENTITY_EXPECTED_SCOPES`,
+  `OSA_ENTERPRISE_IDENTITY_INTROSPECTION_URL`, and
+  `OSA_ENTERPRISE_IDENTITY_INTROSPECTION_CLIENT_ID`. If introspection is
+  used, also configure the `OSA_ENTERPRISE_IDENTITY_INTROSPECTION_CLIENT_SECRET`
+  secret. An optional inactive fixture token can be supplied as the
+  `OSA_ENTERPRISE_IDENTITY_INACTIVE_TOKEN` secret.
+- Live identity-provider certification still requires selecting the provider,
+  configuring a test tenant, and supplying its credentials.

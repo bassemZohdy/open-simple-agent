@@ -133,8 +133,10 @@ spec:
 Allow/deny overlap is invalid. The policy is independent of the prompt;
 enterprise policy evaluation remains open. Inbound A2A security is enforced by
 the shared OIDC/OAuth boundary. Kubernetes provider selection is available via
-operator configuration; real Kind validation passes in CI and OpenShift-
-specific behavior is deferred.
+operator configuration; real Kind validation passes in CI. The provider
+factory rejects `OSA_DEPLOY_PROVIDER=openshift` until a dedicated OpenShift
+provider is implemented, so OpenShift-specific behavior is not mixed into the
+generic Kubernetes path.
 
 | Path | Type | Default | Current behavior |
 |---|---|---:|---|

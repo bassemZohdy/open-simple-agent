@@ -81,7 +81,10 @@ workloads after Control Plane restarts. The real Kind lifecycle acceptance
 workflow passes in CI; this workstation cannot execute it locally while Docker
 is unavailable.
 
-- [ ] Keep OpenShift-specific behavior separate from generic Kubernetes code.
+- [x] Keep OpenShift-specific behavior separate from generic Kubernetes code;
+  the provider factory rejects `openshift` until a dedicated provider exists,
+  and the boundary is covered by a unit test. OpenShift support remains a
+  separate provider gate.
 
 ---
 
@@ -90,8 +93,10 @@ is unavailable.
 ## Enterprise identity lifecycle — PARTIALLY COMPLETE
 
 Claim-driven lifecycle semantics, OIDC/JWKS validation, RFC 7662 opaque-token
-introspection, and contract-level lifecycle tests are implemented. Concrete
-identity-source acceptance remains open.
+introspection, and contract-level lifecycle tests are implemented. A
+provider-neutral opt-in acceptance harness and manual CI workflow now cover a
+real access token, expected subject/tenant, and a protected Control Plane
+route. Concrete identity-source acceptance remains open.
 
 - [ ] Run the lifecycle acceptance suite against a selected enterprise
   identity source and test tenant.

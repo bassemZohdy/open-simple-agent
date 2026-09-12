@@ -1,0 +1,62 @@
+name: Enterprise identity acceptance
+
+on:
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  identity-acceptance:
+    name: Selected enterprise identity acceptance
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+      - name: Detect identity acceptance opt-in
+        id: opt_in
+        shell: bash
+        env:
+          ACCESS_TOKEN: ${{ secrets.OSA_ENTERPRISE_IDENTITY_ACCESS_TOKEN }}
+          ISSUER: ${{ vars.OSA_ENTERPRISE_IDENTITY_ISSUER }}
+          AUDIENCE: ${{ vars.OSA_ENTERPRISE_IDENTITY_AUDIENCE }}
+          SUBJECT: ${{ vars.OSA_ENTERPRISE_IDENTITY_EXPECTED_SUBJECT }}
+          TENANT: ${{ vars.OSA_ENTERPRISE_IDENTITY_EXPECTED_TENANT }}
+        run: |
+          set -euo pipefail
+          if [[ -n "$ACCESS_TOKEN" && -n "$ISSUER" && -n "$AUDIENCE" && -n "$SUBJECT" && -n "$TENANT" ]]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Enterprise identity acceptance is disabled; configure the documented repository secret and variables to opt in."
+          fi
+      - uses: astral-sh/setup-uv@v10.0.1
+        if: steps.opt_in.outputs.enabled == 'true'
+      - uses: actions/setup-python@v7
+        if: steps.opt_in.outputs.enabled == 'true'
+        with:
+          python-version: "3.12"
+      - name: Install acceptance dependencies
+        if: steps.opt_in.outputs.enabled == 'true'
+        run: uv sync --all-packages
+      - name: Run selected enterprise identity acceptance
+        if: steps.opt_in.outputs.enabled == 'true'
+        env:
+          OSA_AUTH_MODE: required
+          OSA_AUTH_ISSUER: ${{ vars.OSA_ENTERPRISE_IDENTITY_ISSUER }}
+          OSA_AUTH_AUDIENCE: ${{ vars.OSA_ENTERPRISE_IDENTITY_AUDIENCE }}
+          OSA_AUTH_JWKS_URL: ${{ vars.OSA_ENTERPRISE_IDENTITY_JWKS_URL }}
+          OSA_AUTH_DISCOVERY_URL: ${{ vars.OSA_ENTERPRISE_IDENTITY_DISCOVERY_URL }}
+          OSA_AUTH_REQUIRED_SCOPES: ${{ vars.OSA_ENTERPRISE_IDENTITY_REQUIRED_SCOPES }}
+          OSA_AUTH_ENFORCE_PERMISSIONS: ${{ vars.OSA_ENTERPRISE_IDENTITY_ENFORCE_PERMISSIONS || 'false' }}
+          OSA_AUTH_INTROSPECTION_URL: ${{ vars.OSA_ENTERPRISE_IDENTITY_INTROSPECTION_URL }}
+          OSA_AUTH_INTROSPECTION_CLIENT_ID: ${{ vars.OSA_ENTERPRISE_IDENTITY_INTROSPECTION_CLIENT_ID }}
+          OSA_AUTH_INTROSPECTION_CLIENT_SECRET_KEY: OSA_ENTERPRISE_IDENTITY_INTROSPECTION_CLIENT_SECRET
+          OSA_ENTERPRISE_IDENTITY_INTROSPECTION_CLIENT_SECRET: ${{ secrets.OSA_ENTERPRISE_IDENTITY_INTROSPECTION_CLIENT_SECRET }}
+          OSA_ENTERPRISE_IDENTITY_ACCESS_TOKEN: ${{ secrets.OSA_ENTERPRISE_IDENTITY_ACCESS_TOKEN }}
+          OSA_ENTERPRISE_IDENTITY_EXPECTED_SUBJECT: ${{ vars.OSA_ENTERPRISE_IDENTITY_EXPECTED_SUBJECT }}
+          OSA_ENTERPRISE_IDENTITY_EXPECTED_TENANT: ${{ vars.OSA_ENTERPRISE_IDENTITY_EXPECTED_TENANT }}
+          OSA_ENTERPRISE_IDENTITY_EXPECTED_SCOPES: ${{ vars.OSA_ENTERPRISE_IDENTITY_EXPECTED_SCOPES }}
+          OSA_ENTERPRISE_IDENTITY_INACTIVE_TOKEN: ${{ secrets.OSA_ENTERPRISE_IDENTITY_INACTIVE_TOKEN }}
+        run: uv run pytest -q tests/acceptance/test_enterprise_identity.py
