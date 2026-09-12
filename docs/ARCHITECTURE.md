@@ -434,10 +434,11 @@ Streaming tests cover the SSE contract, disconnect-triggered cancellation,
 timeouts, concurrent load, and cross-replica session consistency over a
 shared provider. Live-model acceptance is covered by an opt-in test that uses
 the LiteLLM adapter and can run only when its repository secret is enabled;
-there is no live-identity-provider or multi-process handler/deployment test
-yet. The Kind Kubernetes lifecycle acceptance passes in CI. CI enforces an 84%
-coverage threshold; live identity-provider acceptance and full distributed
-operation ownership remain backlog work. The opt-in live-provider job is available when
+there is no live-identity-provider or multi-process A2A streaming/late-event
+test yet. The Kind Kubernetes lifecycle and independent-worker PostgreSQL
+deployment-operation acceptance pass in CI. CI enforces an 84% coverage
+threshold; live identity-provider acceptance and A2A streaming/late-event
+acceptance remain backlog work. The opt-in live-provider job is available when
 its repository secret is configured, but it is intentionally skipped in offline
 CI runs.
 

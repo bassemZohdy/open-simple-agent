@@ -236,8 +236,9 @@ with status `429` and a `Retry-After` header in seconds. The built-in limiter
 is process-local and bounded. Set `OSA_RATE_LIMIT_DATABASE_URL` to use the
 atomic PostgreSQL-compatible shared window store across replicas; its table
 is created by `osa-rate-limit-migrate` (and validated/initialized at service
-startup). Long-running operation ownership and gateway-level quotas remain
-deployment policy.
+startup). A2A multi-process streaming/late-event ownership and gateway-level
+quotas remain deployment policy; exposed Control Plane deployment mutations
+use the migration-owned ownership contract documented above.
 
 ### Definition resource policy
 

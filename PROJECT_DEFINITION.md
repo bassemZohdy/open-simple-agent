@@ -274,8 +274,10 @@ The local deployment provider is integrated through the Control Plane lifecycle
 API and is development-only. Durable Control Plane deployments select the
 generic `kubectl`-backed Kubernetes provider, which supports
 Deployment/Service/config/secret/probe/lifecycle behavior and rehydrates
-status from OSA identity labels after a Control Plane restart. Real Kind
-acceptance passes in CI; distributed operation ownership remains gated.
+status from OSA identity labels after a Control Plane restart. Real Kind and
+independent-worker PostgreSQL deployment-operation ownership acceptance pass
+in CI. A2A multi-process streaming/late-event acceptance remains
+architecture-gated.
 OpenShift-specific behavior remains separately deferred.
 
 ### Control Panel
@@ -444,5 +446,5 @@ Items 1–7 and the Manager Agent/release foundations are substantially
 implemented. Current delivery focus is production-readiness hardening of
 deployment safety, outbound security, persistence boundaries, and capacity
 controls, followed by the remaining Control Panel and release decisions while
-distributed deployment ownership and OpenShift follow-up stay gated. The
+A2A streaming/late-event acceptance and OpenShift follow-up stay gated. The
 detailed, acceptance-tested backlog is maintained in [TODO.md](TODO.md).
