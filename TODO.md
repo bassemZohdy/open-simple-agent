@@ -45,11 +45,12 @@ Production-readiness limits are:
   required as defense in depth;
 - A2A task records can be durable/shareable with the opt-in SDK PostgreSQL
   store. Tenant/caller-scoped ownership leases, fencing, durable cancellation,
-  expired-lease takeover, and explicit schema migration are implemented, but
-  the SDK active-task registry, complete late-event fencing, non-idempotent
-  owner-loss policy, and replica-wide telemetry collection are not complete;
-  long-running deployment-operation ownership and global gateway quotas remain
-  deployment concerns;
+  expired-lease takeover, explicit schema migration, fenced SDK task saves, and
+  fail-closed owner-loss handling are implemented, but the SDK active-task
+  registry, end-to-end replica recovery/cancellation acceptance,
+  non-idempotent owner-loss policy, and replica-wide telemetry collection are
+  not complete; long-running deployment-operation ownership and global gateway
+  quotas remain deployment concerns;
 - deployment-specific browser OIDC, package publication, and the first public
   release remain open; the Kubernetes lifecycle acceptance passes in CI, while
   this workstation cannot run it locally because Docker is unavailable.
@@ -76,11 +77,12 @@ The following are the current blockers or decision gates:
 
 ## Recommended next task
 
-Complete distributed A2A active-task fencing and recovery. The persistence
-provider hierarchy, shared-policy gate, and first scoped A2A lease/fence slice
-are implemented and covered by focused local/production-policy tests; the
-remaining architecture gate is full PostgreSQL multi-replica acceptance and
-the late-event/non-idempotent replay contract.
+Complete distributed A2A active-task acceptance. The persistence provider
+hierarchy, shared-policy gate, scoped A2A leases, and fenced SDK task saves are
+implemented and covered by focused local/production-policy tests; the remaining
+architecture gate is full PostgreSQL multi-replica creation/completion/failure
+recovery, cross-replica cancellation ordering, and the non-idempotent replay
+contract.
 
 ---
 
@@ -117,17 +119,21 @@ route. Concrete identity-source acceptance remains open.
 The SDK task record can be persisted in PostgreSQL with
 `OSA_A2A_TASK_DATABASE_URL`. OSA now adds an explicit versioned ownership table
 with tenant/caller scope, leases, fencing, durable cancellation, and expired
-lease takeover; run `osa-a2a-migrate` before startup. The active executor
-registry remains process-local, and late SDK task updates/non-idempotent
-owner-loss recovery still need an end-to-end protocol.
+lease takeover; run `osa-a2a-migrate` before startup. Durable task mutations
+now carry the acquired ownership snapshot through the SDK call context and
+hold the ownership-row lock while saving, so stale workers fail closed. The
+active executor registry remains process-local, and end-to-end recovery and
+cross-replica cancellation still need protocol acceptance.
 
-- [ ] Complete replica-consistent task state with fenced SDK task mutations and
-  explicit owner-loss handling.
+- [x] Fence SDK task mutations and add explicit owner-loss handling. The
+  database adapter rejects missing, expired, or superseded fences without
+  publishing a synthetic failure from the stale worker.
 - [ ] Add multi-replica creation, completion, failure, lookup, and recovery
   acceptance tests without tenant/caller leakage.
 - [ ] Complete cross-replica cancellation ordering and protection against late
   events/retries; durable cancellation requests and local terminal emission
-  are implemented, but the SDK update boundary is not yet fenced.
+  are implemented, but the remote-handler wait/terminal-event contract and
+  late-event acceptance remain open.
 
 ## Capability-level audit telemetry — PARTIALLY COMPLETE
 

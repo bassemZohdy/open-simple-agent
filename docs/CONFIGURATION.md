@@ -206,7 +206,7 @@ subsystem:
 | Control Plane | `OSA_CONTROL_PLANE_DATABASE_URL` | In-memory repositories | Explicit file-backed `sqlite+aiosqlite:///...` with `osa-cp-migrate`; `:memory:` rejected | PostgreSQL survives restart and is shared across replicas; SQLite survives restart but is single-process; in-memory is process-local |
 | Runtime memory | `OSA_MEMORY_DATABASE_URL` | In-memory provider | Explicit file-backed `sqlite+aiosqlite:///...` with `osa-memory-migrate`; `:memory:` rejected | PostgreSQL survives restart and is shareable after migration; SQLite survives restart but is single-process; in-memory is ephemeral |
 | Runtime sessions | `spec.session.persistence: true` plus `OSA_SESSION_DATABASE_URL` | `SessionManager` when persistence is false; missing DSN fails when true | Explicit file-backed `sqlite:///...` with `osa-session-migrate`; `:memory:` rejected | PostgreSQL preserves ownership/history across restart and replicas; SQLite preserves it in one process; in-memory is process-local |
-| A2A task records | `OSA_A2A_TASK_DATABASE_URL` | SDK in-memory task store | Explicit SQLite is supported for local testing where the SDK supports it; not a shared-production provider | PostgreSQL task records and OSA ownership leases survive restart and coordinate replicas; the SDK active-task registry remains process-local |
+| A2A task records | `OSA_A2A_TASK_DATABASE_URL` | SDK in-memory task store | Explicit SQLite is supported for local testing where the SDK supports it; not a shared-production provider | PostgreSQL task records and OSA ownership leases survive restart and coordinate replicas; SDK task saves are fenced, but the active-task registry remains process-local |
 | HTTP rate limits | `OSA_RATE_LIMIT_DATABASE_URL` | In-memory limiter | Explicit SQLite is exercised for local tests through SQLAlchemy; PostgreSQL is required for cross-replica production limits | Shared PostgreSQL windows coordinate replicas; in-memory/SQLite are local-only |
 
 For every row, an explicitly selected durable provider is authoritative. Invalid,
@@ -296,10 +296,13 @@ creating or altering them. The ownership row uses the same bounded tenant /
 caller scope as task lookup, a worker lease, heartbeats, a fencing token on
 takeover, and a durable cancellation request. A retry can replay a durable
 terminal task or reclaim an expired lease. The SDK active-task registry is
-still process-local, so this is not yet a guarantee of safe replay for
-non-idempotent model/tool side effects or complete suppression of late SDK
-events after owner loss. Deployment owners should provision a dedicated
-database/schema and back it up according to their operational policy.
+still process-local. Durable SDK task saves carry the ownership fence and hold
+the ownership-row lock through the write, so an expired or superseded worker
+cannot persist a late task mutation. A safe contract for replaying
+non-idempotent model/tool side effects, complete cross-replica cancellation
+ordering, and replica-failure recovery remains open. Deployment owners should
+provision a dedicated database/schema and back it up according to their
+operational policy.
 
 Timeouts, TTLs, limits, and iterations carry positive/range validation
 (`timeout_seconds > 0`, `ttl_seconds > 0`, `max_iterations >= 1`,

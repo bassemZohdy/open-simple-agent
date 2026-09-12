@@ -63,8 +63,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   takeover, and terminal-state protection.
 - Added `osa-a2a-migrate`; runtime startup now validates the SDK task table,
   schema version, and ownership table without mutating them.
+- Wrapped the durable SDK task store with an ownership-fenced adapter: task
+  saves carry the acquired fence through the SDK call context and hold the
+  ownership-row lock during mutation; expired or superseded workers fail
+  closed without publishing synthetic failures.
 - Added focused conflict, expiry, fencing, cancellation, terminal-state, and
-  unmigrated-startup tests. Full multi-replica SDK late-event fencing and
+  unmigrated-startup tests. End-to-end multi-replica recovery/cancellation and
   non-idempotent owner-loss replay remain open P2.4 work.
 
 ### Added — Runtime durability, capacity, and deployment hardening

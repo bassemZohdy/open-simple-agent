@@ -26,6 +26,7 @@ import contextlib
 import os
 import re
 import warnings
+from datetime import UTC, datetime
 from importlib.util import find_spec
 from typing import TYPE_CHECKING, Any, cast
 from uuid import uuid4
@@ -34,6 +35,7 @@ if TYPE_CHECKING:
     from osa.generic_agent import AgentDefinition, AuthSettings, SkillDefinition
 
 from osa.runtimes.adk.a2a_ownership import A2aTaskOwnershipStore, TaskOwnership, heartbeat_loop
+from osa.runtimes.adk.a2a_task_store import FencedDatabaseTaskStore, bind_task_ownership
 
 __all__ = [
     "A2aError",
@@ -180,10 +182,19 @@ class OsaA2aAgentExecutor:
         context_id = context.context_id or str(uuid4())
         task_id = context.task_id or str(uuid4())
         scope_key = _a2a_task_owner(context)
+        ownership_store = self._ownership_store
+        ownership = await self._acquire_or_replay(context, event_queue, task_id, context_id, scope_key)
+        if ownership_store is not None and ownership is None:
+            return
+        active_store = cast("A2aTaskOwnershipStore", ownership_store)
+
+        if ownership is not None:
+            bind_task_ownership(context.call_context, ownership)
         updater = TaskUpdater(event_queue, task_id, context_id)
 
         # The 1.x consumer requires the initial Task event before any
-        # status/artifact updates.
+        # status/artifact updates. Publish it only after this worker owns the
+        # durable fence; a losing worker must never create a late task row.
         await event_queue.enqueue_event(
             Task(
                 id=task_id,
@@ -191,12 +202,6 @@ class OsaA2aAgentExecutor:
                 status=TaskStatus(state=TaskState.TASK_STATE_SUBMITTED),
             )
         )
-
-        ownership_store = self._ownership_store
-        ownership = await self._acquire_or_replay(context, event_queue, task_id, context_id, scope_key)
-        if ownership_store is not None and ownership is None:
-            return
-        active_store = cast("A2aTaskOwnershipStore", ownership_store)
 
         heartbeat_task: asyncio.Task[None] | None = None
         terminal_state = "released"
@@ -249,6 +254,14 @@ class OsaA2aAgentExecutor:
                     terminal_state = "canceled"
             raise
         except Exception as exc:  # noqa: BLE001 - mapped into task failure
+            if ownership is not None:
+                stop_reason = await self._ownership_stop_reason(active_store, ownership)
+                if stop_reason == "lost":
+                    return
+                if stop_reason == "canceled":
+                    await updater.cancel()
+                    terminal_state = "canceled"
+                    return
             await updater.failed(_failure_message(f"agent execution failed: {exc}"))
             terminal_state = "failed"
         finally:
@@ -271,6 +284,8 @@ class OsaA2aAgentExecutor:
             or current.fence != ownership.fence
             or current.owner_id != store.owner_id
             or current.state != "running"
+            or current.lease_until is None
+            or current.lease_until <= datetime.now(UTC)
         ):
             return "lost"
         return "canceled" if current.cancel_requested else None
@@ -339,15 +354,24 @@ class OsaA2aAgentExecutor:
         updater event is therefore the single terminal transition emitted by
         the executor; late agent output cannot be published after cancellation.
         With durable ownership, the cancel request is persisted for the active
-        worker and takeover path; complete fencing of SDK task mutations remains
-        a separate distributed-runtime concern.
+        worker and takeover path. Local cancellation publishes under the active
+        ownership fence; a remote requester records the flag and the remaining
+        cross-replica terminal-event wait is part of the distributed-runtime
+        acceptance contract.
         """
         from a2a.server.tasks import TaskUpdater
 
         context_id = context.context_id or str(uuid4())
         task_id = context.task_id or str(uuid4())
         if self._ownership_store is not None:
-            await self._ownership_store.request_cancel(task_id, _a2a_task_owner(context))
+            scope_key = _a2a_task_owner(context)
+            await self._ownership_store.request_cancel(task_id, scope_key)
+            current = await self._ownership_store.get(task_id, scope_key)
+            if current is not None and current.owner_id == self._ownership_store.owner_id:
+                # A local cancellation request may publish the terminal event
+                # under the active worker's fence. A remote requester only
+                # records the durable flag; the owner must publish the event.
+                bind_task_ownership(context.call_context, current)
         updater = TaskUpdater(event_queue, task_id, context_id)
         await updater.cancel()
 
@@ -439,7 +463,7 @@ def _task_store_and_engine(app: Any) -> tuple[Any, Any | None]:
             "ignore",
             message="This declarative base already contains a class with the same class name",
         )
-        store = DatabaseTaskStore(
+        sdk_store = DatabaseTaskStore(
             engine,
             create_table=False,
             table_name=table_name,
@@ -450,6 +474,7 @@ def _task_store_and_engine(app: Any) -> tuple[Any, Any | None]:
         table_name=f"{table_name}_ownership",
         lease_seconds=_task_lease_seconds(),
     )
+    store = FencedDatabaseTaskStore(sdk_store, ownership_store)
     app.state.osa_a2a_task_store = store
     app.state.osa_a2a_task_engine = engine
     app.state.osa_a2a_ownership_store = ownership_store

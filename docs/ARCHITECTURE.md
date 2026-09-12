@@ -349,11 +349,13 @@ healthy workers heartbeat, while retries may reclaim an expired lease or replay
 a durable terminal task. Run `osa-a2a-migrate` before startup; runtime startup
 only validates the task and ownership schema. PostgreSQL is the
 shared-production choice; SQLite is an explicit local-only option where the
-SDK supports it. The SDK active-task registry remains process-local, and its
-task updates do not yet carry OSA fencing predicates, so non-idempotent
-owner-loss replay and complete late-event suppression remain open. The runtime
-drains the handler's active tasks before closing agent and database
-dependencies. The Control Plane tracks **external** A2A agents as
+SDK supports it. The SDK active-task registry remains process-local. Its
+durable task saves carry the ownership snapshot through the SDK call context
+and execute while the ownership-row lock is held; an expired or superseded
+worker therefore fails closed without publishing a synthetic failure. End-to-
+end non-idempotent owner-loss replay, cross-replica cancellation ordering, and
+replica-failure acceptance remain open. The runtime drains the handler's active
+tasks before closing agent and database dependencies. The Control Plane tracks **external** A2A agents as
 records distinct from managed agents: registration fetches and validates the
 remote Agent Card, refresh re-checks health, and invocation goes through the
 A2A client with bounded timeouts and `a2a_remote_failed` error mapping. The

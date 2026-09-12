@@ -106,6 +106,6 @@ health probe; startup failures carry the captured logs in the record detail.
 ## Remaining operational work
 
 - Replica-safe deployment-operation ownership
-- Complete distributed A2A active-task fencing, cancellation ordering, and
-  owner-loss recovery (P2.4)
+- Complete distributed A2A active-task replica acceptance, cancellation
+  ordering, non-idempotent replay policy, and owner-loss recovery (P2.4)
 - Replica-wide capability telemetry and gateway-level quota policy

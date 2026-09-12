@@ -184,9 +184,10 @@ and remote agent invocation. It belongs to the data plane and is separate from
 deployment management. The initial A2A server/client and external-agent
 registry are implemented. Durable task records can use PostgreSQL, and the
 runtime adds tenant/caller-scoped ownership leases, fencing, durable
-cancellation requests, and explicit schema migration; the SDK active-task
-registry and fully fenced late-event recovery remain backlog work. Future work
-may deepen delegation/consent semantics without turning A2A into a management
+cancellation requests, explicit schema migration, fenced SDK task saves, and
+fail-closed owner-loss handling; the SDK active-task registry and end-to-end
+replica recovery/cancellation acceptance remain backlog work. Future work may
+deepen delegation/consent semantics without turning A2A into a management
 protocol.
 
 ## Major components

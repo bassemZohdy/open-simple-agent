@@ -327,8 +327,11 @@ validated tenant and subject. The ownership table provides one worker lease,
 heartbeats, a monotonically increasing fencing token on takeover, and a
 durable cancellation request. A retry waits for a terminal task, replays that
 terminal record, or reclaims an expired lease. The SDK active-task registry is
-still process-local, and full fencing of SDK task updates, cancellation
-ordering, non-idempotent replay, and replica-failure recovery remain open
+still process-local. Durable SDK task saves carry the acquired ownership
+snapshot through the call context and are committed while the ownership-row
+lock is held; expired or superseded workers therefore fail closed without
+publishing a synthetic failure. End-to-end cancellation ordering,
+non-idempotent replay, and replica-failure recovery remain open
 distributed-runtime work.
 
 External agents are A2A servers outside OSA, tracked as records distinct

@@ -158,8 +158,10 @@ coordination.
   migrated `OSA_SESSION_DATABASE_URL` for cross-replica session continuity.
 - A2A replicas need a shared, migrated PostgreSQL `OSA_A2A_TASK_DATABASE_URL`.
   OSA ownership leases serialize active execution and durable cancellation;
-  expired leases can be reclaimed, but the SDK active-task registry and
-  complete late-event fencing remain open P2.4 work.
+  expired leases can be reclaimed, and the SDK task store fences each durable
+  save while the ownership row is locked. The SDK active-task registry,
+  cross-replica cancellation ordering, and complete owner-loss recovery remain
+  open P2.4 work.
 - Optional HTTP rate limits are available in-process; production replicas
   should enforce the same policy at an API gateway or service mesh.
 
@@ -182,5 +184,5 @@ never accepts process commands.
 - The real Kind-cluster lifecycle acceptance job passes in CI; Control Plane
   restart recovery is covered by provider reconciliation tests, while
   distributed deployment-operation ownership remains a deployment gate.
-- Complete distributed A2A active-task fencing, cancellation ordering, and
-  owner-loss recovery (P2.4)
+- Complete distributed A2A active-task replica acceptance, cancellation
+  ordering, non-idempotent replay policy, and owner-loss recovery (P2.4)

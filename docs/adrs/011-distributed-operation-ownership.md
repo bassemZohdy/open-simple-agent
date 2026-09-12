@@ -2,7 +2,8 @@
 
 ## Status
 
-Proposed — A2A lease slice implemented; full decision and acceptance pending
+Proposed — A2A lease and fenced task-save slice implemented; full decision and
+acceptance pending
 
 ## Date
 
@@ -22,10 +23,14 @@ from publishing late results, make cancellation deterministic, and avoid
 silently replaying agent or provider side effects after a lease expires.
 
 The first A2A slice now implements the scoped lease/fencing/cancellation
-primitive and explicit schema validation described below. It does not yet
-fence every SDK task update or define safe replay for non-idempotent work, so
-this ADR remains proposed until the full acceptance criteria and open review
-questions are resolved.
+primitive, explicit schema validation, and a fence-aware SDK task-store adapter
+described below. Every durable SDK task save carries the ownership snapshot
+through the call context and holds the ownership row lock through the save; a
+worker that loses its lease fails closed without publishing a synthetic
+failure. The SDK active-task registry, end-to-end replica recovery, and safe
+replay policy for non-idempotent work are still open, so this ADR remains
+proposed until the full acceptance criteria and open review questions are
+resolved.
 
 ## Decision drivers
 
@@ -77,10 +82,10 @@ concurrency rules.
   a task owned elsewhere reads the durable snapshot and waits for a terminal
   update up to the protocol/request timeout; it never starts a second local
   executor.
-- Task snapshot writes include the current `fencing_epoch` in their update
-  predicate. Late artifacts, status changes, and failures from an old owner
-  are discarded and recorded as bounded coordination conflicts, not published
-  as task state.
+- Task snapshot writes are performed by the fence-aware SDK adapter while the
+  ownership row is locked and the current `fencing_epoch`/lease is validated.
+  Late artifacts, status changes, and failures from an old owner fail closed
+  and are not published as task state.
 - A completed or failed task is immutable for further execution. A caller that
   needs another attempt creates a new task id or uses an explicit retry
   operation with a new attempt and idempotency contract.

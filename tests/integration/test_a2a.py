@@ -208,6 +208,7 @@ class TestA2aTaskStore:
             initialize_a2a_task_store,
         )
         from osa.runtimes.adk.a2a_migrations import migrate_a2a_schema
+        from osa.runtimes.adk.a2a_task_store import bind_task_ownership
 
         monkeypatch.setenv(
             "OSA_A2A_TASK_DATABASE_URL",
@@ -241,8 +242,17 @@ class TestA2aTaskStore:
         )
         token_a = set_current_principal(principal_a)
         try:
-            await store.save(task, ServerCallContext())
-            assert (await store.get(task.id, ServerCallContext())) is not None
+            call_context = ServerCallContext()
+            ownership = await app.state.osa_a2a_ownership_store.acquire(
+                task.id,
+                task.context_id,
+                "tenant:tenant-a:subject:subject-a",
+            )
+            assert ownership is not None
+            bind_task_ownership(call_context, ownership)
+            await store.save(task, call_context)
+            assert (await store.get(task.id, call_context)) is not None
+            assert await app.state.osa_a2a_ownership_store.release(ownership, "completed")
         finally:
             reset_current_principal(token_a)
 
@@ -280,6 +290,87 @@ class TestA2aTaskStore:
         _task_store_and_engine(app)
         with pytest.raises(RuntimeError, match="osa-a2a-migrate"):
             await initialize_a2a_task_store(app)
+        await close_a2a_task_store(app)
+
+    async def test_database_task_store_rejects_stale_ownership_fence(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A reclaimed task cannot be mutated by the previous replica."""
+        from datetime import UTC, datetime, timedelta
+
+        from fastapi import FastAPI
+        from sqlalchemy import update
+
+        from osa.runtimes.adk.a2a import (
+            _task_store_and_engine,
+            close_a2a_task_store,
+            initialize_a2a_task_store,
+        )
+        from osa.runtimes.adk.a2a_migrations import migrate_a2a_schema
+        from osa.runtimes.adk.a2a_task_store import (
+            A2aTaskOwnershipLostError,
+            bind_task_ownership,
+        )
+
+        monkeypatch.setenv(
+            "OSA_A2A_TASK_DATABASE_URL",
+            f"sqlite+aiosqlite:///{tmp_path / 'stale-fence.db'}",
+        )
+        monkeypatch.setenv("OSA_A2A_TASK_TABLE", "stale_fence_tasks")
+        app = FastAPI()
+        store, engine = _task_store_and_engine(app)
+        assert engine is not None
+        ownership_store = app.state.osa_a2a_ownership_store
+        await migrate_a2a_schema(
+            engine,
+            task_table_name="stale_fence_tasks",
+            task_store=store,
+            ownership_store=ownership_store,
+        )
+        await initialize_a2a_task_store(app)
+
+        from a2a.server.context import ServerCallContext
+        from a2a.types import Task, TaskState, TaskStatus
+
+        task = Task(
+            id="task-stale-fence",
+            context_id="context-stale-fence",
+            status=TaskStatus(state=TaskState.TASK_STATE_WORKING),
+        )
+        old_lease = await ownership_store.acquire(
+            task.id,
+            task.context_id,
+            "anonymous",
+        )
+        assert old_lease is not None
+        old_context = ServerCallContext()
+        bind_task_ownership(old_context, old_lease)
+        await store.save(task, old_context)
+
+        async with engine.begin() as connection:
+            await connection.execute(
+                update(ownership_store._table)  # noqa: SLF001 - expiry is test setup
+                .where(ownership_store._table.c.task_id == task.id)
+                .values(lease_until=datetime.now(UTC) - timedelta(seconds=1))
+            )
+
+        from osa.runtimes.adk.a2a_ownership import A2aTaskOwnershipStore
+
+        successor_store = A2aTaskOwnershipStore(
+            engine,
+            table_name=ownership_store.table_name,
+            lease_seconds=5,
+        )
+        successor = await successor_store.acquire(
+            task.id,
+            task.context_id,
+            "anonymous",
+        )
+        assert successor is not None
+        task.status.state = TaskState.TASK_STATE_COMPLETED
+        with pytest.raises(A2aTaskOwnershipLostError):
+            await store.save(task, old_context)
+        assert await successor_store.release(successor, "completed")
         await close_a2a_task_store(app)
 
     def test_database_task_table_name_is_validated(self, monkeypatch: pytest.MonkeyPatch) -> None:

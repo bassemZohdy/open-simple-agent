@@ -14,8 +14,11 @@ import re
 import socket
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from uuid import uuid4
+
+if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable
 
 
 @dataclass(frozen=True)
@@ -198,6 +201,52 @@ class A2aTaskOwnershipStore:
                 .values(lease_until=lease_until)
             )
         return bool(int(result.rowcount or 0) == 1)
+
+    async def run_if_owned(
+        self,
+        ownership: TaskOwnership,
+        operation: Callable[[Any], Awaitable[None]],
+    ) -> bool:
+        """Run a database mutation while holding the current ownership row lock.
+
+        PostgreSQL row locking makes the ownership check and the caller's task
+        mutation one serialization point: a takeover cannot advance the fence
+        until the mutation transaction commits or rolls back. SQLite has no
+        equivalent row lock, but durable local mode is single-replica by
+        contract and still receives the same lease/fence validation.
+        """
+        from sqlalchemy import select
+
+        now = datetime.now(UTC)
+        async with self._engine.begin() as connection:
+            row = (
+                (
+                    await connection.execute(
+                        select(self._table)
+                        .where(
+                            self._table.c.task_id == ownership.task_id,
+                            self._table.c.scope_key == ownership.scope_key,
+                        )
+                        .with_for_update()
+                    )
+                )
+                .mappings()
+                .first()
+            )
+            if row is None:
+                return False
+            lease_until = self._as_utc(row["lease_until"])
+            is_current_owner = (
+                row["owner_id"] == self._owner_id
+                and int(row["fence"]) == ownership.fence
+                and row["state"] == "running"
+                and lease_until is not None
+                and lease_until > now
+            )
+            if not is_current_owner:
+                return False
+            await operation(connection)
+        return True
 
     async def is_cancel_requested(self, ownership: TaskOwnership) -> bool:
         current = await self.get(ownership.task_id, ownership.scope_key)
