@@ -106,6 +106,27 @@ is unavailable.
 
 # P2 — Production controls
 
+## Distributed deployment-operation ownership — PENDING
+
+Deployment intent, provider reconciliation, and Kubernetes lifecycle acceptance
+exist, but mutating deployment operations are not yet serialized across
+multiple Control Plane replicas. The implementation must reuse the
+lease/fencing boundary proposed in ADR-011, keep provider observation separate
+from owned intent, and fail closed on stale workers rather than replaying
+unknown side effects.
+
+- [ ] Decide whether all mutating operations for one deployment serialize under
+  one key or whether operation kinds may proceed independently; read-only
+  observations should remain concurrent.
+- [ ] Implement migration-owned deployment-operation ownership with tenant and
+  deployment scope, leases, fencing epochs, bounded takeover, and a stable
+  operation id.
+- [ ] Pass the ownership fence through provider calls and prevent stale
+  deploy/stop/restart/rollback/scale workers from persisting status or intent.
+- [ ] Add PostgreSQL acceptance with two independent workers covering command
+  serialization, cancellation/expiry, late results, tenant isolation, and
+  restart/reconciliation recovery.
+
 ## Enterprise identity lifecycle — PARTIALLY COMPLETE
 
 Claim-driven lifecycle semantics, OIDC/JWKS validation, RFC 7662 opaque-token
