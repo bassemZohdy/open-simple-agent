@@ -86,9 +86,6 @@ Google ADK 2.8.0 also declares `mcp<2` in its MCP extra. OSA therefore keeps
 `mcp>=1.24,<2` until both the direct client and the ADK Runner path are
 validated on v2.
 
-- [x] Review the MCP 2.x release and record the compatibility decision in
-  `docs/adrs/002-mcp-runtime-client.md`; retain the v1 pin while migration
-  work is incomplete.
 - [ ] Port the OSA MCP client and deterministic fixtures/tests to MCP 2.x,
   validate the ADK Runner/toolset path, then revise the dependency lock and
   ADR-002.
@@ -103,10 +100,6 @@ workloads after Control Plane restarts. The real Kind lifecycle acceptance
 workflow passes in CI; this workstation cannot execute it locally while Docker
 is unavailable.
 
-- [x] Keep OpenShift-specific behavior separate from generic Kubernetes code;
-  the provider factory rejects `openshift` until a dedicated provider exists,
-  and the boundary is covered by a unit test. OpenShift support remains a
-  separate provider gate.
 
 ---
 
@@ -155,9 +148,6 @@ audit/metrics, A2A/runtime consoles, safe snapshots, responsive behavior, and
 loading/empty/error recovery. Dates continue to use the browser locale/timezone
 through `Intl`; API and machine values remain stable.
 
-- [x] Add English/Arabic locale coverage while preserving accessibility and
-  browser-locale timestamps; the selector is session-scoped and browser
-  language is used when no session choice exists.
 - [ ] Define deployment-specific OIDC browser login/refresh after issuer,
   client, and redirect contracts are selected.
 - [ ] Decide whether public agent-definition bundle import/export belongs in
