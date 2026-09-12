@@ -417,5 +417,5 @@ Items 1–7 and the Manager Agent/release foundations are substantially
 implemented. Current delivery focus is production-readiness hardening of
 deployment safety, outbound security, persistence boundaries, and capacity
 controls, followed by the remaining Control Panel and release decisions while
-Kubernetes follow-up stays paused. The detailed, acceptance-tested backlog is
-maintained in [TODO.md](TODO.md).
+distributed deployment ownership and OpenShift follow-up stay gated. The
+detailed, acceptance-tested backlog is maintained in [TODO.md](TODO.md).

@@ -89,8 +89,10 @@ SQLAlchemy 2.0 async, Alembic.
 - Operations must run migrations before/with rollouts (explicit policy).
 - Resource definition records are durable, and route/activation/deployment
   reads reconcile the process-local catalogs from them; live cross-replica
-  PostgreSQL cross-replica resource acceptance is exercised in CI; real
-  Kubernetes/workload acceptance remains tracked separately in `TODO.md`.
+  PostgreSQL cross-replica resource acceptance is exercised in CI; Kind
+  Kubernetes lifecycle acceptance passes in CI, while OpenShift behavior and
+  distributed deployment-operation ownership remain tracked separately in
+  `TODO.md`.
 - External A2A agent records are durable in the PostgreSQL repository; the
   in-memory default remains process-local.
 

@@ -235,8 +235,8 @@ policies with tenant-scoped write-through persistence, reference-usage checks
 before deletion (a resource used by an agent in the same tenant cannot be
 deleted), credential redaction, and bundle import/export. Deployment provider
 routes support the local development provider and the operator-selected
-Kubernetes provider; real-cluster acceptance and distributed operation
-ownership remain open in `TODO.md`.
+Kubernetes provider; Kind acceptance passes in CI, while distributed operation
+ownership remains open in `TODO.md`.
 
 The runtime application owns one module-level runtime and agent. The
 production path is the `osa-runtime` CLI (or `create_runtime_app`), which
@@ -379,11 +379,12 @@ Streaming tests cover the SSE contract, disconnect-triggered cancellation,
 timeouts, concurrent load, and cross-replica session consistency over a
 shared provider. Live-model acceptance is covered by an opt-in test that uses
 the LiteLLM adapter and can run only when its repository secret is enabled;
-there is no real Kubernetes, live-identity-provider, or multi-process deployment
-test yet. CI enforces an 84% coverage threshold; live identity-provider and
-real-cluster Kubernetes acceptance remain backlog work. The opt-in live-provider job is available
-when its repository secret is configured, but it is intentionally skipped in
-offline CI runs.
+there is no live-identity-provider or multi-process deployment test yet. The
+Kind Kubernetes lifecycle acceptance passes in CI. CI enforces an 84% coverage
+threshold; live identity-provider acceptance and distributed operation
+ownership remain backlog work. The opt-in live-provider job is available when
+its repository secret is configured, but it is intentionally skipped in offline
+CI runs.
 
 ## Dependency risks
 
