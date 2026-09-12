@@ -314,10 +314,12 @@ with the `osa-adk-runtime[a2a]` extra), the runtime API serves:
   conversations keep one session per conversation.
 
 By default A2A task records are process-local. Set
-`OSA_A2A_TASK_DATABASE_URL` to use the SDK's PostgreSQL-capable
-`DatabaseTaskStore`; records are scoped by validated tenant and subject and
-the table is initialized before runtime readiness. This makes completed-task
-lookup restart-safe and shareable across replicas. In-flight executor
+`OSA_A2A_TASK_DATABASE_URL` to use the SDK's SQLAlchemy-backed
+`DatabaseTaskStore`; PostgreSQL is recommended for shared production, while
+SQLite may be selected explicitly for local testing. Records are scoped by
+validated tenant and subject and the table is initialized before runtime
+readiness. This makes completed-task lookup restart-safe and shareable across
+replicas when the selected database is shared. In-flight executor
 ownership, cancellation ordering, retries, and replica-failure recovery are
 not implied by the durable record and remain open distributed-runtime work.
 

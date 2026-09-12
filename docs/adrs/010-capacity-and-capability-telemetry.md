@@ -15,9 +15,11 @@ requests return `429`, `Retry-After`, and bounded `X-RateLimit-*` headers.
 The built-in store is process-local and suitable for development or a single
 replica. When `OSA_RATE_LIMIT_DATABASE_URL` is configured, both services use
 an async SQLAlchemy PostgreSQL-compatible store with atomic fixed-window
-conflict updates and stale-window pruning. `osa-rate-limit-migrate` provisions
-the bounded window table, and service startup validates/initializes it before
-readiness. This shares request budgets across replicas, but does not claim
+conflict updates and stale-window pruning. PostgreSQL is the shared-production
+choice; SQLite is an explicit local option for tests and single-process use.
+`osa-rate-limit-migrate` provisions the bounded window table, and service
+startup validates/initializes it before readiness. This shares request budgets
+across replicas only when the selected database is shared, but does not claim
 ownership of long-running A2A/deployment operations or gateway-wide quotas.
 
 Model, native-tool, and MCP spans emit bounded capability counters and may be

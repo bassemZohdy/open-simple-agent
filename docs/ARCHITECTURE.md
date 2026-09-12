@@ -338,7 +338,9 @@ invocation through `GenericAdkAgent.invoke`, with the A2A context id mapped
 to an OSA session. The SDK task store is process-local by default; when
 `OSA_A2A_TASK_DATABASE_URL` is set, OSA wires the SDK's SQLAlchemy
 `DatabaseTaskStore` with tenant/subject ownership and initializes it before
-readiness. The durable record is shareable across replicas, but active
+readiness. PostgreSQL is the shared-production choice; SQLite is an explicit
+local-testing option where the SDK supports it. The durable record is
+shareable across replicas when the selected database is shared, but active
 executor ownership and cancellation/recovery are not yet distributed. The
 runtime drains the handler's active tasks before closing agent and database
 dependencies. The Control Plane tracks **external** A2A agents as
@@ -366,8 +368,10 @@ attributes.
 HTTP rate limiting is an opt-in fixed-window contract keyed by method, route,
 and hashed caller identity. It uses a bounded in-memory store by default. When
 `OSA_RATE_LIMIT_DATABASE_URL` is configured, both HTTP applications use the
-shared PostgreSQL-compatible store with atomic conflict updates and stale
-window pruning; the schema is provisioned by `osa-rate-limit-migrate`.
+shared async SQLAlchemy store with atomic conflict updates and stale window
+pruning; PostgreSQL is required for cross-replica production limits, while
+SQLite is an explicit local-testing option. The schema is provisioned by
+`osa-rate-limit-migrate`.
 
 ## Tests and CI
 
