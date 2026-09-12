@@ -81,6 +81,13 @@ class A2aTaskEventRelay:
         cursor = after_sequence
         deadline = asyncio.get_running_loop().time() + resolved_timeout
         while True:
+            # Event rows are indexed by tenant for compact cursor reads, while
+            # task ownership is scoped to tenant and caller. Authorize the
+            # complete ownership scope before every page so a caller in the
+            # same tenant cannot read another subject's known task ID.
+            ownership = await self._ownership_store.get(task_id, scope_key)
+            if ownership is None:
+                return
             stored_events = await self._event_store.read_after_scope(
                 scope_key=scope_key,
                 task_id=task_id,
@@ -96,7 +103,12 @@ class A2aTaskEventRelay:
                         return
                 continue
 
-            if await self._stream_is_finished(task_id, scope_key):
+            if ownership.state in {
+                "released",
+                "completed",
+                "failed",
+                "canceled",
+            }:
                 return
             remaining = deadline - asyncio.get_running_loop().time()
             if remaining <= 0:
@@ -104,15 +116,6 @@ class A2aTaskEventRelay:
                     f"A2A task {task_id} produced no event after cursor {cursor} before the relay deadline"
                 )
             await asyncio.sleep(min(self._poll_interval_seconds, remaining))
-
-    async def _stream_is_finished(self, task_id: str, scope_key: str) -> bool:
-        ownership = await self._ownership_store.get(task_id, scope_key)
-        return ownership is None or ownership.state in {
-            "released",
-            "completed",
-            "failed",
-            "canceled",
-        }
 
 
 def decode_task_event(stored_event: A2aTaskEvent) -> Any:

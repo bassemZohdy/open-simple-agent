@@ -371,7 +371,9 @@ owner lease expires; terminal snapshots replay through read-only SDK events.
 Process-boundary PostgreSQL acceptance covers shared task creation, lookup,
 cancellation, and crash recovery. An expired-owner retry finalizes a
 non-terminal task as failed and never replays unknown model/tool side effects.
-Multi-process streaming/late-event acceptance remains open. The runtime drains the handler's active
+The bounded relay verifies the full tenant-and-subject ownership scope before
+each tenant-indexed cursor page read. Multi-process streaming/late-event
+acceptance remains open. The runtime drains the handler's active
 tasks before closing agent and database dependencies. The Control Plane tracks **external** A2A agents as
 records distinct from managed agents: registration fetches and validates the
 remote Agent Card, refresh re-checks health, and invocation goes through the

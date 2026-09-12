@@ -12,6 +12,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Hardened — A2A relay scope authorization
+- Durable A2A cursor reads now verify the complete tenant-and-subject task
+  ownership scope before reading tenant-indexed event pages, preventing a
+  same-tenant caller from replaying another subject's known task ID.
+
 ### Added — A2A event cursor foundation
 - Added schema version 2 to `osa-a2a-migrate`, provisioning a tenant-scoped,
   append-only `<task_table>_events` cursor table alongside the SDK task and

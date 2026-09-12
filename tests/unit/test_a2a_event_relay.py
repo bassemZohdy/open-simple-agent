@@ -83,6 +83,7 @@ async def test_relay_reconnects_from_cursor_and_stops_at_terminal_event(tmp_path
         assert replayed_page[1].status.state == TaskState.TASK_STATE_COMPLETED
 
         assert [event async for event in relay.stream(scope_key="tenant:tenant-b:subject:alice", task_id=task_id)] == []
+        assert [event async for event in relay.stream(scope_key="tenant:tenant-a:subject:bob", task_id=task_id)] == []
     finally:
         await ownership_store.release(ownership, "completed")
         await engine.dispose()

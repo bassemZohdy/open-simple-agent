@@ -351,9 +351,10 @@ creation, lookup, cancellation, and crash recovery. If an owner lease
 expires, a replacement finalizes a non-terminal task as failed with a stable
 owner-loss message and never replays unknown model/tool side effects. The
 bounded polling relay can read migration-owned events after a tenant-scoped
-sequence cursor for future reconnects, but no public A2A route uses it yet.
-Multi-process streaming/late-event acceptance remains open
-distributed-runtime work.
+sequence cursor for future reconnects. Before each tenant-indexed event-page
+read, it verifies the full tenant-and-subject ownership scope for the task.
+No public A2A route uses it yet. Multi-process streaming/late-event acceptance
+remains open distributed-runtime work.
 
 External agents are A2A servers outside OSA, tracked as records distinct
 from managed agents (they are never deployed). The PostgreSQL-backed registry
