@@ -119,10 +119,11 @@ enforcement on (`OSA_AUTH_MODE=required`) whenever any origin is allowed.
 
 The Control Plane and runtime expose an opt-in per-route/caller fixed-window
 request budget through `OSA_RATE_LIMIT_REQUESTS` and return `429` plus
-`Retry-After` when exhausted. The built-in store is process-local and does not
-provide replica-safe concurrency quotas; production deployments must enforce
-the same policy at an API gateway or service mesh until a shared OSA store is
-selected.
+`Retry-After` when exhausted. The default store is process-local. Configure
+`OSA_RATE_LIMIT_DATABASE_URL` with PostgreSQL and run
+`osa-rate-limit-migrate` before rollout when replica-safe route/caller
+enforcement is required. A gateway or service mesh remains appropriate for
+deployment-wide quotas outside OSA's route/caller scope.
 
 ## Provider-dependent verification still open
 

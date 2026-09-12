@@ -527,5 +527,7 @@ the `model_invocation_failed` code when raised to the HTTP layer.
   depend on the configured model's streaming support.
 - Set `OSA_RATE_LIMIT_REQUESTS` to enable per-route/caller request budgets;
   exhausted windows return `429` with `Retry-After` and `X-RateLimit-*`
-  headers. The built-in store is process-local, so replica-safe enforcement
-  still belongs at a gateway or service mesh.
+  headers. The default store is process-local; set
+  `OSA_RATE_LIMIT_DATABASE_URL` to PostgreSQL and run
+  `osa-rate-limit-migrate` for replica-safe route/caller enforcement.
+  Deployment-wide quotas remain a gateway or service-mesh concern.

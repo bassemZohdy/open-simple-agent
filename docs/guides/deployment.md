@@ -31,13 +31,14 @@ Environment variables:
 | `OSA_ALLOW_FAKE_PROVIDER` | Opt-in deterministic fake model (`1`); never enabled by default |
 | `OSA_A2A_URL` | Public URL advertised in the Agent Card when `spec.a2a.enabled` |
 | `OSA_A2A_TASK_DATABASE_URL` | Async SQLAlchemy DSN for durable A2A tasks and ownership; unset keeps the process-local SDK store |
-| `OSA_A2A_TASK_TABLE` | A2A task table name; ownership and the schema-version-2 event cursor use the `<name>_ownership` and `<name>_events` companion tables |
+| `OSA_A2A_TASK_TABLE` | ASCII A2A task table name (maximum 53 characters); ownership and the schema-version-2 event cursor use the `<name>_ownership` and `<name>_events` companion tables |
 | `OSA_A2A_TASK_LEASE_SECONDS` | A2A ownership lease duration; minimum 5 seconds, default 30 |
 | `OSA_A2A_TASK_CANCEL_WAIT_SECONDS` | Maximum remote-handler wait for durable cancellation before a retryable error; default 30 seconds |
 | `OSA_CAPABILITY_TELEMETRY_DATABASE_URL` | PostgreSQL DSN for shared capability telemetry; mutually exclusive with the local JSONL sink |
 | `OSA_CAPABILITY_TELEMETRY_TABLE` | Shared capability telemetry table name; default `osa_capability_telemetry` |
 | `OSA_CAPABILITY_TELEMETRY_RETENTION_DAYS` | Shared capability event retention window; default 30 days |
 | `OSA_CAPABILITY_TELEMETRY_PATH` | Bounded process-local JSONL capability sink |
+| `OSA_RATE_LIMIT_DATABASE_URL` | PostgreSQL DSN for replica-safe route/caller rate-limit windows; unset keeps the process-local limiter |
 | `OSA_PERSISTENCE_POLICY` | `local` (default) or `shared`; shared requires PostgreSQL for enabled state and Kubernetes for the durable Control Plane |
 | `OSA_MEMORY_DATABASE_URL` | PostgreSQL DSN for shared memory, or file-backed `sqlite+aiosqlite:///...` for local memory (optional; in-memory without it) |
 | `OSA_AUTH_*` | Bearer/OIDC validation for inbound calls (see the security guide) |
@@ -188,8 +189,10 @@ coordination.
   streaming/late-event acceptance remains open P2.4 work. Tune
   `OSA_A2A_TASK_CANCEL_WAIT_SECONDS` when owner shutdown routinely exceeds the
   default wait, keeping it bounded for client retries.
-- Optional HTTP rate limits are available in-process; production replicas
-  should enforce the same policy at an API gateway or service mesh.
+- Optional HTTP rate limits are available in-process. For replica-safe
+  route/caller limits, configure `OSA_RATE_LIMIT_DATABASE_URL` with PostgreSQL
+  and run `osa-rate-limit-migrate` before rollout. Use an API gateway or
+  service mesh for deployment-wide quotas beyond OSA's route/caller scope.
 - Shared capability telemetry replicas use the same PostgreSQL sink and
   migration. Events are deduplicated by stable ID and ordered by database
   ingestion time plus ID; retention and tenant deletion remain operator-owned.

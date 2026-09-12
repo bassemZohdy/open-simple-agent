@@ -34,8 +34,10 @@ Kubernetes-style probes: use `/health/live` for liveness and
 - **Capacity**: set `OSA_RATE_LIMIT_REQUESTS` and optionally
   `OSA_RATE_LIMIT_WINDOW_SECONDS`/`OSA_RATE_LIMIT_BURST` to enable bounded
   route/caller budgets. Exhausted requests return `429` with `Retry-After`.
-  The built-in store is process-local; use a gateway or service mesh for
-  replica-safe production enforcement.
+  The default store is process-local. For replica-safe enforcement, configure
+  `OSA_RATE_LIMIT_DATABASE_URL` with PostgreSQL and run
+  `osa-rate-limit-migrate` before rollout. Gateway or service-mesh quotas are
+  still required for deployment-wide limits beyond OSA's route/caller scope.
 
 ## Deployments
 
