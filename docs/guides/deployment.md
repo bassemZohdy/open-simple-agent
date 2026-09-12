@@ -64,6 +64,12 @@ docker run -d -p 8000:8000 \
   validation reconcile each process-local catalog from durable records. A
   durable Control Plane requires `OSA_DEPLOY_PROVIDER=kubernetes`; the local
   provider is development-only and process-local.
+- A configured PostgreSQL DSN is authoritative. Invalid, unreachable, or
+  unmigrated databases stop startup/readiness; the service never silently
+  downgrades to SQLite or in-memory state. No general-purpose SQLite provider
+  is currently available for the PostgreSQL-only surfaces; any future SQLite
+  option must be explicit and local-only. Lower-level A2A or rate-limit tests
+  may use SQLite where their underlying stores support it.
 
 ### Deployment configuration
 

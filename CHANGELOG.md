@@ -95,6 +95,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Documented that OSA does not select Google ADK's optional MCP extra because
   its metadata remains constrained to MCP 1.x.
 
+### Documentation — Persistence provider policy
+- Documented per-subsystem external persistence selection and the fail-closed
+  rule for configured database failures.
+- Added a backlog task for an explicit, migration-owned SQLite provider limited
+  to local single-process deployments; SQLite is never an automatic fallback.
+
 ### Added — Hardening coverage
 - Added focused tests for outbound policy, tenant isolation, external-agent
   persistence, atomic resource imports, deployment retry/rollback/export

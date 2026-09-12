@@ -21,6 +21,14 @@ The MCP runtime supports the official SDK 1.x and 2.x compatibility lines;
 dual-major protocol and ADK Runner coverage runs in CI. Resource/prompt
 exposure and legacy SSE remain intentionally deferred.
 
+Persistence selection is externalized per subsystem. A configured PostgreSQL
+DSN is authoritative and must fail closed when unavailable; an unset DSN uses
+only the subsystem's documented process-local default. No general-purpose OSA
+SQLite provider is currently defined; SQLite remains an explicit local-only
+follow-up, never a silent PostgreSQL fallback. Some lower-level A2A and
+rate-limit tests use SQLite where their underlying stores permit it, but that
+does not establish shared-production support.
+
 Production-readiness limits are:
 
 - runtime sessions remain in-memory unless the bundle opts into the durable
@@ -65,11 +73,11 @@ The following are the current blockers or decision gates:
 
 ## Recommended next task
 
-Review and approve the proposed distributed operation ownership contract in
-`docs/adrs/011-distributed-operation-ownership.md`. The MCP SDK 1.x/2.x
-compatibility slice is now covered by the client, ADK Runner, and dual-major CI
-tests; the next implementation work depends on the distributed ownership and
-telemetry retention decisions.
+Implement the persistence provider hierarchy described below, starting with
+explicit fail-closed provider selection and a local-only SQLite design. The
+MCP SDK 1.x/2.x compatibility slice is covered by the client, ADK Runner, and
+dual-major CI tests; distributed operation ownership remains the next
+architecture gate after persistence policy work.
 
 ---
 
@@ -89,6 +97,26 @@ is unavailable.
 ---
 
 # P2 — Production controls
+
+## Persistence provider hierarchy — PENDING
+
+Persistence is currently externalized per subsystem: PostgreSQL is selected by
+an explicit service DSN, while allowed development/test paths remain
+process-local when no DSN is configured. A configured DSN must never silently
+downgrade to SQLite or memory after a connectivity or migration failure.
+No general-purpose SQLite provider is currently wired for the PostgreSQL-only
+Control Plane, memory, or durable-session surfaces; if added, it must be an
+explicit single-process option with its own migration and backup guidance.
+
+- [ ] Add explicit SQLite providers only for local single-process use, with
+  backend-specific migrations, locking/busy-timeout settings, file permissions,
+  backup guidance, and clear rejection for shared-replica deployments.
+- [ ] Add provider-policy validation so durable/production surfaces reject
+  memory or SQLite, and configured-database connectivity or migration failures
+  fail startup/readiness without fallback.
+- [ ] Add a provider matrix covering Control Plane, memory, sessions, A2A task
+  records, and rate limits across PostgreSQL, SQLite where supported, and
+  in-memory development modes, including restart and failure behavior.
 
 ## Enterprise identity lifecycle — PARTIALLY COMPLETE
 

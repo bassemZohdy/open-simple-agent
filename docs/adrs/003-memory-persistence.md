@@ -56,6 +56,11 @@ backlog.
   `OSA_MEMORY_DATABASE_URL`. When the variable is unset the runtime uses the
   in-memory provider; when set, the provider is created and its schema is
   ensured at startup (connectivity failures abort startup before readiness).
+- The database URL is authoritative when present: an invalid, unreachable, or
+  unmigrated PostgreSQL database fails startup and never falls back to an
+  in-memory store. There is no implicit SQLite fallback. SQLite would require
+  a separate explicit provider with local-only concurrency and migration
+  semantics, and is not part of this ADR.
 - Per-scope limits (`max_entries`) and retention (`retention_days`) are
   enforced in SQL through the provider contract's `enforce()`; the runtime
   applies them after every write and before reads, from the resolved
@@ -86,6 +91,8 @@ backlog.
 - Memory has a separate migration history and requires an explicit pre-start
   migration step; the independent history must be backed up and upgraded with
   the runtime package.
+- The default in-memory provider is intentionally ephemeral and single-process;
+  it is suitable for tests and development, not durable production memory.
 
 ## Validation
 

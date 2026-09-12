@@ -335,14 +335,23 @@ field is overrideable. See [docs/CONFIGURATION.md](docs/CONFIGURATION.md).
 Production Control Plane state uses PostgreSQL through repository contracts and
 Alembic-owned migrations. In-memory repositories remain available for tests and
 development. Agent, resource, deployment, and audit records are durable, while
-resource catalog caches and external-agent records are currently process-local.
+resource catalog caches remain process-local; external-agent records are
+durable when the PostgreSQL Control Plane is configured.
 Sessions and memory use separate provider contracts because their access,
 expiry, and search semantics differ; persistent policy-scoped memory has an
-initial PostgreSQL implementation, but its schema still needs explicit
-migration ownership.
+initial PostgreSQL implementation with explicit ownership through
+`osa-memory-migrate`.
 
 Provider contracts must allow in-memory implementations in tests without making
-in-memory behavior the production model.
+in-memory behavior the production model. Persistence configuration is
+externalized per subsystem: an explicitly configured PostgreSQL DSN is
+authoritative and failures are fail-closed, while an unset DSN selects only the
+documented process-local default. No general-purpose SQLite provider is
+currently defined for the PostgreSQL-only Control Plane, memory, or durable
+session surfaces; any future support must be explicit, migration-owned, and
+limited to single-process local deployments. Lower-level A2A and rate-limit
+stores may use SQLite explicitly where their underlying libraries support it,
+but that does not establish shared-production support.
 
 ## Runtime and deployment lifecycle
 

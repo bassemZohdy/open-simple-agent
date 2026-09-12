@@ -26,6 +26,12 @@ slice for backend evaluation and coexistence.
 > (including an optional PostgreSQL shared store) are implemented. The Kind
 > lifecycle workflow passes in CI; live-provider acceptance remains opt-in.
 
+Persistence choices are explicit per subsystem. Configured PostgreSQL is
+authoritative and fails closed when unavailable; an unset DSN uses the
+documented process-local default. SQLite is not currently a supported
+general-purpose OSA shared-production backend or an automatic fallback; some
+lower-level A2A and rate-limit tests use it explicitly where supported.
+
 ## What works today
 
 | Area | Current implementation | Important limitation |
@@ -35,8 +41,8 @@ slice for backend evaluation and coexistence.
 | Native tools | Catalog, declared parameter schemas, ADK-native function calling, timeout enforcement | Built-in implementations only (`calculator`); custom toolsets need code |
 | MCP | Runtime client (stdio + Streamable HTTP), lazy pooled connections, filtered namespaced tools bridged to ADK, bounded results, API-key/OAuth2/mTLS outbound credentials; dual-major MCP 1.x/2.x compatibility coverage | Resources/prompts exposure and legacy SSE remain deferred |
 | Skills | Catalog, search, runtime metadata resolution, A2A Agent Card mapping | Definition policy can allow/deny referenced skills |
-| Sessions | `SessionProvider` contract, ownership (agent/user/tenant), TTL, bounded history fed back to the model, versioned PostgreSQL provider with optimistic concurrency and explicit `osa-session-migrate` schema ownership | In-memory remains the default; persistent sessions are opt-in per agent |
-| Memory | Policy catalog resolution (authoritative scope/limits/retention), scope-id isolation (user/agent/tenant/application), enforcement after every write, explicit writes, PostgreSQL persistence (ADR-003), explicit `osa-memory-migrate` schema ownership | Extraction pipeline (auto-extract) reserved; vector search deferred |
+| Sessions | `SessionProvider` contract, ownership (agent/user/tenant), TTL, bounded history fed back to the model, versioned PostgreSQL provider with optimistic concurrency and explicit `osa-session-migrate` schema ownership | In-memory remains the default; persistent sessions are opt-in per agent; configured database failures do not downgrade |
+| Memory | Policy catalog resolution (authoritative scope/limits/retention), scope-id isolation (user/agent/tenant/application), enforcement after every write, explicit writes, PostgreSQL persistence (ADR-003), explicit `osa-memory-migrate` schema ownership | In-memory remains the default without a DSN; no general-purpose SQLite provider yet; extraction pipeline (auto-extract) and vector search are deferred |
 | ADK runtime | Invocation through the ADK `Runner`; timeouts, iteration limits, stable error types; SSE streaming (`/v1/invoke/stream`) with stable OSA events and disconnect cancellation; A2A Agent Card + JSON-RPC server (ADR-005); optional SDK PostgreSQL task store via `OSA_A2A_TASK_DATABASE_URL` | Token-level streaming requires a streaming model; active A2A executor ownership/cancellation/recovery remain process-local |
 | LangChain/LangGraph runtime | `osa-langgraph-runtime` uses LangChain chat models/tools and a LangGraph `StateGraph` model/tool loop; shares OSA catalogs, policies, sessions, memory, timeouts, stable responses, and streaming events | Programmatic backend only; MCP, A2A, and a framework-neutral HTTP service adapter are not yet included |
 | Control Plane | Agent CRUD, lifecycle transitions, immutable versions, optimistic concurrency, validated contracts; tenant-owned agent CRUD/lifecycle routes; tenant-scoped resource CRUD/list/search APIs with reference checks and bundle import/export; tenant-owned deployment APIs (deploy/status/stop/restart/logs/rollback); durable external A2A agent registry with card validation, health, and outbound credential adapters; append-only tenant-filtered audit events; in-memory default or PostgreSQL repositories via `OSA_CONTROL_PLANE_DATABASE_URL` (ADR-004), Alembic schema (`osa-cp-migrate`); shared JWT bearer authentication, opt-in route permissions, and operator-selected local/Kubernetes deployment providers | Durable Control Plane deployments require Kubernetes; local provider is development-only; definition resource policy is enforced by the runtime and enterprise policy remains open |

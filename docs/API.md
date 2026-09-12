@@ -12,6 +12,10 @@ applications provide an opt-in rate-limit contract with a process-local
 default and an optional PostgreSQL shared store.
 Both use the stable OSA error envelope `{"error": {"code", "message"}}`
 and share the optional JWT Bearer authentication boundary described below.
+Configured database failures are fail-closed; no service silently falls back
+to SQLite or in-memory state. SQLite is not a supported general-purpose
+production backend for the PostgreSQL-only surfaces; lower-level A2A and
+rate-limit stores may use it explicitly where their libraries support it.
 
 ## Control Plane API
 

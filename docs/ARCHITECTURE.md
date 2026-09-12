@@ -210,6 +210,17 @@ SQL-enforced limits/retention). Its independent schema is versioned by
 `osa-memory-migrate`; runtime startup validates the migration and never
 creates tables. Without the DSN, memory is in-memory and single-process.
 
+Persistence provider selection is explicit per subsystem. A configured
+PostgreSQL DSN is authoritative: connectivity or migration failure prevents
+readiness rather than downgrading to another provider. When no DSN is set,
+only the subsystem's documented process-local default is used. No
+general-purpose SQLite provider is currently wired for the PostgreSQL-only
+Control Plane, memory, or durable-session surfaces; any future SQLite
+implementation must be an explicit single-process option with backend-specific
+migrations and must be rejected for shared-replica or durable-production
+requirements. Lower-level A2A and rate-limit stores may use SQLite explicitly
+where their underlying libraries support it.
+
 ## HTTP applications
 
 The Control Plane application stores state through the `AgentRepository`
@@ -360,9 +371,10 @@ window pruning; the schema is provisioned by `osa-rate-limit-migrate`.
 
 ## Tests and CI
 
-The current baseline is 616 collected tests: 587 pass locally and 29
-PostgreSQL/A2A/provider tests are skipped when their optional dependencies or
-`OSA_TEST_DATABASE_URL` are unavailable. CI runs:
+The local baseline is split between deterministic tests and optional
+PostgreSQL/A2A/provider tests. The latter are skipped when their optional
+dependencies or `OSA_TEST_DATABASE_URL` are unavailable; CI runs the complete
+matrix and service-backed suites:
 
 - `ruff format --check .`;
 - `ruff check .`;

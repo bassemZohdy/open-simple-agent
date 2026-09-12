@@ -169,6 +169,30 @@ Extraction is explicit — `remember()` only; raw interactions are never
 persisted automatically. `MemoryPolicy.auto_extract` is reserved for a future
 opt-in extraction pipeline (ADR-003).
 
+## Persistence provider selection and fallback policy
+
+Persistence is externalized independently for each subsystem. The service-level
+database environment variable is the authoritative provider selector for that
+subsystem; a bundle may opt into durable sessions with
+`spec.session.persistence`, but it never contains database credentials.
+
+The current contract is:
+
+| Configuration state | Behavior |
+|---|---|
+| PostgreSQL DSN is explicitly configured | Use the PostgreSQL provider, apply the required operator-owned migration, and validate connectivity before readiness. |
+| No DSN and the subsystem permits ephemeral operation | Use the documented in-memory/process-local provider. State is lost on restart and is not shared across replicas. |
+| DSN is configured but unreachable, invalid, or unmigrated | Fail startup/readiness; never silently downgrade to SQLite or memory. |
+| SQLite DSN for a subsystem without an explicit SQLite provider | Unsupported. SQLite support, if required, must be added per subsystem as an explicit local-only provider with its own migrations and operational limits. A2A task-store and rate-limit implementations may use SQLite in tests where their underlying libraries support it, but this is not a shared-production guarantee. |
+
+There is no implicit “try PostgreSQL, then SQLite, then memory” chain. This
+prevents a database outage from turning durable state into silently divergent
+or lost state. Production deployments must explicitly select durable providers
+for any state that must survive restarts or be shared across replicas; memory
+is appropriate for tests and single-process development only. SQLite-backed
+development must be an explicit, subsystem-specific choice; it is not a
+general fallback or a shared-replica provider.
+
 ## Memory persistence
 
 By default memory is in-memory (single process, lost on restart). Setting

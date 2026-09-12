@@ -68,7 +68,9 @@ SQLAlchemy 2.0 async, Alembic.
 - **Configuration.** `OSA_CONTROL_PLANE_DATABASE_URL` selects the PostgreSQL
   repositories when the app is created via
   `create_control_plane_app()`; unset means in-memory (current behavior,
-  unchanged for tests and development).
+  unchanged for tests and development). A configured DSN is authoritative:
+  invalid or unavailable PostgreSQL fails startup/readiness and never silently
+  downgrades to SQLite or in-memory state.
 
 ## Consequences
 
@@ -87,6 +89,10 @@ SQLAlchemy 2.0 async, Alembic.
   the shared abstract interface plus a common contract test suite covers
   this.
 - Operations must run migrations before/with rollouts (explicit policy).
+- In-memory repositories are intentionally ephemeral and single-process. A
+  future SQLite provider would be an explicit local-only option, not a fallback
+  for a failed PostgreSQL deployment, and would require its own migration and
+  concurrency policy.
 - Resource definition records are durable, and route/activation/deployment
   reads reconcile the process-local catalogs from them; live cross-replica
   PostgreSQL cross-replica resource acceptance is exercised in CI; Kind

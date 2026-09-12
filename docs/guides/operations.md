@@ -71,6 +71,11 @@ health probe; startup failures carry the captured logs in the record detail.
   Back up every configured database. Apply `osa-cp-migrate`,
   `osa-memory-migrate`, and `osa-session-migrate` as separate pre-start steps;
   all three runtimes validate schema versions and do not auto-migrate.
+- A configured DSN is authoritative: connection or migration failure must stop
+  readiness rather than downgrade to an in-memory or SQLite store. No
+  general-purpose SQLite provider currently exists for the PostgreSQL-only
+  surfaces; process-local stores are for tests and single-process development
+  only. Lower-level SQLite use must remain explicit and subsystem-specific.
 
 ## Upgrades
 
