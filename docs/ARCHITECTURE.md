@@ -250,8 +250,10 @@ policies with tenant-scoped write-through persistence, reference-usage checks
 before deletion (a resource used by an agent in the same tenant cannot be
 deleted), credential redaction, and bundle import/export. Deployment provider
 routes support the local development provider and the operator-selected
-Kubernetes provider; Kind acceptance passes in CI, while distributed operation
-ownership remains open in `TODO.md`.
+Kubernetes provider; Kind acceptance passes in CI, and the exposed
+deployment-operation ownership contract is accepted. The remaining
+distributed-ownership work is limited to the architecture-gated A2A streaming
+and late-event contract in `TODO.md`.
 
 The runtime application owns one module-level runtime and agent. The
 production path is the `osa-runtime` CLI (or `create_runtime_app`), which
