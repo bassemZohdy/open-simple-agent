@@ -4,6 +4,10 @@ from __future__ import annotations
 
 import os
 from enum import StrEnum
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
 
 from osa.generic_agent.errors import PersistenceConfigurationError
 
@@ -17,7 +21,7 @@ class PersistencePolicy(StrEnum):
     SHARED = "shared"
 
 
-def get_persistence_policy(environ: dict[str, str] | None = None) -> PersistencePolicy:
+def get_persistence_policy(environ: Mapping[str, str] | None = None) -> PersistencePolicy:
     """Read the explicit persistence policy, defaulting to local development."""
     values = os.environ if environ is None else environ
     raw = values.get(PERSISTENCE_POLICY_ENV_VAR)
@@ -30,9 +34,14 @@ def get_persistence_policy(environ: dict[str, str] | None = None) -> Persistence
         raise PersistenceConfigurationError(f"{PERSISTENCE_POLICY_ENV_VAR} must be 'local' or 'shared'") from exc
 
 
-def require_shared_database(database_url: str | None, surface: str) -> None:
+def require_shared_database(
+    database_url: str | None,
+    surface: str,
+    *,
+    environ: Mapping[str, str] | None = None,
+) -> None:
     """Require a PostgreSQL DSN when the shared policy protects a surface."""
-    if get_persistence_policy() != PersistencePolicy.SHARED:
+    if get_persistence_policy(environ) != PersistencePolicy.SHARED:
         return
     if database_url is None or not database_url.strip():
         raise PersistenceConfigurationError(

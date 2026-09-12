@@ -391,6 +391,16 @@ pruning; PostgreSQL is required for cross-replica production limits, while
 SQLite is an explicit local-testing option. The schema is provisioned by
 `osa-rate-limit-migrate`.
 
+Capability telemetry has the same explicit hierarchy: the default is disabled,
+the bounded JSONL sink is process-local, and
+`OSA_CAPABILITY_TELEMETRY_DATABASE_URL` selects the shared PostgreSQL sink.
+Its migration-owned schema records bounded tenant/operation metadata, stable
+event IDs, producer sequence numbers, producer time, and database ingestion
+time. Duplicate event IDs are ignored; readers order by ingestion time and ID;
+the configured retention window prunes old rows and tenant deletion is
+explicit. A configured sink is validated before readiness and never falls back
+to a local sink after a database failure.
+
 ## Tests and CI
 
 The local baseline is split between deterministic tests and optional

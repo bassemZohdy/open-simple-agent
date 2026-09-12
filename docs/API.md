@@ -216,8 +216,10 @@ denials are emitted through the optional runtime audit sink. Runtime metrics
 also include bounded `osa_capability_events_total` series for model,
 native-tool, and MCP outcomes; optional capability sinks receive the same
 payload-free fields. `OSA_CAPABILITY_TELEMETRY_PATH` enables the bounded local
-JSONL sink. Durable runtime sessions and memory schema migrations
-are selected through their separate migration commands.
+JSONL sink; `OSA_CAPABILITY_TELEMETRY_DATABASE_URL` selects the migration-owned
+shared PostgreSQL sink with stable-ID deduplication, tenant filtering, and
+retention controls. Durable runtime sessions and memory schema migrations are
+selected through their separate migration commands.
 
 ### Rate limits
 

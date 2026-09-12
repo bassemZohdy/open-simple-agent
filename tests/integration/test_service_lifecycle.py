@@ -12,6 +12,8 @@ from httpx import ASGITransport, AsyncClient
 
 from osa.generic_agent import (
     EnvironmentSecretResolver,
+    InMemoryCapabilityTelemetrySink,
+    Observability,
     SecretResolutionError,
 )
 from osa.runtimes.adk.service import build_runtime, create_runtime_app
@@ -110,6 +112,28 @@ class TestBuildRuntime:
 
 
 class TestServiceApp:
+    async def test_durable_capability_sink_is_validated_before_ready(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        class ValidatingSink(InMemoryCapabilityTelemetrySink):
+            def __init__(self) -> None:
+                super().__init__()
+                self.validated = False
+                self.closed = False
+
+            def validate_schema(self) -> None:
+                self.validated = True
+
+            def close(self) -> None:
+                self.closed = True
+
+        monkeypatch.setenv("OSA_ALLOW_FAKE_PROVIDER", "1")
+        sink = ValidatingSink()
+        app = create_runtime_app(_fake_bundle(tmp_path), observability=Observability(capability_sink=sink))
+        async with app.router.lifespan_context(app):
+            assert sink.validated
+        assert sink.closed
+
     async def test_ready_and_invoke_via_bundle_app(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("OSA_ALLOW_FAKE_PROVIDER", "1")
         app = create_runtime_app(_fake_bundle(tmp_path))

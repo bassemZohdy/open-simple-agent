@@ -10,12 +10,18 @@ from typing import TYPE_CHECKING
 import pytest
 
 from osa.generic_agent import (
+    CAPABILITY_TELEMETRY_DATABASE_URL_ENV_VAR,
+    CAPABILITY_TELEMETRY_RETENTION_DAYS_ENV_VAR,
     CapabilityTelemetryEvent,
     InMemoryCapabilityTelemetrySink,
     JsonFormatter,
     JsonlCapabilityTelemetrySink,
     MetricsRegistry,
     Observability,
+    PersistenceConfigurationError,
+    PostgresCapabilityTelemetrySink,
+    capability_sink_from_env,
+    log_context,
     redact_fields,
     redact_text,
 )
@@ -87,7 +93,10 @@ async def test_capability_telemetry_is_bounded_and_payload_free() -> None:
 
     events = sink.events()
     assert len(events) == 2
-    assert events[0] == CapabilityTelemetryEvent("tool", "calculator", "error", None, events[0].duration_seconds)
+    assert events[0].kind == "tool"
+    assert events[0].name == "calculator"
+    assert events[0].outcome == "error"
+    assert events[0].error_code is None
     assert events[1].kind == "mcp"
     assert "secret" not in repr(events)
     assert "osa_capability_events_total" in observation.metrics.render_prometheus()
@@ -107,6 +116,42 @@ async def test_capability_telemetry_records_timeout_outcome() -> None:
     assert event.kind == "model"
     assert event.name == "slow"
     assert event.outcome == "error"
+
+
+@pytest.mark.asyncio
+async def test_capability_telemetry_adds_tenant_operation_and_sequence_metadata() -> None:
+    sink = InMemoryCapabilityTelemetrySink()
+    observation = Observability(MetricsRegistry(), capability_sink=sink)
+
+    with log_context({"request_id": "request-1", "tenant_id": "tenant-1"}):
+        async with observation.span("model.run", labels={"model": "default"}):
+            pass
+        async with observation.span("tool.execute", labels={"tool": "calculator"}):
+            pass
+
+    events = sink.events()
+    assert [event.sequence for event in events] == [1, 2]
+    assert {event.operation_id for event in events} == {"request-1"}
+    assert {event.tenant_id for event in events} == {"tenant-1"}
+    assert len({event.event_id for event in events}) == 2
+
+
+@pytest.mark.asyncio
+async def test_capability_telemetry_event_ids_restart_per_operation_context() -> None:
+    sink = InMemoryCapabilityTelemetrySink()
+    observation = Observability(MetricsRegistry(), capability_sink=sink)
+
+    with log_context({"request_id": "retryable-request"}):
+        async with observation.span("tool.execute", labels={"tool": "calculator"}):
+            pass
+    first_event = sink.events()[0]
+    with log_context({"request_id": "retryable-request"}):
+        async with observation.span("tool.execute", labels={"tool": "calculator"}):
+            pass
+    second_event = sink.events()[1]
+
+    assert first_event.sequence == second_event.sequence == 1
+    assert first_event.event_id == second_event.event_id
 
 
 def test_jsonl_capability_sink_is_bounded_sanitized_and_configurable(tmp_path: Path) -> None:
@@ -130,12 +175,25 @@ def test_jsonl_capability_sink_is_bounded_sanitized_and_configurable(tmp_path: P
     assert records
     assert records[-1]["name"] == "token:[REDACTED]"
     assert records[-1]["duration_seconds"] == 0.0
-    assert all(set(record) == {"duration_seconds", "error_code", "kind", "name", "outcome"} for record in records)
+    assert all(
+        set(record)
+        == {
+            "duration_seconds",
+            "error_code",
+            "event_id",
+            "kind",
+            "name",
+            "occurred_at",
+            "operation_id",
+            "outcome",
+            "sequence",
+            "tenant_id",
+        }
+        for record in records
+    )
 
 
 def test_capability_sink_from_environment_is_opt_in(tmp_path: Path) -> None:
-    from osa.generic_agent.observability import capability_sink_from_env
-
     assert capability_sink_from_env({}) is None
     sink = capability_sink_from_env(
         {
@@ -152,6 +210,42 @@ def test_capability_sink_from_environment_is_opt_in(tmp_path: Path) -> None:
                 "OSA_CAPABILITY_TELEMETRY_MAX_BYTES": "bad",
             }
         )
+
+    database_sink = capability_sink_from_env(
+        {
+            CAPABILITY_TELEMETRY_DATABASE_URL_ENV_VAR: "postgresql+asyncpg://osa:osa@localhost/osa",
+            CAPABILITY_TELEMETRY_RETENTION_DAYS_ENV_VAR: "14",
+        }
+    )
+    assert isinstance(database_sink, PostgresCapabilityTelemetrySink)
+    assert database_sink.retention_days == 14
+
+    with pytest.raises(ValueError, match=CAPABILITY_TELEMETRY_DATABASE_URL_ENV_VAR):
+        capability_sink_from_env({CAPABILITY_TELEMETRY_DATABASE_URL_ENV_VAR: "   "})
+    with pytest.raises(ValueError, match="only one"):
+        capability_sink_from_env(
+            {
+                CAPABILITY_TELEMETRY_DATABASE_URL_ENV_VAR: "postgresql+asyncpg://osa:osa@localhost/osa",
+                "OSA_CAPABILITY_TELEMETRY_PATH": str(tmp_path / "events.jsonl"),
+            }
+        )
+
+
+def test_shared_policy_rejects_local_capability_telemetry(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("OSA_PERSISTENCE_POLICY", "shared")
+    with pytest.raises(PersistenceConfigurationError, match="PostgreSQL"):
+        capability_sink_from_env(
+            {
+                "OSA_CAPABILITY_TELEMETRY_PATH": str(tmp_path / "events.jsonl"),
+                "OSA_PERSISTENCE_POLICY": "shared",
+            }
+        )
+
+
+def test_postgres_capability_sink_rejects_non_postgresql_urls() -> None:
+    sink = PostgresCapabilityTelemetrySink("sqlite:///local.db")
+    with pytest.raises(ValueError, match="must use PostgreSQL"):
+        sink.validate_schema()
 
 
 def test_json_formatter_emits_structured_redacted_fields() -> None:

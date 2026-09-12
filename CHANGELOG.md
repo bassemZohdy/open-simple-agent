@@ -76,6 +76,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Added a PostgreSQL-gated replica task-store acceptance covering creation,
   completion, failure, lookup, recovery, and tenant/caller isolation across
   independent ownership workers.
+- Added an optional migration-owned PostgreSQL capability telemetry sink with
+  stable event IDs, tenant/operation metadata, deduplication, deterministic
+  ingestion ordering, retention pruning, and explicit tenant deletion. The
+  local JSONL sink remains available for single-process diagnostics.
 
 ### Added — Runtime durability, capacity, and deployment hardening
 - Added an explicit, versioned PostgreSQL runtime-session provider with strict

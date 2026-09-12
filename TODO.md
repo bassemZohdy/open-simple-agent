@@ -50,7 +50,8 @@ Production-readiness limits are:
   terminal replay, terminal-event drain-before-release, and fail-closed
   owner-loss handling are implemented. The SDK active-task registry and
   multi-process streaming/late-event acceptance remain incomplete; replica-wide
-  telemetry collection is also open;
+  capability telemetry now has an optional migration-owned PostgreSQL sink
+  with deduplication, ordering, and tenant-retention controls;
   long-running deployment-operation ownership and global gateway quotas remain
   deployment concerns;
 - deployment-specific browser OIDC, package publication, and the first public
@@ -68,8 +69,7 @@ The following are the current blockers or decision gates:
   separate provider gate.
 - **Architecture-gated:** completing the remaining distributed A2A
   multi-process/active-task streaming and late-event contract requires approval
-  of `docs/adrs/011-distributed-operation-ownership.md`; replica-wide
-  capability telemetry additionally needs a retention/ordering decision.
+  of `docs/adrs/011-distributed-operation-ownership.md`.
 - **Product-gated:** browser OIDC issuer/client/redirect semantics, package
   registry publication, and the first public release need explicit product
   decisions. English and Arabic are the currently supported Control Panel
@@ -157,14 +157,17 @@ late-event acceptance remain open; owner loss is fail-closed by default.
   model/tool side effects. Explicit idempotent replay remains a future opt-in
   contract, not a default.
 
-## Capability-level audit telemetry — PARTIALLY COMPLETE
+## Capability-level audit telemetry — COMPLETE
 
 Management, runtime-boundary, and auth-denial audits exist. Model/native-tool/
 MCP capability metrics and a bounded payload-free local JSONL sink are
-implemented for a single process.
+implemented for a single process. An optional migration-owned PostgreSQL sink
+provides replica-wide durable events with stable IDs, tenant/operation
+metadata, deterministic ingestion ordering, deduplication, retention pruning,
+and explicit tenant deletion.
 
-- [ ] Select a shared collector or durable replica-wide sink contract with
-  ordering, deduplication, and tenant-retention ownership.
+- [x] Select and implement the shared PostgreSQL capability telemetry contract
+  with ordering, deduplication, and tenant-retention ownership.
 
 # P3 — Product surface and distribution
 

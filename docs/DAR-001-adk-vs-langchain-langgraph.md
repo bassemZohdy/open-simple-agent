@@ -99,11 +99,10 @@ Evidence from the current repository:
 - `RuntimeDependencies` and `AgentStreamEvent` are framework-neutral seams in
   `generic-agent`; the ADK and LangGraph runtimes consume those seams without
   importing either framework into the generic package.
-- Current gaps are durable runtime sessions, migration-owned memory schema,
-  distributed A2A task state, capability-level audit telemetry, rate limiting,
-  and deployment reliability hardening. These are in `TODO.md` and should not
-  be mistaken for framework capabilities that a replacement would get for
-  free.
+- Current gaps are distributed A2A streaming/late-event acceptance, distributed
+  deployment-operation ownership, concrete enterprise identity acceptance, and
+  deployment/release decisions. These are in `TODO.md` and should not be
+  mistaken for framework capabilities that a replacement would get for free.
 - The backlog now records the bounded LangGraph POC as present and keeps MCP,
   A2A, a shared HTTP service, and durable checkpoint validation as follow-up
   work.

@@ -10,6 +10,7 @@ the lifespan shutdown and closes the runtime).
 from __future__ import annotations
 
 import argparse
+import contextlib
 import os
 import sys
 from contextlib import asynccontextmanager
@@ -240,10 +241,16 @@ def create_runtime_app(
         ) as exc:
             runtime_api.set_start_error(str(exc))
             raise
-        runtime_api.maybe_attach_a2a(agent, app=app)
-        await runtime_api.initialize_a2a_task_store(app)
-        await runtime_api.initialize_rate_limit_store(app)
-        runtime_api.set_runtime(runtime, agent)
+        try:
+            runtime_api.maybe_attach_a2a(agent, app=app)
+            await runtime_api.initialize_capability_telemetry_sink(app)
+            await runtime_api.initialize_a2a_task_store(app)
+            await runtime_api.initialize_rate_limit_store(app)
+            runtime_api.set_runtime(runtime, agent)
+        except BaseException:
+            with contextlib.suppress(Exception):
+                await runtime_api.close_capability_telemetry_sink(app)
+            raise
         try:
             yield
         finally:
@@ -261,6 +268,7 @@ def create_runtime_app(
             if close_session is not None:
                 close_session()
             await runtime_api.close_rate_limit_store(app)
+            await runtime_api.close_capability_telemetry_sink(app)
             runtime_api.reset_runtime()
 
     try:

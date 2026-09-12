@@ -34,6 +34,10 @@ Environment variables:
 | `OSA_A2A_TASK_TABLE` | A2A task table name; ownership uses the `<name>_ownership` companion table |
 | `OSA_A2A_TASK_LEASE_SECONDS` | A2A ownership lease duration; minimum 5 seconds, default 30 |
 | `OSA_A2A_TASK_CANCEL_WAIT_SECONDS` | Maximum remote-handler wait for durable cancellation before a retryable error; default 30 seconds |
+| `OSA_CAPABILITY_TELEMETRY_DATABASE_URL` | PostgreSQL DSN for shared capability telemetry; mutually exclusive with the local JSONL sink |
+| `OSA_CAPABILITY_TELEMETRY_TABLE` | Shared capability telemetry table name; default `osa_capability_telemetry` |
+| `OSA_CAPABILITY_TELEMETRY_RETENTION_DAYS` | Shared capability event retention window; default 30 days |
+| `OSA_CAPABILITY_TELEMETRY_PATH` | Bounded process-local JSONL capability sink |
 | `OSA_PERSISTENCE_POLICY` | `local` (default) or `shared`; shared requires PostgreSQL for enabled state and Kubernetes for the durable Control Plane |
 | `OSA_MEMORY_DATABASE_URL` | PostgreSQL DSN for shared memory, or file-backed `sqlite+aiosqlite:///...` for local memory (optional; in-memory without it) |
 | `OSA_AUTH_*` | Bearer/OIDC validation for inbound calls (see the security guide) |
@@ -124,6 +128,7 @@ Runtime persistence has independent migration commands and startup ordering:
 OSA_MEMORY_DATABASE_URL=... uv run osa-memory-migrate
 OSA_SESSION_DATABASE_URL=... uv run osa-session-migrate
 OSA_A2A_TASK_DATABASE_URL=... uv run osa-a2a-migrate
+OSA_CAPABILITY_TELEMETRY_DATABASE_URL=... uv run osa-capability-telemetry-migrate
 ```
 
 Run the memory command when `OSA_MEMORY_DATABASE_URL` is configured. Run the
@@ -133,6 +138,12 @@ them. Run the A2A command when `OSA_A2A_TASK_DATABASE_URL` is configured and
 any enabled runtime serves inbound A2A tasks; it provisions the SDK task table
 and OSA's versioned ownership table. Runtime startup validates those tables but
 never creates or alters them.
+
+Run `osa-capability-telemetry-migrate` when
+`OSA_CAPABILITY_TELEMETRY_DATABASE_URL` is configured. It provisions the
+versioned PostgreSQL telemetry table and its schema-version row; runtime
+startup validates both before readiness and never falls back to JSONL or
+in-memory state.
 
 For local SQLite, the same commands use the file-backed subsystem providers:
 
@@ -171,6 +182,9 @@ coordination.
   default wait, keeping it bounded for client retries.
 - Optional HTTP rate limits are available in-process; production replicas
   should enforce the same policy at an API gateway or service mesh.
+- Shared capability telemetry replicas use the same PostgreSQL sink and
+  migration. Events are deduplicated by stable ID and ordered by database
+  ingestion time plus ID; retention and tenant deletion remain operator-owned.
 
 ## Deploying an agent through the Control Plane
 

@@ -394,8 +394,10 @@ Runtime and management operations should provide correlated structured logs,
 metrics, and OpenTelemetry spans across agent, model, tool, MCP, session,
 memory, A2A, and administrative operations. Secret redaction and bounded
 payload capture are mandatory. The current observability baseline includes
-request IDs, Prometheus metrics, structured/redaction-safe logs, traces, and
-audit events; future work may deepen fleet-level operational views.
+request IDs, Prometheus metrics, structured/redaction-safe logs, traces, audit
+events, and an optional migration-owned PostgreSQL capability sink with stable
+IDs, tenant correlation, deduplication, retention, and deterministic ingestion
+ordering; future work may deepen fleet-level operational views.
 
 ## Packaging and deployment
 

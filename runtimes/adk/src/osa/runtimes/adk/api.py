@@ -135,9 +135,11 @@ async def initialize_runtime(
     runtime = AdkRuntime(
         model_provider=FakeModelProvider(response="I'm a runtime agent. How can I help?"),
         model_catalog=model_catalog,
+        observability=getattr(runtime_app.state, "observability", None),
     )
     agent = await runtime.create(definition)
     maybe_attach_a2a(agent)
+    await initialize_capability_telemetry_sink(runtime_app)
     set_runtime(runtime, agent)
     return agent
 
@@ -194,6 +196,31 @@ def maybe_attach_a2a(
         settings = AuthSettings.from_env()
     url = os.environ.get("OSA_A2A_URL", "http://localhost:8080/")
     attach_a2a_routes(target_app, agent, url, auth_settings=settings)
+
+
+async def initialize_capability_telemetry_sink(app: FastAPI) -> None:
+    """Validate an optional durable capability sink before readiness."""
+    observability = getattr(app.state, "observability", None)
+    sink = getattr(observability, "capability_sink", None)
+    validate = getattr(sink, "validate_schema", None)
+    if not callable(validate):
+        return
+    try:
+        await asyncio.to_thread(validate)
+    except Exception:
+        close = getattr(sink, "close", None)
+        if callable(close):
+            await asyncio.to_thread(close)
+        raise
+
+
+async def close_capability_telemetry_sink(app: FastAPI) -> None:
+    """Close an optional durable capability sink during service shutdown."""
+    observability = getattr(app.state, "observability", None)
+    sink = getattr(observability, "capability_sink", None)
+    close = getattr(sink, "close", None)
+    if callable(close):
+        await asyncio.to_thread(close)
 
 
 async def initialize_a2a_task_store(app: FastAPI) -> None:
@@ -302,7 +329,13 @@ def _install_authentication(
         request.state.osa_principal = principal
         principal_token = set_current_principal(principal)
         try:
-            return await call_next(request)
+            with log_context(
+                {
+                    "caller_subject": principal.subject,
+                    "tenant_id": principal.tenant_id or "",
+                }
+            ):
+                return await call_next(request)
         finally:
             reset_current_principal(principal_token)
 

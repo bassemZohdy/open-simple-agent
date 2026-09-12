@@ -30,6 +30,7 @@ OSA_CONTROL_PLANE_DATABASE_URL=... uv run osa-cp-migrate
 OSA_MEMORY_DATABASE_URL=... uv run osa-memory-migrate
 OSA_SESSION_DATABASE_URL=... uv run osa-session-migrate
 OSA_A2A_TASK_DATABASE_URL=... uv run osa-a2a-migrate
+OSA_CAPABILITY_TELEMETRY_DATABASE_URL=... uv run osa-capability-telemetry-migrate
 ```
 
 - Migrations are forward-only in normal operation; each has a `downgrade()`.
@@ -44,6 +45,9 @@ OSA_A2A_TASK_DATABASE_URL=... uv run osa-a2a-migrate
   schema (enabling rolling rollbacks).
 - Runtime memory and sessions have independent versioned migration histories;
   startup validates them and never auto-migrates.
+- Shared capability telemetry has an independent schema-version row; run its
+  migration before rolling out replicas when
+  `OSA_CAPABILITY_TELEMETRY_DATABASE_URL` is configured.
 
 ## Runtime replicas
 

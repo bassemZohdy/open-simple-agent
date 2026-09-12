@@ -128,11 +128,11 @@ newer fencing epoch.
 
 ### 5. Telemetry boundary
 
-This ADR does not select a telemetry vendor. The shared sink contract must
-accept a stable event id, tenant id, operation id, fencing epoch, event kind,
-outcome, and timestamp; it must deduplicate event ids and define retention and
-ordering ownership. Payload-free capability telemetry remains governed by
-[ADR-010](010-capacity-and-capability-telemetry.md).
+Replica-wide capability telemetry uses the PostgreSQL sink and bounded event
+contract accepted by [ADR-010](010-capacity-and-capability-telemetry.md). This
+ADR does not make A2A/deployment operation telemetry part of that capability
+sink: those operation events still need the stable operation/fencing metadata
+and retention contract described here before they are persisted.
 
 ## Acceptance criteria
 
@@ -149,8 +149,10 @@ proves all of the following with two independent app/worker instances:
    event per handler, and wins over a late completion from a fenced owner.
 5. Deployment lifecycle commands serialize per deployment and stale commands
    cannot overwrite newer intent.
-6. Telemetry event ids deduplicate across retries and retention/tenant filters
-   are enforced without payload leakage.
+6. When capability telemetry is configured, the shared sink deduplicates event
+   ids across retries and enforces retention/tenant filters without payload
+   leakage; A2A/deployment operation telemetry remains outside that sink until
+   its ownership contract is accepted.
 
 The suite must run in CI against PostgreSQL and a multi-process or multi-worker
 environment. SQLite and the process-local stores remain development/test
@@ -175,8 +177,8 @@ implementations only.
 - Cross-replica request waiting consumes database/read capacity and needs
   bounded polling, backpressure, and gateway quotas; OSA bounds remote cancel
   waiting with `OSA_A2A_TASK_CANCEL_WAIT_SECONDS`.
-- The design still requires a selected shared telemetry sink and a CI runtime
-  capable of exercising multiple workers.
+- The design still requires a CI runtime capable of exercising multiple
+  workers for the remaining A2A/deployment operation ownership work.
 
 ## Open review questions
 
@@ -184,7 +186,5 @@ implementations only.
   declaration and side-effect evidence are required?
 - What lease/heartbeat durations and takeover limits fit the supported runtime
   timeout range?
-- Which shared telemetry collector owns retention, ordering, and tenant
-  deletion guarantees?
 - Should deployment operation keys serialize all operations per deployment or
   allow independent read-only observations concurrently?

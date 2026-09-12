@@ -90,6 +90,13 @@ health probe; startup failures carry the captured logs in the record detail.
   `OSA_A2A_TASK_CANCEL_WAIT_SECONDS` for the current owner, then returns a
   retryable cancellation error unless the owner lease has expired and safe
   cancellation takeover is possible.
+- When shared capability telemetry is configured, run
+  `OSA_CAPABILITY_TELEMETRY_DATABASE_URL=... uv run
+  osa-capability-telemetry-migrate` before rollout. The runtime validates the
+  versioned table and refuses readiness when it is unavailable or outdated.
+  Events are deduplicated by stable ID, ordered by database ingestion time plus
+  ID, and pruned using `OSA_CAPABILITY_TELEMETRY_RETENTION_DAYS`; tenant
+  deletion is an explicit operator data-retention action.
 
 ## Upgrades
 
@@ -111,4 +118,4 @@ health probe; startup failures carry the captured logs in the record detail.
 - Replica-safe deployment-operation ownership
 - Complete true multi-process A2A active-task replica acceptance for streaming
   and late-event ordering (P2.4)
-- Replica-wide capability telemetry and gateway-level quota policy
+- Gateway-level quota policy

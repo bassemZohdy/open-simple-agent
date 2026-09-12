@@ -388,7 +388,13 @@ def _install_authentication(
         request.state.osa_principal = principal
         principal_token = set_current_principal(principal)
         try:
-            return await call_next(request)
+            with log_context(
+                {
+                    "caller_subject": principal.subject,
+                    "tenant_id": principal.tenant_id or "",
+                }
+            ):
+                return await call_next(request)
         finally:
             reset_current_principal(principal_token)
 

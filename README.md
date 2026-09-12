@@ -19,10 +19,10 @@ slice for backend evaluation and coexistence.
 > React/TypeScript Control Panel are implemented. JWT bearer authentication,
 > opt-in role/permission enforcement, and runtime tenant binding are available.
 > The remaining production-readiness work is tracked in `TODO.md`: distributed
-> deployment operation ownership,
-> distributed A2A active-task state, replica-wide telemetry, deployment-specific
-> browser OIDC, and release decisions. Durable sessions, migration-owned memory
-> schema, capability telemetry, and the opt-in HTTP rate-limit contract
+> deployment operation ownership, the remaining distributed A2A streaming/late-
+> event contract, deployment-specific browser OIDC, and release decisions.
+> Durable sessions, migration-owned memory schema, replica-wide capability
+> telemetry, and the opt-in HTTP rate-limit contract
 > (including an optional PostgreSQL shared store) are implemented. The Kind
 > lifecycle workflow passes in CI; live-provider acceptance remains opt-in.
 
@@ -50,7 +50,7 @@ silently falls back between PostgreSQL, SQLite, and memory.
 | Control Plane | Agent CRUD, lifecycle transitions, immutable versions, optimistic concurrency, validated contracts; tenant-owned agent CRUD/lifecycle routes; tenant-scoped resource CRUD/list/search APIs with reference checks and bundle import/export; tenant-owned deployment APIs (deploy/status/stop/restart/logs/rollback); durable external A2A agent registry with card validation, health, and outbound credential adapters; append-only tenant-filtered audit events; in-memory default, explicit file-backed SQLite local repositories, or PostgreSQL repositories via `OSA_CONTROL_PLANE_DATABASE_URL` (ADR-004), backend-specific schema command (`osa-cp-migrate`); shared JWT bearer authentication, opt-in route permissions, and operator-selected local/Kubernetes deployment providers | SQLite and local deployments are single-process; shared/durable Control Plane deployments require PostgreSQL plus Kubernetes; definition resource policy is enforced by the runtime and enterprise policy remains open |
 | Control Panel | React/TypeScript/Vite shell; session-scoped Bearer token and locale support; typed Control Plane client; agents, templates, tenant-scoped resources, readiness, agent detail/version history, safe immutable snapshot inspection, deployments, audit/metrics, authoring, A2A console, managed-runtime invocation, and responsive/loading/empty/error states | English and Arabic are implemented; further locales and deployment-specific OIDC login remain product/deployment concerns |
 | Deployment | Local provider with bounded logs, health probing, startup-failure capture, identity-aware retry, safe bundle export, and persisted deploy/status/stop/restart/logs/rollback APIs; operator-selected Kubernetes provider with labelled status rehydration, probes, scaling, rollback, logs, bundle ConfigMaps, Secret references, and hardened pod security | Kind acceptance passes in CI; distributed operation ownership remains gated |
-| Runtime API | Invoke, capabilities, liveness, readiness, optional A2A Agent Card/JSON-RPC, shared JWT/OIDC bearer authentication including RFC 7662 opaque-token introspection, opt-in route permissions, tenant-claim binding, request IDs, Prometheus metrics including model/tool/MCP capability outcomes, optional bounded JSONL capability sink, redaction-safe structured logs and runtime/A2A audit events; SSE streaming (`/v1/invoke/stream`) with stable OSA events; `osa-runtime` CLI with bundle bootstrap; shared outbound URL/DNS/redirect policy; opt-in bounded HTTP rate-limit contract with optional PostgreSQL shared store | In-memory rate limiting and JSONL sink are process-local by default; long-running operation ownership, global gateway quotas, and shared telemetry collection remain deployment concerns |
+| Runtime API | Invoke, capabilities, liveness, readiness, optional A2A Agent Card/JSON-RPC, shared JWT/OIDC bearer authentication including RFC 7662 opaque-token introspection, opt-in route permissions, tenant-claim binding, request IDs, Prometheus metrics including model/tool/MCP capability outcomes, optional bounded JSONL or migration-owned PostgreSQL capability sink, redaction-safe structured logs and runtime/A2A audit events; SSE streaming (`/v1/invoke/stream`) with stable OSA events; `osa-runtime` CLI with bundle bootstrap; shared outbound URL/DNS/redirect policy; opt-in bounded HTTP rate-limit contract with optional PostgreSQL shared store | In-memory rate limiting and JSONL sink are process-local by default; long-running operation ownership and global gateway quotas remain deployment concerns |
 | CI | Ruff format/lint, strict mypy, full Python suite with PostgreSQL + A2A services and an 84% coverage gate, Control Panel typecheck/test/build, both image smoke tests, Docker-backed Kind Kubernetes lifecycle acceptance, dependency/license scanning, CycloneDX SBOMs, a gated live-provider acceptance job, and a manual enterprise-identity acceptance workflow | Live-provider and enterprise-identity execution require opt-in credentials; multi-process deployment-operation ownership remains gated |
 | Release | Lockstep release validation; four Python distributions; GHCR runtime/Control Plane images; SBOM/provenance attestations; keyless Cosign image signing; GitHub Releases with checksums; immutable-digest channel rollback | First public release and optional package-registry publication remain open |
 
@@ -378,8 +378,8 @@ The P0 runnable-agent gate, managed-platform foundation, current Control Panel,
 and production images are implemented. Release automation can build validated
 Python artifacts and signed/attested GHCR images from an intentional
 version/tag. The remaining gated work is listed in [TODO.md](TODO.md), notably
-distributed deployment operation ownership, distributed A2A active-task state,
-replica-wide telemetry, deployment-specific browser OIDC, and the first public
+distributed deployment operation ownership, distributed A2A streaming/late-
+event acceptance, deployment-specific browser OIDC, and the first public
 release decision. Live-provider acceptance is available
 when its repository secret is intentionally enabled.
 

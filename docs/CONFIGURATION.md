@@ -208,6 +208,7 @@ subsystem:
 | Runtime sessions | `spec.session.persistence: true` plus `OSA_SESSION_DATABASE_URL` | `SessionManager` when persistence is false; missing DSN fails when true | Explicit file-backed `sqlite:///...` with `osa-session-migrate`; `:memory:` rejected | PostgreSQL preserves ownership/history across restart and replicas; SQLite preserves it in one process; in-memory is process-local |
 | A2A task records | `OSA_A2A_TASK_DATABASE_URL` | SDK in-memory task store | Explicit SQLite is supported for local testing where the SDK supports it; not a shared-production provider | PostgreSQL task records and OSA ownership leases survive restart and coordinate replicas; SDK task saves are fenced, but the active-task registry remains process-local |
 | HTTP rate limits | `OSA_RATE_LIMIT_DATABASE_URL` | In-memory limiter | Explicit SQLite is exercised for local tests through SQLAlchemy; PostgreSQL is required for cross-replica production limits | Shared PostgreSQL windows coordinate replicas; in-memory/SQLite are local-only |
+| Capability telemetry | `OSA_CAPABILITY_TELEMETRY_DATABASE_URL` or `OSA_CAPABILITY_TELEMETRY_PATH` | Disabled | SQLite is unsupported; JSONL is file-backed and local-only | PostgreSQL events are shared, deduplicated, ordered by database ingestion time plus ID, and retained/deleted under operator policy |
 
 For every row, an explicitly selected durable provider is authoritative. Invalid,
 unreachable, or unmigrated configured databases fail startup/readiness; the
@@ -346,6 +347,9 @@ The runtime also accepts these service-level controls:
 | `OSA_RATE_LIMIT_TABLE` | SQL identifier used by the shared rate-limit store | `osa_rate_limit_windows` |
 | `OSA_CAPABILITY_TELEMETRY_PATH` | Optional bounded JSONL file for capability outcomes | unset |
 | `OSA_CAPABILITY_TELEMETRY_MAX_BYTES` | Maximum JSONL sink size before newest-event compaction | `10000000` |
+| `OSA_CAPABILITY_TELEMETRY_DATABASE_URL` | PostgreSQL DSN for the shared, durable capability telemetry sink; mutually exclusive with the JSONL path | unset |
+| `OSA_CAPABILITY_TELEMETRY_TABLE` | SQL identifier for the shared capability telemetry table | `osa_capability_telemetry` |
+| `OSA_CAPABILITY_TELEMETRY_RETENTION_DAYS` | Operator-owned retention window for shared capability events | `30` |
 
 When enabled, the HTTP services expose rate-limit headers (`X-RateLimit-Limit`,
 `X-RateLimit-Remaining`, and `X-RateLimit-Reset`) and return `429` with
@@ -360,11 +364,17 @@ operation ownership and gateway-level global quotas remain deployment policy.
 Capability telemetry is emitted for model, native-tool, and MCP spans as
 bounded Prometheus counters. Set `OSA_CAPABILITY_TELEMETRY_PATH` to enable the
 bounded, sanitized JSONL sink (or provide an `Observability` capability sink
-programmatically). It receives only the capability kind/name, success or
-failure, stable error code, and duration; prompts, inputs, outputs,
+programmatically). It receives only bounded capability kind/name, success or
+failure, stable error code, duration, event ID, operation/tenant correlation,
+producer time, and optional sequence metadata; prompts, inputs, outputs,
 credentials, and tool arguments are never included. The file sink is
-process-local; use a shared log/telemetry collector when replicas must be
-correlated.
+process-local. For replica-wide durable events, set
+`OSA_CAPABILITY_TELEMETRY_DATABASE_URL` to PostgreSQL and run
+`uv run osa-capability-telemetry-migrate --database-url postgresql+asyncpg://...`
+before startup. The shared sink deduplicates by stable `event_id`, stores
+tenant/operation correlation and producer sequence metadata, orders reads by
+database `ingested_at` plus `event_id`, and applies the configured retention
+window. A database sink and JSONL sink cannot be enabled together.
 
 Boolean values are case-insensitive. Accepted true values are `1`, `true`,
 `yes`, and `on`; false values are `0`, `false`, `no`, and `off`.

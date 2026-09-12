@@ -21,6 +21,7 @@ postgres = ["sqlalchemy[asyncio]>=2.0,<3", "asyncpg>=0.29", "pg8000>=1.31,<2"]
 
 [project.scripts]
 osa-rate-limit-migrate = "osa.generic_agent.rate_limit:migrate_cli"
+osa-capability-telemetry-migrate = "osa.generic_agent.observability:capability_telemetry_migrate_cli"
 
 [build-system]
 requires = ["hatchling"]
