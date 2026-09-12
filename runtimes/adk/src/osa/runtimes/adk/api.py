@@ -181,6 +181,9 @@ def maybe_attach_a2a(
         return
     if not agent.definition.spec.policy.a2a.permits("inbound"):
         raise PolicyViolationError("a2a", "inbound")
+    from osa.generic_agent import require_shared_database
+
+    require_shared_database(os.environ.get("OSA_A2A_TASK_DATABASE_URL"), "A2A task state")
     from osa.runtimes.adk.a2a import attach_a2a_routes
 
     target_app = app or runtime_app

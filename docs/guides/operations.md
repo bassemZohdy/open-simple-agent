@@ -68,14 +68,19 @@ health probe; startup failures carry the captured logs in the record detail.
   running migrations from several replicas simultaneously is a race.
 - Control Plane state, runtime memory, and runtime sessions may each use
   PostgreSQL, configured by separate DSNs and potentially different databases.
+  They also support explicit file-backed SQLite for local single-process use.
   Back up every configured database. Apply `osa-cp-migrate`,
   `osa-memory-migrate`, and `osa-session-migrate` as separate pre-start steps;
   all three runtimes validate schema versions and do not auto-migrate.
 - A configured DSN is authoritative: connection or migration failure must stop
-  readiness rather than downgrade to an in-memory or SQLite store. No
-  general-purpose SQLite provider currently exists for the PostgreSQL-only
-  surfaces; process-local stores are for tests and single-process development
-  only. Lower-level SQLite use must remain explicit and subsystem-specific.
+  readiness rather than downgrade to another provider. SQLite files use WAL,
+  foreign keys, a five-second busy timeout, and private POSIX permissions when
+  OSA creates/migrates them; keep them on local storage, back them up while
+  quiesced or through SQLite's online backup API, and never use them for
+  shared-replica coordination.
+- `OSA_PERSISTENCE_POLICY=shared` is the explicit production guard. It rejects
+  process-local and SQLite state for enabled surfaces and requires PostgreSQL;
+  the Control Plane additionally requires the Kubernetes deployment provider.
 
 ## Upgrades
 

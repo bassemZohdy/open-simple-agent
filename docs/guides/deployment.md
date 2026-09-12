@@ -30,7 +30,8 @@ Environment variables:
 | `OSA_MODEL_REF` | Override the agent's model reference at start time |
 | `OSA_ALLOW_FAKE_PROVIDER` | Opt-in deterministic fake model (`1`); never enabled by default |
 | `OSA_A2A_URL` | Public URL advertised in the Agent Card when `spec.a2a.enabled` |
-| `OSA_MEMORY_DATABASE_URL` | PostgreSQL DSN for persistent memory (optional; in-memory without it) |
+| `OSA_PERSISTENCE_POLICY` | `local` (default) or `shared`; shared requires PostgreSQL for enabled state and Kubernetes for the durable Control Plane |
+| `OSA_MEMORY_DATABASE_URL` | PostgreSQL DSN for shared memory, or file-backed `sqlite+aiosqlite:///...` for local memory (optional; in-memory without it) |
 | `OSA_AUTH_*` | Bearer/OIDC validation for inbound calls (see the security guide) |
 | `OSA_LOG_FORMAT=json` | Structured JSON logs |
 
@@ -64,23 +65,25 @@ docker run -d -p 8000:8000 \
   validation reconcile each process-local catalog from durable records. A
   durable Control Plane requires `OSA_DEPLOY_PROVIDER=kubernetes`; the local
   provider is development-only and process-local.
-- A configured PostgreSQL DSN is authoritative. Invalid, unreachable, or
+- A configured database DSN is authoritative. Invalid, unreachable, or
   unmigrated databases stop startup/readiness; the service never silently
-  downgrades to SQLite or in-memory state. No general-purpose SQLite provider
-  is currently available for the PostgreSQL-only surfaces; any future SQLite
-  option must be explicit and local-only. Lower-level A2A or rate-limit tests
-  may use SQLite where their underlying stores support it.
+  downgrades to another provider. Control Plane, memory, and session services
+  accept explicit file-backed SQLite for local single-process use; use their
+  subsystem migration command first. SQLite is never a shared-replica provider.
+- Set `OSA_PERSISTENCE_POLICY=shared` for a fail-closed production posture:
+  enabled runtime memory, sessions, A2A task state, and rate limits require
+  PostgreSQL; the Control Plane requires PostgreSQL plus Kubernetes.
 
 ### Deployment configuration
 
-The Control Plane image starts the PostgreSQL-aware application factory. Run
+The Control Plane image starts the database-aware application factory. Run
 `osa-cp-migrate` separately before rollout when
 `OSA_CONTROL_PLANE_DATABASE_URL` is configured; the application never
 auto-migrates. The selected deployment provider uses these server-side settings:
 
 | Variable | Purpose | Default |
 |---|---|---|
-| `OSA_CONTROL_PLANE_DATABASE_URL` | PostgreSQL DSN for agents, resources, deployments, and audit events | unset (in-memory) |
+| `OSA_CONTROL_PLANE_DATABASE_URL` | PostgreSQL DSN for shared state, or file-backed `sqlite+aiosqlite:///...` for local state | unset (in-memory) |
 | `OSA_DEPLOY_COMMAND_TEMPLATE` | Server-owned runtime launch template; supports `{bundle_path}` and `{port}` | `osa-runtime --config {bundle_path} --port {port}` |
 | `OSA_DEPLOY_PROVIDER` | Deployment provider (`local` or `kubernetes`) | `local` for in-memory development; required as `kubernetes` with a durable Control Plane |
 | `OSA_KUBERNETES_IMAGE` | Runtime image used by the Kubernetes provider | required for `kubernetes` |
@@ -100,8 +103,9 @@ Secret references.
 
 ### Migrations
 
-Apply Alembic migrations **before the first rollout of a new version** and
-before any replica serves traffic with a schema expectation:
+Apply migrations **before the first rollout of a new version** and before any
+replica serves traffic with a schema expectation. `osa-cp-migrate` selects the
+PostgreSQL Alembic path or the explicit SQLite schema path from the DSN:
 
 ```bash
 OSA_CONTROL_PLANE_DATABASE_URL=... uv run osa-cp-migrate
@@ -121,6 +125,19 @@ Run the memory command when `OSA_MEMORY_DATABASE_URL` is configured. Run the
 session command before deploying any bundle whose `spec.session.persistence`
 is `true`. Runtime startup validates both schemas but never creates or alters
 them.
+
+For local SQLite, the same commands use the file-backed subsystem providers:
+
+```bash
+OSA_CONTROL_PLANE_DATABASE_URL=sqlite+aiosqlite:///./osa-control-plane.db uv run osa-cp-migrate
+OSA_MEMORY_DATABASE_URL=sqlite+aiosqlite:///./osa-memory.db uv run osa-memory-migrate
+OSA_SESSION_DATABASE_URL=sqlite:///./osa-sessions.db uv run osa-session-migrate
+```
+
+Keep SQLite files on private local storage, use mode `0600` on POSIX hosts,
+back up while quiesced (or with SQLite's online backup API), and verify
+restores. Do not put them on a shared filesystem or use them for replica
+coordination.
 
 ### Multi-replica notes
 

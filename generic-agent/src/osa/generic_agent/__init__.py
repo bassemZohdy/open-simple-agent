@@ -78,6 +78,7 @@ from osa.generic_agent.errors import (
     ModelConfigurationError,
     ModelInvocationError,
     OsaError,
+    PersistenceConfigurationError,
     PolicyViolationError,
     error_payload,
 )
@@ -128,6 +129,12 @@ from osa.generic_agent.outbound import (
     OutboundUrlError,
     outbound_trust_env,
     validate_outbound_url,
+)
+from osa.generic_agent.persistence import (
+    PERSISTENCE_POLICY_ENV_VAR,
+    PersistencePolicy,
+    get_persistence_policy,
+    require_shared_database,
 )
 from osa.generic_agent.rate_limit import (
     DEFAULT_RATE_LIMIT_TABLE,
@@ -258,6 +265,7 @@ __all__ = [
     "MemoryEntry",
     "APPLICATION_SCOPE_ID",
     "MemoryConfigurationError",
+    "PersistenceConfigurationError",
     "MemoryPolicy",
     "MemoryPolicyCatalog",
     "memory_scope_id",
@@ -279,6 +287,10 @@ __all__ = [
     "OUTBOUND_TRUST_ENV_ENV",
     "outbound_trust_env",
     "validate_outbound_url",
+    "PERSISTENCE_POLICY_ENV_VAR",
+    "PersistencePolicy",
+    "get_persistence_policy",
+    "require_shared_database",
     "ModelResponse",
     "ModelRuntimeSettings",
     "JsonFormatter",

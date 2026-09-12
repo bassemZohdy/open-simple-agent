@@ -8,13 +8,14 @@
 ## Setup
 
 ```bash
-uv sync --all-packages --extra postgres --extra a2a
+uv sync --all-packages --extra postgres --extra a2a --extra sqlite
 ```
 
 `--all-packages` is required: the workspace root has no runtime dependencies of
 its own, so a bare `uv sync` installs none of the four members' dependencies.
-The `postgres` and `a2a` extras match CI. Without them the suite still passes —
-PostgreSQL tests (which also need `OSA_TEST_DATABASE_URL`) and A2A tests skip —
+The `postgres`, `a2a`, and `sqlite` extras match CI. Without them the suite still passes —
+PostgreSQL tests (which also need `OSA_TEST_DATABASE_URL`), A2A tests, and local
+SQLite persistence tests skip —
 but the full CI matrix only runs with the extras installed.
 
 ## Running Checks

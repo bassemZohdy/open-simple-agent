@@ -48,6 +48,10 @@ __all__ = [
     "InMemoryDeploymentRecordRepository",
     "InMemoryResourceDefinitionRepository",
     "PostgresAuditEventRepository",
+    "SqliteAgentRepository",
+    "SqliteAuditEventRepository",
+    "SqliteDeploymentRecordRepository",
+    "SqliteResourceDefinitionRepository",
     "InvalidTransitionError",
     "PostgresAgentRepository",
     "PostgresDeploymentRecordRepository",
@@ -476,6 +480,10 @@ class PostgresAgentRepository(AgentRepository):
         return version
 
 
+class SqliteAgentRepository(PostgresAgentRepository):
+    """SQLite agent repository for explicit local single-process deployments."""
+
+
 # ---------------------------------------------------------------------------
 # Resource definitions repository
 # ---------------------------------------------------------------------------
@@ -692,6 +700,57 @@ class PostgresResourceDefinitionRepository(ResourceDefinitionRepository):
         return bool(result.rowcount)
 
 
+class SqliteResourceDefinitionRepository(PostgresResourceDefinitionRepository):
+    """SQLite resource repository using SQLite-native conflict handling."""
+
+    async def upsert(
+        self,
+        kind: str,
+        name: str,
+        spec: dict[str, Any],
+        *,
+        tenant_id: str | None = None,
+    ) -> None:
+        from sqlalchemy.dialects.sqlite import insert
+
+        from osa.control_plane.backend.tables import resource_definitions_table
+
+        async with self._engine.begin() as connection:
+            await connection.execute(
+                insert(resource_definitions_table)
+                .values(tenant_id=self._scope(tenant_id), kind=kind, name=name, spec=spec)
+                .on_conflict_do_update(
+                    index_elements=["tenant_id", "kind", "name"],
+                    set_={"spec": spec, "updated_at": datetime.now(UTC)},
+                )
+            )
+
+    async def upsert_many(
+        self,
+        items: list[tuple[str, str, dict[str, Any]]],
+        *,
+        tenant_id: str | None = None,
+    ) -> None:
+        if not items:
+            return
+        from sqlalchemy.dialects.sqlite import insert
+
+        from osa.control_plane.backend.tables import resource_definitions_table
+
+        values = [
+            {"tenant_id": self._scope(tenant_id), "kind": kind, "name": name, "spec": spec}
+            for kind, name, spec in items
+        ]
+        statement = insert(resource_definitions_table).values(values)
+        async with self._engine.begin() as connection:
+            await connection.execute(
+                statement.on_conflict_do_update(
+                    index_elements=["tenant_id", "kind", "name"],
+                    set_={"spec": statement.excluded.spec, "updated_at": datetime.now(UTC)},
+                )
+            )
+
+
 # ---------------------------------------------------------------------------
 # Deployment records (interface now; persistence wired in P1.5)
 # ---------------------------------------------------------------------------
@@ -852,6 +911,41 @@ class PostgresDeploymentRecordRepository(DeploymentRecordRepository):
         return bool(result.rowcount)
 
 
+class SqliteDeploymentRecordRepository(PostgresDeploymentRecordRepository):
+    """SQLite deployment-record repository for local provider operation."""
+
+    async def upsert(self, record: DeploymentRecord) -> None:
+        from sqlalchemy.dialects.sqlite import insert
+
+        from osa.control_plane.backend.tables import deployments_table
+
+        async with self._engine.begin() as connection:
+            await connection.execute(
+                insert(deployments_table)
+                .values(
+                    deployment_id=record.deployment_id,
+                    agent_id=record.agent_id,
+                    tenant_id=record.tenant_id,
+                    agent_name=record.agent_name,
+                    version=record.version,
+                    status=record.status,
+                    detail=record.detail,
+                    invoke_url=record.invoke_url,
+                    created_at=record.created_at,
+                    updated_at=record.updated_at,
+                )
+                .on_conflict_do_update(
+                    index_elements=["deployment_id"],
+                    set_={
+                        "status": record.status,
+                        "detail": record.detail,
+                        "invoke_url": record.invoke_url,
+                        "updated_at": record.updated_at,
+                    },
+                )
+            )
+
+
 # ---------------------------------------------------------------------------
 # Append-only audit metadata persistence
 # ---------------------------------------------------------------------------
@@ -941,3 +1035,7 @@ class PostgresAuditEventRepository(AuditEventRepository):
             )
             for row in rows
         ]
+
+
+class SqliteAuditEventRepository(PostgresAuditEventRepository):
+    """SQLite audit repository for explicit local single-process use."""

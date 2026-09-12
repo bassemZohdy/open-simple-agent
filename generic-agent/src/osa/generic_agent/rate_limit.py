@@ -226,11 +226,18 @@ def build_rate_limiter(config: RateLimitConfig) -> RateLimiter:
     """Select the process-local or explicitly configured shared store."""
     database_url = os.environ.get(RATE_LIMIT_DATABASE_URL_ENV_VAR)
     if database_url:
+        from osa.generic_agent.persistence import require_shared_database
+
+        require_shared_database(database_url, "HTTP rate-limit state")
         return PostgresRateLimiter(
             config,
             database_url,
             table_name=os.environ.get(RATE_LIMIT_TABLE_ENV_VAR, DEFAULT_RATE_LIMIT_TABLE),
         )
+    if config.enabled:
+        from osa.generic_agent.persistence import require_shared_database
+
+        require_shared_database(None, "HTTP rate-limit state")
     return InMemoryRateLimiter(config)
 
 

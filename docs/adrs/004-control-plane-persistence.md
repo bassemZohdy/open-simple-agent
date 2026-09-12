@@ -1,4 +1,4 @@
-# ADR-004: Control Plane persistence — PostgreSQL repositories and Alembic
+# ADR-004: Control Plane persistence — PostgreSQL/SQLite repositories and migrations
 
 ## Status
 
@@ -65,15 +65,19 @@ SQLAlchemy 2.0 async, Alembic.
 - **Templates** remain code-defined built-ins (rebuilt at startup): they are
   release artifacts of the Control Plane, not user state. If user-defined
   templates arrive (P1.2), they gain a repository then.
-- **Configuration.** `OSA_CONTROL_PLANE_DATABASE_URL` selects the PostgreSQL
-  repositories when the app is created via
-  `create_control_plane_app()`; unset means in-memory (current behavior,
+- **Configuration.** `OSA_CONTROL_PLANE_DATABASE_URL` selects PostgreSQL or
+  the explicit file-backed local SQLite repositories when the app is created
+  via `create_control_plane_app()`; unset means in-memory (current behavior,
   unchanged for tests and development). A configured DSN is authoritative:
-  invalid or unavailable PostgreSQL fails startup/readiness and never silently
-  downgrades to SQLite or in-memory state.
-- The provider boundary rejects malformed, empty, SQLite, and in-memory URLs
-  before constructing the PostgreSQL engine. Error messages do not echo the
-  configured URL, which may contain credentials.
+  invalid or unavailable databases fail startup/readiness and never silently
+  downgrade to another provider.
+- PostgreSQL migrations remain Alembic-owned. SQLite uses a separate versioned
+  schema path through `osa-cp-migrate`, with file-backed-only validation, WAL,
+  foreign keys, a five-second busy timeout, and private POSIX file mode. SQLite
+  is explicitly single-process and cannot be used for shared replicas.
+- The provider boundary rejects malformed, empty, and in-memory URLs where
+  unsupported, and error messages do not echo configured URLs, which may
+  contain credentials.
 
 ## Consequences
 
@@ -88,14 +92,14 @@ SQLAlchemy 2.0 async, Alembic.
 
 ### Negative or trade-offs
 
-- Two code paths (in-memory, PostgreSQL) must stay behaviorally aligned;
-  the shared abstract interface plus a common contract test suite covers
-  this.
+- Three code paths (in-memory, local SQLite, PostgreSQL) must stay
+  behaviorally aligned; the shared abstract interface plus contract tests
+  cover this.
 - Operations must run migrations before/with rollouts (explicit policy).
-- In-memory repositories are intentionally ephemeral and single-process. A
-  future SQLite provider would be an explicit local-only option, not a fallback
-  for a failed PostgreSQL deployment, and would require its own migration and
-  concurrency policy.
+- In-memory repositories are intentionally ephemeral and single-process.
+  SQLite repositories are also explicitly local-only, never a fallback for a
+  failed PostgreSQL deployment, and have their own migration and concurrency
+  policy.
 - Resource definition records are durable, and route/activation/deployment
   reads reconcile the process-local catalogs from them; live cross-replica
   PostgreSQL cross-replica resource acceptance is exercised in CI; Kind

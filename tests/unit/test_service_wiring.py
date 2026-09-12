@@ -8,6 +8,7 @@ from osa.control_plane.backend.deployment_service import DeploymentError, create
 from osa.control_plane.backend.repositories import (
     InMemoryDeploymentRecordRepository,
     PostgresDeploymentRecordRepository,
+    SqliteDeploymentRecordRepository,
 )
 from osa.control_plane.backend.service import create_control_plane_app
 
@@ -21,8 +22,15 @@ def test_dsn_selects_postgres_deployment_records(monkeypatch: pytest.MonkeyPatch
     assert isinstance(app.state.deployment_service._records, PostgresDeploymentRecordRepository)
 
 
-def test_control_plane_rejects_sqlite_dsn() -> None:
-    with pytest.raises(AgentCatalogError, match="must use PostgreSQL"):
+def test_control_plane_selects_local_sqlite_records() -> None:
+    app = create_control_plane_app(database_url="sqlite+aiosqlite:///control-plane.db")
+
+    assert isinstance(app.state.deployment_service._records, SqliteDeploymentRecordRepository)
+
+
+def test_control_plane_rejects_sqlite_for_kubernetes(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("OSA_DEPLOY_PROVIDER", "kubernetes")
+    with pytest.raises(AgentCatalogError, match="local-only"):
         create_control_plane_app(database_url="sqlite+aiosqlite:///control-plane.db")
 
 

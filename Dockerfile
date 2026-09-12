@@ -17,7 +17,7 @@ COPY control-plane/ control-plane/
 # dependency); the litellm, postgres, and a2a extras provide the production
 # model adapter, durable memory provider, and optional A2A runtime support.
 # --no-editable installs real wheels so no source tree is needed at runtime.
-RUN uv sync --frozen --no-dev --no-editable --package osa-adk-runtime --extra litellm --extra postgres --extra a2a
+RUN uv sync --frozen --no-dev --no-editable --package osa-adk-runtime --extra litellm --extra postgres --extra a2a --extra sqlite
 
 # Runtime stage: non-root, arbitrary-UID friendly, externally configured.
 FROM python:3.12-slim AS runtime

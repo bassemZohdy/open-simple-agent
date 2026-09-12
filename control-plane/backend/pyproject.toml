@@ -14,6 +14,8 @@ dependencies = [
 # PostgreSQL persistence (ADR-004). Selected via
 # OSA_CONTROL_PLANE_DATABASE_URL; schema managed by Alembic (osa-cp-migrate).
 postgres = ["sqlalchemy[asyncio]>=2.0,<3", "asyncpg>=0.29", "alembic>=1.13"]
+# File-backed local SQLite persistence; never use for shared replicas.
+sqlite = ["sqlalchemy[asyncio]>=2.0,<3", "aiosqlite>=0.20"]
 # Packages the runtime launcher into the management image for the local
 # provider topology. Kubernetes uses a separately published runtime image.
 runtime = ["osa-adk-runtime"]

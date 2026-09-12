@@ -2408,10 +2408,15 @@ postgres = [
     { name = "pg8000" },
     { name = "sqlalchemy", extra = ["asyncio"] },
 ]
+sqlite = [
+    { name = "aiosqlite" },
+    { name = "sqlalchemy", extra = ["asyncio"] },
+]
 
 [package.metadata]
 requires-dist = [
     { name = "a2a-sdk", extras = ["http-server"], marker = "extra == 'a2a'", specifier = ">=1.0,<2" },
+    { name = "aiosqlite", marker = "extra == 'sqlite'", specifier = ">=0.20" },
     { name = "asyncpg", marker = "extra == 'postgres'", specifier = ">=0.29" },
     { name = "google-adk", specifier = ">=2.0,<3.0" },
     { name = "litellm", marker = "extra == 'litellm'", specifier = ">=1.84" },
@@ -2419,8 +2424,9 @@ requires-dist = [
     { name = "osa-generic-agent", editable = "generic-agent" },
     { name = "pg8000", marker = "extra == 'postgres'", specifier = ">=1.31,<2" },
     { name = "sqlalchemy", extras = ["asyncio"], marker = "extra == 'postgres'", specifier = ">=2.0,<3" },
+    { name = "sqlalchemy", extras = ["asyncio"], marker = "extra == 'sqlite'", specifier = ">=2.0,<3" },
 ]
-provides-extras = ["litellm", "postgres", "a2a"]
+provides-extras = ["litellm", "postgres", "sqlite", "a2a"]
 
 [[package]]
 name = "osa-control-plane"
@@ -2441,18 +2447,24 @@ postgres = [
 runtime = [
     { name = "osa-adk-runtime" },
 ]
+sqlite = [
+    { name = "aiosqlite" },
+    { name = "sqlalchemy", extra = ["asyncio"] },
+]
 
 [package.metadata]
 requires-dist = [
+    { name = "aiosqlite", marker = "extra == 'sqlite'", specifier = ">=0.20" },
     { name = "alembic", marker = "extra == 'postgres'", specifier = ">=1.13" },
     { name = "asyncpg", marker = "extra == 'postgres'", specifier = ">=0.29" },
     { name = "fastapi", specifier = ">=0.115" },
     { name = "osa-adk-runtime", marker = "extra == 'runtime'", editable = "runtimes/adk" },
     { name = "osa-generic-agent", editable = "generic-agent" },
     { name = "sqlalchemy", extras = ["asyncio"], marker = "extra == 'postgres'", specifier = ">=2.0,<3" },
+    { name = "sqlalchemy", extras = ["asyncio"], marker = "extra == 'sqlite'", specifier = ">=2.0,<3" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.30" },
 ]
-provides-extras = ["postgres", "runtime"]
+provides-extras = ["postgres", "sqlite", "runtime"]
 
 [[package]]
 name = "osa-generic-agent"

@@ -51,19 +51,23 @@ backlog.
 - `PostgresMemoryProvider` (`osa.runtimes.adk.postgres_memory`) stores memory
   entries in a dedicated `osa_memory_entries` table: append-per-key semantics,
   `(scope, scope_id)` isolation, `ILIKE` substring search, timestamps.
-- The stack is **SQLAlchemy 2.0 async over asyncpg**, pinned as the optional
-  extra `osa-adk-runtime[postgres]`; the DSN comes from
-  `OSA_MEMORY_DATABASE_URL`. When the variable is unset the runtime uses the
-  in-memory provider; when set, the provider is created and its schema is
-  ensured at startup (connectivity failures abort startup before readiness).
+- The shared stack is **SQLAlchemy 2.0 async over asyncpg**, pinned as the
+  optional extra `osa-adk-runtime[postgres]`; the DSN comes from
+  `OSA_MEMORY_DATABASE_URL`. The same selector accepts the explicit
+  `osa-adk-runtime[sqlite]` file-backed `SqliteMemoryProvider` for local
+  single-process use. When the variable is unset the runtime uses the
+  in-memory provider; when set, the selected provider is created and its
+  schema is ensured at startup (connectivity failures abort startup before
+  readiness).
 - The database URL is authoritative when present: an invalid, unreachable, or
-  unmigrated PostgreSQL database fails startup and never falls back to an
-  in-memory store. There is no implicit SQLite fallback. SQLite would require
-  a separate explicit provider with local-only concurrency and migration
-  semantics, and is not part of this ADR.
-- The provider boundary rejects malformed, empty, SQLite, and in-memory URLs
-  before constructing the PostgreSQL engine. Error messages do not echo the
-  configured URL, which may contain credentials.
+  unmigrated database fails startup and never falls back to another provider.
+  SQLite is file-backed only (`:memory:` is rejected), uses a separate schema
+  version path, WAL, foreign keys, a five-second busy timeout, and local-file
+  permissions. It is not a replica coordination or shared-production store.
+- The PostgreSQL provider boundary rejects malformed, empty, SQLite, and
+  in-memory URLs before constructing its engine; the SQLite boundary accepts
+  only file-backed SQLite URLs. Error messages do not echo configured URLs,
+  which may contain credentials.
 - Per-scope limits (`max_entries`) and retention (`retention_days`) are
   enforced in SQL through the provider contract's `enforce()`; the runtime
   applies them after every write and before reads, from the resolved
@@ -81,16 +85,18 @@ backlog.
 
 ### Positive
 
-- Memory survives restarts and is shared across replicas; isolation tests
-  cover user/agent/tenant/application scopes.
+- PostgreSQL memory survives restarts and is shared across replicas; SQLite
+  memory survives restarts for a local process; isolation tests cover
+  user/agent/tenant/application scopes.
 - One PostgreSQL technology stack can serve memory and Control Plane state,
   while their DSNs and migration ownership remain independent.
 
 ### Negative or trade-offs
 
-- `ILIKE` substring search is linear at scale; an index on
+- `ILIKE`/case-insensitive substring search is linear at scale; an index on
   `(scope, scope_id, key, created_at)` covers the common paths, and pgvector
-  remains available if semantic search becomes a requirement.
+  remains available if semantic search becomes a requirement. SQLite is a
+  local convenience provider, not a scale-out replacement.
 - Memory has a separate migration history and requires an explicit pre-start
   migration step; the independent history must be backed up and upgraded with
   the runtime package.

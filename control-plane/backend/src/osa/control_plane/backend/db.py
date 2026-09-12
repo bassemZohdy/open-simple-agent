@@ -10,7 +10,7 @@ from __future__ import annotations
 import os
 from importlib.util import find_spec
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 DATABASE_URL_ENV_VAR = "OSA_CONTROL_PLANE_DATABASE_URL"
 
@@ -28,18 +28,78 @@ def _require_postgres_stack() -> None:
         )
 
 
+def _require_sqlite_stack() -> None:
+    missing = [name for name in ("sqlalchemy", "aiosqlite") if find_spec(name) is None]
+    if missing:
+        from osa.control_plane.backend.agent_catalog import AgentCatalogError
+
+        raise AgentCatalogError(
+            "SQLite persistence requires the missing dependencies: "
+            f"{', '.join(missing)}; install the 'osa-control-plane[sqlite]' extra"
+        )
+
+
 def database_url_from_env() -> str | None:
     """The configured Control Plane DSN, if any."""
     return os.environ.get(DATABASE_URL_ENV_VAR)
 
 
+def database_backend(dsn: str) -> Literal["postgresql", "sqlite"]:
+    """Return the supported backend name without exposing the configured URL."""
+    if find_spec("sqlalchemy") is None:
+        from osa.control_plane.backend.agent_catalog import AgentCatalogError
+
+        raise AgentCatalogError(
+            "Database persistence requires SQLAlchemy; install the 'osa-control-plane[postgres]' "
+            "or 'osa-control-plane[sqlite]' extra"
+        )
+    from sqlalchemy.engine import make_url
+    from sqlalchemy.exc import ArgumentError
+
+    from osa.control_plane.backend.agent_catalog import AgentCatalogError
+
+    try:
+        backend = make_url(dsn).get_backend_name()
+    except (ArgumentError, ValueError) as exc:
+        raise AgentCatalogError("Control Plane database URL must be a valid PostgreSQL or SQLite DSN") from exc
+    if backend not in {"postgresql", "sqlite"}:
+        raise AgentCatalogError("Control Plane database URL must use PostgreSQL or SQLite")
+    if backend == "postgresql":
+        return "postgresql"
+    return "sqlite"
+
+
 def create_db_engine(dsn: str) -> Any:
-    """Create the async engine for the Control Plane database."""
+    """Create the async engine for the configured Control Plane database."""
+    backend = database_backend(dsn)
+    if backend == "sqlite":
+        _require_sqlite_stack()
+        from sqlalchemy.ext.asyncio import create_async_engine
+
+        from osa.control_plane.backend.sqlite_migrations import normalize_async_sqlite_dsn
+
+        engine = create_async_engine(normalize_async_sqlite_dsn(dsn), connect_args={"timeout": 5})
+        _configure_sqlite_engine(engine)
+        return engine
+
     _require_postgres_stack()
     _validate_postgres_dsn(dsn)
     from sqlalchemy.ext.asyncio import create_async_engine
 
     return create_async_engine(dsn)
+
+
+def _configure_sqlite_engine(engine: Any) -> None:
+    """Apply local SQLite safety defaults to an async SQLAlchemy engine."""
+    from sqlalchemy import event
+
+    @event.listens_for(engine.sync_engine, "connect")
+    def configure_connection(dbapi_connection: Any, _connection_record: Any) -> None:
+        cursor = dbapi_connection.cursor()
+        cursor.execute("PRAGMA busy_timeout=5000")
+        cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.execute("PRAGMA journal_mode=WAL")
+        cursor.close()
 
 
 def _validate_postgres_dsn(dsn: str) -> None:
@@ -73,6 +133,11 @@ def alembic_config(dsn: str) -> Any:
 
 def run_migrations(dsn: str, revision: str = "head") -> None:
     """Apply Alembic migrations up to ``revision`` (explicit ops step)."""
+    if database_backend(dsn) == "sqlite":
+        from osa.control_plane.backend.sqlite_migrations import run_sqlite_migrations
+
+        run_sqlite_migrations(dsn, revision)
+        return
     from alembic import command
 
     command.upgrade(alembic_config(dsn), revision)

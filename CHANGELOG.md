@@ -44,6 +44,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   local SQLite coverage for lower-level A2A and rate-limit stores and the
   PostgreSQL-only shared-production boundary.
 
+### Added — Explicit local SQLite persistence
+- Added file-backed `SqliteAgentRepository`, resource, deployment, audit, and
+  external-agent repositories for single-process Control Plane use, with a
+  separate versioned `osa-cp-migrate` SQLite path.
+- Added file-backed `SqliteMemoryProvider` and `SqliteSessionProvider`, with
+  independent migration paths, restart persistence, ownership/concurrency
+  checks, five-second busy timeouts, WAL, foreign keys, and private POSIX file
+  permissions.
+- Added `OSA_PERSISTENCE_POLICY=shared`, which fails closed unless enabled
+  stateful surfaces use PostgreSQL and the Control Plane uses Kubernetes.
+- Added focused restart, migration, ownership, and policy tests; removed the
+  completed persistence items from `TODO.md`.
+
 ### Added — Runtime durability, capacity, and deployment hardening
 - Added an explicit, versioned PostgreSQL runtime-session provider with strict
   ownership, TTL, bounded history, optimistic concurrency, and the

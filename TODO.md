@@ -21,13 +21,13 @@ The MCP runtime supports the official SDK 1.x and 2.x compatibility lines;
 dual-major protocol and ADK Runner coverage runs in CI. Resource/prompt
 exposure and legacy SSE remain intentionally deferred.
 
-Persistence selection is externalized per subsystem. A configured PostgreSQL
-DSN is authoritative and must fail closed when unavailable; an unset DSN uses
-only the subsystem's documented process-local default. No general-purpose OSA
-SQLite provider is currently defined; SQLite remains an explicit local-only
-follow-up, never a silent PostgreSQL fallback. Some lower-level A2A and
-rate-limit tests use SQLite where their underlying stores permit it, but that
-does not establish shared-production support.
+Persistence selection is externalized per subsystem. PostgreSQL is the shared,
+durable provider; Control Plane, memory, and durable sessions also have
+explicit file-backed SQLite providers for local single-process use. An unset
+DSN uses only the subsystem's documented process-local default, and a
+configured DSN is authoritative and fail-closed. `OSA_PERSISTENCE_POLICY=shared`
+rejects process-local and SQLite state for enabled surfaces and requires the
+shared PostgreSQL/Kubernetes posture.
 
 Production-readiness limits are:
 
@@ -73,11 +73,10 @@ The following are the current blockers or decision gates:
 
 ## Recommended next task
 
-Implement the persistence provider hierarchy described below, starting with
-explicit fail-closed provider selection and a local-only SQLite design. The
-MCP SDK 1.x/2.x compatibility slice is covered by the client, ADK Runner, and
-dual-major CI tests; distributed operation ownership remains the next
-architecture gate after persistence policy work.
+Implement distributed A2A active-task ownership and recovery. The persistence
+provider hierarchy and shared-policy gate are now implemented and covered by
+focused SQLite/production-policy tests; distributed operation ownership is the
+next architecture gate.
 
 ---
 
@@ -97,23 +96,6 @@ is unavailable.
 ---
 
 # P2 — Production controls
-
-## Persistence provider hierarchy — PENDING
-
-Persistence is currently externalized per subsystem: PostgreSQL is selected by
-an explicit service DSN, while allowed development/test paths remain
-process-local when no DSN is configured. A configured DSN must never silently
-downgrade to SQLite or memory after a connectivity or migration failure.
-No general-purpose SQLite provider is currently wired for the PostgreSQL-only
-Control Plane, memory, or durable-session surfaces; if added, it must be an
-explicit single-process option with its own migration and backup guidance.
-
-- [ ] Add explicit SQLite providers only for local single-process use, with
-  backend-specific migrations, locking/busy-timeout settings, file permissions,
-  backup guidance, and clear rejection for shared-replica deployments.
-- [ ] Add deployment-policy validation so durable/production surfaces reject
-  process-local memory or SQLite providers, and add an explicit policy mode for
-  deployments that require shared durable state.
 
 ## Enterprise identity lifecycle — PARTIALLY COMPLETE
 

@@ -39,6 +39,12 @@ class MemoryConfigurationError(OsaError):
     code = "memory_configuration_error"
 
 
+class PersistenceConfigurationError(OsaError):
+    """The selected persistence policy is incompatible with configuration."""
+
+    code = "persistence_configuration_error"
+
+
 class PolicyViolationError(OsaError):
     """A configured resource policy denied a runtime capability."""
 

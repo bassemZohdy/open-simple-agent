@@ -13,7 +13,7 @@ namespace `osa`:
 | `generic-agent` | `osa.generic_agent` | Domain model, configuration, deployment bundles, catalogs, provider contracts, errors |
 | `runtimes/adk` | `osa.runtimes.adk` | ADK-specific construction, model adapters, MCP client/toolsets, memory persistence, session bridging, Runner invocation, runtime API, service CLI |
 | `runtimes/langgraph` | `osa.runtimes.langgraph` | LangChain model/tool adapters, LangGraph `StateGraph` execution, OSA session/memory/policy bridge, programmatic bundle bootstrap |
-| `control-plane/backend` | `osa.control_plane.backend` | Agent records/templates/resources (in-memory or PostgreSQL repositories, ADR-004), local deployment provider, management API |
+| `control-plane/backend` | `osa.control_plane.backend` | Agent records/templates/resources (in-memory, local SQLite, or PostgreSQL repositories, ADR-004), local deployment provider, management API |
 
 Namespace levels such as `src/osa/` intentionally have no `__init__.py`.
 
@@ -189,8 +189,9 @@ Caller-supplied unknown IDs are rejected (`session_not_found`), identity
 changes are access violations (`session_access_denied`), and IDs are
 server-issued UUIDs. `OsaAdkSessionService` maps ADK session operations onto
 the provider, so model context stays bounded by the OSA history limit. The
-in-memory provider is single-replica; bundles opt into the shared PostgreSQL
-provider through `spec.session.persistence` and `OSA_SESSION_DATABASE_URL`.
+in-memory provider is single-replica; bundles opt into a durable provider
+through `spec.session.persistence` and `OSA_SESSION_DATABASE_URL`. PostgreSQL
+is the shared provider; file-backed SQLite is an explicit local-only option.
 
 Memory context is loaded only when `spec.memory.enabled` is true and a
 memory provider is configured. Search is a case-insensitive substring match;
@@ -205,34 +206,37 @@ metadata, `application` -> deployment constant; entries never cross scope
 IDs.
 
 Persistence is externalized: `OSA_MEMORY_DATABASE_URL` selects
-`PostgresMemoryProvider` (SQLAlchemy async over asyncpg, ILIKE search,
-SQL-enforced limits/retention). Its independent schema is versioned by
+`PostgresMemoryProvider` (SQLAlchemy async over asyncpg) for shared state or
+`SqliteMemoryProvider` (SQLAlchemy async over a file-backed SQLite database)
+for local state. Its independent schema is versioned by
 `osa-memory-migrate`; runtime startup validates the migration and never
 creates tables. Without the DSN, memory is in-memory and single-process.
 
 Persistence provider selection is explicit per subsystem. A configured
-PostgreSQL DSN is authoritative: connectivity or migration failure prevents
+database DSN is authoritative: connectivity or migration failure prevents
 readiness rather than downgrading to another provider. When no DSN is set,
-only the subsystem's documented process-local default is used. No
-general-purpose SQLite provider is currently wired for the PostgreSQL-only
-Control Plane, memory, or durable-session surfaces; any future SQLite
-implementation must be an explicit single-process option with backend-specific
-migrations and must be rejected for shared-replica or durable-production
-requirements. Lower-level A2A and rate-limit stores may use SQLite explicitly
-where their underlying libraries support it.
+only the subsystem's documented process-local default is used. The explicit
+SQLite providers are file-backed, use separate schema versions, five-second
+busy timeouts, WAL, and foreign keys, and are rejected for shared-replica or
+durable-production requirements. `OSA_PERSISTENCE_POLICY=shared` enforces
+that PostgreSQL-only posture for enabled stateful surfaces. Lower-level A2A
+and rate-limit stores may use SQLite explicitly where their libraries support
+it.
 
 ## HTTP applications
 
 The Control Plane application stores state through the `AgentRepository`
 and `ResourceDefinitionRepository` contracts (ADR-004): by default in-memory
-(tests/development), or PostgreSQL via `OSA_CONTROL_PLANE_DATABASE_URL`
+(tests/development), file-backed SQLite for an explicit local single-process
+installation, or PostgreSQL via `OSA_CONTROL_PLANE_DATABASE_URL`
 (`create_control_plane_app()`). PG writes are transactional; agent names and
 `(agent_id, version)` are unique constraints; updates compare-and-set on
 `current_version`; transitions lock the row and validate the move. Persisted
 resource definitions initially materialize into the catalogs at startup and
-are refreshed on route, activation, and deployment reads. Schema is
-managed by Alembic (`osa-cp-migrate`, explicit ops step — the app verifies
-connectivity and never migrates, avoiding multi-replica races). Records and
+are refreshed on route, activation, and deployment reads. PostgreSQL schema is
+managed by Alembic; SQLite uses a separate versioned `osa-cp-migrate` path.
+Both are explicit ops steps — the app verifies connectivity/schema and never
+migrates at startup, avoiding multi-replica races. Records and
 version history survive restarts, and agent records/version history share state
 across replicas. Resource records are durable, and route/activation/deployment
 reads reconcile the process-local catalogs from them; PostgreSQL cross-replica

@@ -26,11 +26,13 @@ slice for backend evaluation and coexistence.
 > (including an optional PostgreSQL shared store) are implemented. The Kind
 > lifecycle workflow passes in CI; live-provider acceptance remains opt-in.
 
-Persistence choices are explicit per subsystem. Configured PostgreSQL is
-authoritative and fails closed when unavailable; an unset DSN uses the
-documented process-local default. SQLite is not currently supported as a
-general-purpose OSA shared-production backend or an automatic fallback; some
-lower-level A2A and rate-limit tests use it explicitly where supported.
+Persistence choices are explicit per subsystem. PostgreSQL is the shared,
+durable provider; file-backed SQLite is available only as an explicit
+single-process local provider; and an unset DSN uses the documented
+process-local default where allowed. `OSA_PERSISTENCE_POLICY=shared` rejects
+SQLite and process-local state for enabled durable surfaces. A configured DSN
+is authoritative and fails closed when unavailable or unmigrated: OSA never
+silently falls back between PostgreSQL, SQLite, and memory.
 
 ## What works today
 
@@ -41,11 +43,11 @@ lower-level A2A and rate-limit tests use it explicitly where supported.
 | Native tools | Catalog, declared parameter schemas, ADK-native function calling, timeout enforcement | Built-in implementations only (`calculator`); custom toolsets need code |
 | MCP | Runtime client (stdio + Streamable HTTP), lazy pooled connections, filtered namespaced tools bridged to ADK, bounded results, API-key/OAuth2/mTLS outbound credentials; dual-major MCP 1.x/2.x compatibility coverage | Resources/prompts exposure and legacy SSE remain deferred |
 | Skills | Catalog, search, runtime metadata resolution, A2A Agent Card mapping | Definition policy can allow/deny referenced skills |
-| Sessions | `SessionProvider` contract, ownership (agent/user/tenant), TTL, bounded history fed back to the model, versioned PostgreSQL provider with optimistic concurrency and explicit `osa-session-migrate` schema ownership | In-memory remains the default; persistent sessions are opt-in per agent; configured database failures do not downgrade |
-| Memory | Policy catalog resolution (authoritative scope/limits/retention), scope-id isolation (user/agent/tenant/application), enforcement after every write, explicit writes, PostgreSQL persistence (ADR-003), explicit `osa-memory-migrate` schema ownership | In-memory remains the default without a DSN; no general-purpose SQLite provider yet; extraction pipeline (auto-extract) and vector search are deferred |
+| Sessions | `SessionProvider` contract, ownership (agent/user/tenant), TTL, bounded history fed back to the model, versioned PostgreSQL provider plus explicit file-backed SQLite local provider with optimistic concurrency and `osa-session-migrate` schema ownership | In-memory remains the default; persistent sessions are opt-in per agent; SQLite is single-process only; configured database failures do not downgrade |
+| Memory | Policy catalog resolution (authoritative scope/limits/retention), scope-id isolation (user/agent/tenant/application), enforcement after every write, explicit writes, PostgreSQL or explicit file-backed SQLite persistence (ADR-003), `osa-memory-migrate` schema ownership | In-memory remains the default without a DSN; SQLite is local-only; extraction pipeline (auto-extract) and vector search are deferred |
 | ADK runtime | Invocation through the ADK `Runner`; timeouts, iteration limits, stable error types; SSE streaming (`/v1/invoke/stream`) with stable OSA events and disconnect cancellation; A2A Agent Card + JSON-RPC server (ADR-005); optional SDK SQLAlchemy task store via `OSA_A2A_TASK_DATABASE_URL` | PostgreSQL is recommended for shared task records; SQLite is local-only; active A2A executor ownership/cancellation/recovery remain process-local |
 | LangChain/LangGraph runtime | `osa-langgraph-runtime` uses LangChain chat models/tools and a LangGraph `StateGraph` model/tool loop; shares OSA catalogs, policies, sessions, memory, timeouts, stable responses, and streaming events | Programmatic backend only; MCP, A2A, and a framework-neutral HTTP service adapter are not yet included |
-| Control Plane | Agent CRUD, lifecycle transitions, immutable versions, optimistic concurrency, validated contracts; tenant-owned agent CRUD/lifecycle routes; tenant-scoped resource CRUD/list/search APIs with reference checks and bundle import/export; tenant-owned deployment APIs (deploy/status/stop/restart/logs/rollback); durable external A2A agent registry with card validation, health, and outbound credential adapters; append-only tenant-filtered audit events; in-memory default or PostgreSQL repositories via `OSA_CONTROL_PLANE_DATABASE_URL` (ADR-004), Alembic schema (`osa-cp-migrate`); shared JWT bearer authentication, opt-in route permissions, and operator-selected local/Kubernetes deployment providers | Durable Control Plane deployments require Kubernetes; local provider is development-only; definition resource policy is enforced by the runtime and enterprise policy remains open |
+| Control Plane | Agent CRUD, lifecycle transitions, immutable versions, optimistic concurrency, validated contracts; tenant-owned agent CRUD/lifecycle routes; tenant-scoped resource CRUD/list/search APIs with reference checks and bundle import/export; tenant-owned deployment APIs (deploy/status/stop/restart/logs/rollback); durable external A2A agent registry with card validation, health, and outbound credential adapters; append-only tenant-filtered audit events; in-memory default, explicit file-backed SQLite local repositories, or PostgreSQL repositories via `OSA_CONTROL_PLANE_DATABASE_URL` (ADR-004), backend-specific schema command (`osa-cp-migrate`); shared JWT bearer authentication, opt-in route permissions, and operator-selected local/Kubernetes deployment providers | SQLite and local deployments are single-process; shared/durable Control Plane deployments require PostgreSQL plus Kubernetes; definition resource policy is enforced by the runtime and enterprise policy remains open |
 | Control Panel | React/TypeScript/Vite shell; session-scoped Bearer token and locale support; typed Control Plane client; agents, templates, tenant-scoped resources, readiness, agent detail/version history, safe immutable snapshot inspection, deployments, audit/metrics, authoring, A2A console, managed-runtime invocation, and responsive/loading/empty/error states | English and Arabic are implemented; further locales and deployment-specific OIDC login remain product/deployment concerns |
 | Deployment | Local provider with bounded logs, health probing, startup-failure capture, identity-aware retry, safe bundle export, and persisted deploy/status/stop/restart/logs/rollback APIs; operator-selected Kubernetes provider with labelled status rehydration, probes, scaling, rollback, logs, bundle ConfigMaps, Secret references, and hardened pod security | Kind acceptance passes in CI; distributed operation ownership remains gated |
 | Runtime API | Invoke, capabilities, liveness, readiness, optional A2A Agent Card/JSON-RPC, shared JWT/OIDC bearer authentication including RFC 7662 opaque-token introspection, opt-in route permissions, tenant-claim binding, request IDs, Prometheus metrics including model/tool/MCP capability outcomes, optional bounded JSONL capability sink, redaction-safe structured logs and runtime/A2A audit events; SSE streaming (`/v1/invoke/stream`) with stable OSA events; `osa-runtime` CLI with bundle bootstrap; shared outbound URL/DNS/redirect policy; opt-in bounded HTTP rate-limit contract with optional PostgreSQL shared store | In-memory rate limiting and JSONL sink are process-local by default; long-running operation ownership, global gateway quotas, and shared telemetry collection remain deployment concerns |
@@ -157,7 +159,7 @@ Requirements:
 ```bash
 git clone https://github.com/bassemZohdy/open-simple-agent.git
 cd open-simple-agent
-uv sync --all-packages --extra postgres --extra a2a
+uv sync --all-packages --extra postgres --extra a2a --extra sqlite
 uv run pytest --tb=short -q
 uv run mypy .
 uv run ruff format --check .
@@ -166,8 +168,8 @@ uv run ruff check .
 
 `uv sync --all-packages` is required because this is a four-member uv
 workspace. A bare `uv sync` does not install the member packages. The
-`postgres` and `a2a` extras match CI: without them, the PostgreSQL (needs
-`OSA_TEST_DATABASE_URL`) and A2A integration tests are skipped instead of
+`postgres`, `a2a`, and `sqlite` extras match CI: without them, the PostgreSQL
+(needs `OSA_TEST_DATABASE_URL`), A2A, and local SQLite persistence tests are skipped instead of
 run, and `test_a2a.py` is collection-guarded so a bare sync still passes.
 
 The Control Panel is a separate frontend package:
@@ -304,7 +306,7 @@ uv run uvicorn osa.control_plane.backend.api:app --reload
 ```
 
 Use the factory when `OSA_CONTROL_PLANE_DATABASE_URL` should select the
-PostgreSQL repositories:
+PostgreSQL repositories or an explicit local SQLite repository:
 
 ```bash
 uv run uvicorn osa.control_plane.backend.service:create_control_plane_app --factory

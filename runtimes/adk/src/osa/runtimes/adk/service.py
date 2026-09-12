@@ -34,6 +34,8 @@ from osa.generic_agent import (
     MemoryConfigurationError,
     MemoryProvider,
     Observability,
+    PersistenceConfigurationError,
+    PersistencePolicy,
     SecretError,
     SecretResolver,
     SessionConfigurationError,
@@ -43,7 +45,9 @@ from osa.generic_agent import (
     ToolCatalog,
     build_catalogs,
     collect_secret_references,
+    get_persistence_policy,
     load_bundle,
+    require_shared_database,
 )
 from osa.runtimes.adk import AdkRuntime, GenericAdkAgent, default_registry
 
@@ -69,23 +73,40 @@ def _env_flag(name: str) -> bool:
     return os.environ.get(name, "").strip().lower() in _TRUTHY_VALUES
 
 
-async def create_memory_provider() -> MemoryProvider | None:
+async def create_memory_provider(*, required: bool = False) -> MemoryProvider | None:
     """Build the memory provider from external configuration.
 
-    ``OSA_MEMORY_DATABASE_URL`` selects the PostgreSQL provider (ADR-003);
-    the schema is validated — and connectivity verified — at startup so an
-    unreachable or unmigrated database aborts boot before readiness. Without the variable,
-    the in-memory provider is used (single-process deployments only).
+    ``OSA_MEMORY_DATABASE_URL`` selects the explicit PostgreSQL or local
+    SQLite provider (ADR-003); the schema is validated — and connectivity
+    verified — at startup so an unreachable or unmigrated database aborts boot
+    before readiness. Without the variable, the in-memory provider is used
+    (single-process deployments only).
     """
     dsn = os.environ.get(MEMORY_DATABASE_URL_ENV_VAR)
     if dsn is None:
+        if required and get_persistence_policy() == PersistencePolicy.SHARED:
+            require_shared_database(None, "runtime memory state")
         return None
     if not dsn.strip():
         raise MemoryConfigurationError(f"{MEMORY_DATABASE_URL_ENV_VAR} must not be empty")
-    from osa.runtimes.adk.postgres_memory import PostgresMemoryProvider
+    require_shared_database(dsn, "runtime memory state")
+    backend = dsn.split(":", 1)[0].split("+", 1)[0].lower()
+    provider: MemoryProvider
+    if backend == "sqlite":
+        from osa.runtimes.adk.sqlite_memory import SqliteMemoryProvider
 
-    provider = PostgresMemoryProvider(dsn)
-    await provider.ensure_schema()
+        provider = SqliteMemoryProvider(dsn)
+    elif backend == "postgresql":
+        from osa.runtimes.adk.postgres_memory import PostgresMemoryProvider
+
+        provider = PostgresMemoryProvider(dsn)
+    else:
+        raise MemoryConfigurationError("OSA_MEMORY_DATABASE_URL must use PostgreSQL or SQLite")
+    try:
+        await provider.ensure_schema()
+    except Exception:
+        await provider.close()
+        raise
     return provider
 
 
@@ -93,20 +114,39 @@ def create_session_provider(*, persistence: bool) -> SessionProvider:
     """Select the session store from the agent contract and operator DSN.
 
     Persistence is opt-in per agent. A persistent agent must point at an
-    operator-migrated PostgreSQL database; silently falling back to memory
-    would violate session continuity and ownership expectations.
+    operator-migrated PostgreSQL or explicit local SQLite database; silently
+    falling back to memory would violate session continuity and ownership
+    expectations.
     """
     if not persistence:
+        if get_persistence_policy() == PersistencePolicy.SHARED:
+            raise SessionConfigurationError(
+                "OSA_PERSISTENCE_POLICY=shared requires durable session persistence for every agent"
+            )
         return SessionManager()
     dsn = os.environ.get(SESSION_DATABASE_URL_ENV_VAR)
     if dsn is None or not dsn.strip():
         raise SessionConfigurationError(
             "spec.session.persistence is enabled but OSA_SESSION_DATABASE_URL is not configured or is empty"
         )
-    from osa.runtimes.adk.postgres_session import PostgresSessionProvider
+    require_shared_database(dsn, "runtime session state")
+    backend = dsn.split(":", 1)[0].split("+", 1)[0].lower()
+    provider: SessionProvider
+    if backend == "sqlite":
+        from osa.runtimes.adk.sqlite_session import SqliteSessionProvider
 
-    provider = PostgresSessionProvider(dsn)
-    provider.ensure_schema()
+        provider = SqliteSessionProvider(dsn)
+    elif backend == "postgresql":
+        from osa.runtimes.adk.postgres_session import PostgresSessionProvider
+
+        provider = PostgresSessionProvider(dsn)
+    else:
+        raise SessionConfigurationError("OSA_SESSION_DATABASE_URL must use PostgreSQL or SQLite")
+    try:
+        provider.ensure_schema()
+    except Exception:
+        provider.close()
+        raise
     return provider
 
 
@@ -130,6 +170,8 @@ async def build_runtime(
             production fallback and must be enabled explicitly.
     """
     bundle = load_bundle(bundle_path)
+    if bundle.agent.spec.a2a.enabled:
+        require_shared_database(os.environ.get("OSA_A2A_TASK_DATABASE_URL"), "A2A task state")
     resolver = secret_resolver or EnvironmentSecretResolver()
 
     # Fail fast on unresolvable secrets; values are discarded, never stored.
@@ -143,7 +185,7 @@ async def build_runtime(
         secret_resolver=resolver,
         observability=observability,
     )
-    memory_provider = await create_memory_provider()
+    memory_provider = await create_memory_provider(required=bundle.agent.spec.memory.enabled)
     session_provider = create_session_provider(persistence=bundle.agent.spec.session.persistence)
 
     runtime = AdkRuntime(
@@ -189,7 +231,13 @@ def create_runtime_app(
                 allow_fake_provider=allow_fake,
                 observability=service_observability,
             )
-        except (BundleError, MemoryConfigurationError, SecretError, SessionConfigurationError) as exc:
+        except (
+            BundleError,
+            MemoryConfigurationError,
+            PersistenceConfigurationError,
+            SecretError,
+            SessionConfigurationError,
+        ) as exc:
             runtime_api.set_start_error(str(exc))
             raise
         runtime_api.maybe_attach_a2a(agent, app=app)

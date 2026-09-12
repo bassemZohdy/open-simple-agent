@@ -144,7 +144,7 @@ generic Kubernetes path.
 | `spec.memory.policy` | string or null | null | Must resolve in the bundle when memory is enabled; an attached policy is authoritative for scope, limits, and retention, and `enabled: false` on the policy disables memory |
 | `spec.memory.scope` | enum | `user` | `user`, `agent`, `tenant`, or `application` (used when no policy is attached) |
 | `spec.memory.max_entries` | integer or null | null | Per-scope cap; oldest entries are evicted beyond it (used when no policy is attached) |
-| `spec.session.persistence` | boolean | false | Selects the durable PostgreSQL session provider; startup fails closed when its DSN or migrated schema is absent |
+| `spec.session.persistence` | boolean | false | Selects the durable PostgreSQL or explicit local SQLite session provider; startup fails closed when its DSN or migrated schema is absent |
 | `spec.session.ttl_seconds` | integer or null | null | Must be > 0 when set; expired sessions are deleted on access |
 | `spec.session.max_history_messages` | integer | 20 | Bounds the per-session conversation history |
 | `spec.a2a.enabled` | boolean | false | Enables ADK runtime Agent Card and JSON-RPC A2A routes when the optional A2A extra is installed; not exposed by the current LangGraph slice |
@@ -183,7 +183,7 @@ The current contract is:
 | PostgreSQL DSN is explicitly configured | Use the PostgreSQL provider, apply the required operator-owned migration, and validate connectivity before readiness. |
 | No DSN and the subsystem permits ephemeral operation | Use the documented in-memory/process-local provider. State is lost on restart and is not shared across replicas. |
 | DSN is configured but unreachable, invalid, or unmigrated | Fail startup/readiness; never silently downgrade to SQLite or memory. |
-| SQLite DSN for a subsystem without an explicit SQLite provider | Unsupported. SQLite support, if required, must be added per subsystem as an explicit local-only provider with its own migrations and operational limits. A2A task-store and rate-limit implementations may use SQLite in tests where their underlying libraries support it, but this is not a shared-production guarantee. |
+| File-backed SQLite DSN for a subsystem with an explicit SQLite provider | Use that subsystem's local-only provider and its own migration command. The provider enables a five-second busy timeout, WAL, and foreign keys; on POSIX hosts migrated files are restricted to mode `0600`. `:memory:` and shared/network-replica use are rejected or unsupported. |
 
 There is no implicit “try PostgreSQL, then SQLite, then memory” chain. This
 prevents a database outage from turning durable state into silently divergent
@@ -191,7 +191,10 @@ or lost state. Production deployments must explicitly select durable providers
 for any state that must survive restarts or be shared across replicas; memory
 is appropriate for tests and single-process development only. SQLite-backed
 development must be an explicit, subsystem-specific choice; it is not a
-general fallback or a shared-replica provider.
+general fallback or a shared-replica provider. Set
+`OSA_PERSISTENCE_POLICY=shared` to make this production posture fail closed:
+enabled stateful surfaces require PostgreSQL, and the Control Plane also
+requires the Kubernetes deployment provider.
 
 ### Current provider matrix
 
@@ -200,9 +203,9 @@ subsystem:
 
 | Subsystem | Explicit durable selector | No DSN | SQLite status | Restart/replica behavior |
 |---|---|---|---|---|
-| Control Plane | `OSA_CONTROL_PLANE_DATABASE_URL` | In-memory repositories | Rejected before engine creation | PostgreSQL survives restart and is shared across replicas; in-memory is process-local |
-| Runtime memory | `OSA_MEMORY_DATABASE_URL` | In-memory provider | Rejected before engine creation | PostgreSQL survives restart and is shareable after `osa-memory-migrate`; in-memory is ephemeral |
-| Runtime sessions | `spec.session.persistence: true` plus `OSA_SESSION_DATABASE_URL` | `SessionManager` when persistence is false; missing DSN fails when true | Rejected before engine creation | PostgreSQL preserves ownership/history across restart; in-memory is process-local |
+| Control Plane | `OSA_CONTROL_PLANE_DATABASE_URL` | In-memory repositories | Explicit file-backed `sqlite+aiosqlite:///...` with `osa-cp-migrate`; `:memory:` rejected | PostgreSQL survives restart and is shared across replicas; SQLite survives restart but is single-process; in-memory is process-local |
+| Runtime memory | `OSA_MEMORY_DATABASE_URL` | In-memory provider | Explicit file-backed `sqlite+aiosqlite:///...` with `osa-memory-migrate`; `:memory:` rejected | PostgreSQL survives restart and is shareable after migration; SQLite survives restart but is single-process; in-memory is ephemeral |
+| Runtime sessions | `spec.session.persistence: true` plus `OSA_SESSION_DATABASE_URL` | `SessionManager` when persistence is false; missing DSN fails when true | Explicit file-backed `sqlite:///...` with `osa-session-migrate`; `:memory:` rejected | PostgreSQL preserves ownership/history across restart and replicas; SQLite preserves it in one process; in-memory is process-local |
 | A2A task records | `OSA_A2A_TASK_DATABASE_URL` | SDK in-memory task store | Explicit SQLite is exercised for local tests where the SDK supports it; not a shared-production guarantee | Durable task records survive restart, but active executor ownership remains process-local |
 | HTTP rate limits | `OSA_RATE_LIMIT_DATABASE_URL` | In-memory limiter | Explicit SQLite is exercised for local tests through SQLAlchemy; PostgreSQL is required for cross-replica production limits | Shared PostgreSQL windows coordinate replicas; in-memory/SQLite are local-only |
 
@@ -214,15 +217,23 @@ covered by unit tests plus the optional PostgreSQL integration suite in CI.
 ## Memory persistence
 
 By default memory is in-memory (single process, lost on restart). Setting
-`OSA_MEMORY_DATABASE_URL` (for example,
-`postgresql+asyncpg://user:pass@host/db`) selects the PostgreSQL provider
-(ADR-003, `osa-adk-runtime[postgres]` extra). Entries survive restarts and are
-shared across replicas. The independent memory schema is owned by the
+`OSA_MEMORY_DATABASE_URL` to `postgresql+asyncpg://user:pass@host/db` selects
+the PostgreSQL provider; setting it to
+`sqlite+aiosqlite:///./osa-memory.db` selects the explicit local SQLite
+provider (`osa-adk-runtime[sqlite]`). PostgreSQL entries survive restarts and
+are shared across replicas; SQLite entries survive restarts only for a local
+single-process deployment. The independent memory schema is owned by the
 versioned `osa-memory-migrate` command; runtime startup validates connectivity
 and refuses to serve an unmigrated database:
 
 ```bash
 OSA_MEMORY_DATABASE_URL=postgresql+asyncpg://... uv run osa-memory-migrate
+```
+
+For local SQLite:
+
+```bash
+OSA_MEMORY_DATABASE_URL=sqlite+aiosqlite:///./osa-memory.db uv run osa-memory-migrate
 ```
 
 Back up the memory database before applying a new migration. Migrations are
@@ -231,15 +242,28 @@ backup, then starting the runtime with the previous package version. The
 Control Plane Alembic history does not manage this independent database.
 
 Persistent sessions are opt-in per agent. Set `spec.session.persistence: true`
-and run the separate session migration before starting the runtime:
+and run the separate session migration before starting the runtime. PostgreSQL
+is used for shared deployments:
 
 ```bash
 OSA_SESSION_DATABASE_URL=postgresql://... uv run osa-session-migrate
 ```
 
+For local SQLite:
+
+```bash
+OSA_SESSION_DATABASE_URL=sqlite:///./osa-sessions.db uv run osa-session-migrate
+```
+
 The runtime then uses `OSA_SESSION_DATABASE_URL` for ownership-checked,
 bounded-history sessions with optimistic concurrent-update protection. If the
-flag is false, sessions remain process-local even when a DSN is present.
+flag is false, sessions remain process-local even when a DSN is present; under
+`OSA_PERSISTENCE_POLICY=shared`, that process-local mode is rejected.
+
+SQLite operations are local-disk operations: keep the database file and its
+directory private, back it up with the service quiesced (or SQLite's online
+backup API), and restore/verify the backup before rollout. Do not place these
+files on a shared filesystem or use them as a replica coordination mechanism.
 
 ## A2A task persistence
 
@@ -288,8 +312,9 @@ The runtime also accepts these service-level controls:
 
 | Variable | Purpose | Default |
 |---|---|---:|
-| `OSA_MEMORY_DATABASE_URL` | PostgreSQL DSN for durable runtime memory | unset (in-memory) |
-| `OSA_SESSION_DATABASE_URL` | PostgreSQL DSN for durable sessions when persistence is enabled | required only for persistent agents |
+| `OSA_PERSISTENCE_POLICY` | `local` permits documented process-local/SQLite choices; `shared` requires PostgreSQL for enabled stateful surfaces and a shared deployment provider | `local` |
+| `OSA_MEMORY_DATABASE_URL` | PostgreSQL DSN for shared memory or file-backed `sqlite+aiosqlite:///...` DSN for local memory | unset (in-memory) |
+| `OSA_SESSION_DATABASE_URL` | PostgreSQL DSN for shared sessions or file-backed `sqlite:///...` DSN for local sessions when persistence is enabled | required only for persistent agents |
 | `OSA_A2A_TASK_DATABASE_URL` | Async SQLAlchemy DSN for durable A2A task records | unset (in-memory) |
 | `OSA_A2A_TASK_TABLE` | SQL identifier used by the A2A SDK task store | `osa_a2a_tasks` |
 | `OSA_RATE_LIMIT_REQUESTS` | Per-route, per-caller fixed-window request budget; `0` disables | `0` |

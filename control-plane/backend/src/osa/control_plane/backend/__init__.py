@@ -37,6 +37,10 @@ from osa.control_plane.backend.repositories import (
     PostgresAuditEventRepository,
     PostgresResourceDefinitionRepository,
     ResourceDefinitionRepository,
+    SqliteAgentRepository,
+    SqliteAuditEventRepository,
+    SqliteDeploymentRecordRepository,
+    SqliteResourceDefinitionRepository,
 )
 from osa.control_plane.backend.resource_catalogs import ResourceCatalogs
 from osa.control_plane.backend.templates import (
@@ -81,6 +85,10 @@ __all__ = [
     "PostgresAgentRepository",
     "PostgresAuditEventRepository",
     "PostgresResourceDefinitionRepository",
+    "SqliteAgentRepository",
+    "SqliteAuditEventRepository",
+    "SqliteDeploymentRecordRepository",
+    "SqliteResourceDefinitionRepository",
     "ResourceCatalogs",
     "ResourceDefinitionRepository",
     "SUPPORT_TEMPLATE",

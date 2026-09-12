@@ -1,21 +1,24 @@
 # HTTP API Reference
 
 This document describes routes implemented on `main`. The Control Plane uses
-in-memory repositories by default and can use PostgreSQL; the runtime keeps
-session state in its configured provider and memory can use PostgreSQL. With a
-Control Plane DSN, agents, resources, deployment records, audit events, and
-external-agent records are shared through PostgreSQL; route and deployment
-reads reconcile local resource catalogs. Durable Control Planes require the
-Kubernetes provider; local provider processes remain process-local by design.
+in-memory repositories by default and can use an explicit file-backed SQLite
+database for local single-process use or PostgreSQL for durable shared state;
+the runtime uses its configured session provider and memory can use either
+PostgreSQL or explicit local SQLite. With a PostgreSQL Control Plane DSN,
+agents, resources, deployment records, audit events, and external-agent
+records are shared; route and deployment reads reconcile local resource
+catalogs. Durable shared Control Planes require the Kubernetes provider; local
+provider processes remain process-local by design.
 Cross-replica resource acceptance runs in the PostgreSQL CI suite. Both
 applications provide an opt-in rate-limit contract with a process-local
 default and an optional PostgreSQL shared store.
 Both use the stable OSA error envelope `{"error": {"code", "message"}}`
 and share the optional JWT Bearer authentication boundary described below.
 Configured database failures are fail-closed; no service silently falls back
-to SQLite or in-memory state. SQLite is not a supported general-purpose
-production backend for the PostgreSQL-only surfaces; lower-level A2A and
-rate-limit stores may use it explicitly where their libraries support it.
+to another provider. SQLite files are local-only and must be migrated with the
+same subsystem command before startup. Set `OSA_PERSISTENCE_POLICY=shared` to
+require PostgreSQL for enabled runtime state and reject process-local or
+SQLite providers.
 
 ## Control Plane API
 
@@ -23,7 +26,8 @@ Development application: `osa.control_plane.backend.api:app` (always
 in-memory)
 
 Configured application: `osa.control_plane.backend.service:create_control_plane_app`
-(selects PostgreSQL repositories when `OSA_CONTROL_PLANE_DATABASE_URL` is set)
+(selects PostgreSQL or explicit local SQLite repositories when
+`OSA_CONTROL_PLANE_DATABASE_URL` is set)
 
 Development command:
 
@@ -469,9 +473,10 @@ the `model_invocation_failed` code when raised to the HTTP layer.
   function calling with declarations from `ToolDefinition.capabilities`.
 - One agent is stored in module-level state, matching the bundle model.
 - Sessions use the in-memory provider by default. Bundles with
-  `spec.session.persistence: true` select the PostgreSQL provider after
-  `osa-session-migrate` has been run; memory uses its separate
-  `osa-memory-migrate` path when `OSA_MEMORY_DATABASE_URL` is configured.
+  `spec.session.persistence: true` select the PostgreSQL provider or the
+  explicit file-backed SQLite provider after `osa-session-migrate` has been
+  run; memory uses its separate `osa-memory-migrate` path when
+  `OSA_MEMORY_DATABASE_URL` is configured. SQLite is local-only.
 - The `fake` model provider requires explicit opt-in via
   `OSA_ALLOW_FAKE_PROVIDER=1` in service bootstraps.
 - A2A Agent Card and JSON-RPC routes are available when `spec.a2a.enabled` and

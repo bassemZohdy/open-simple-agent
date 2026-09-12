@@ -253,7 +253,8 @@ Owns administrative state and lifecycle:
 
 It does not execute normal agent requests. The current API supports managed
 agent/resource/template/deployment/external-agent/audit surfaces with an
-in-memory development mode or PostgreSQL repositories and migrations. Shared
+in-memory development mode, explicit file-backed SQLite local repositories,
+or PostgreSQL repositories and migrations. Shared
 authentication/authorization and tenant ownership are enforced at the API
 boundary.
 
@@ -344,14 +345,15 @@ initial PostgreSQL implementation with explicit ownership through
 
 Provider contracts must allow in-memory implementations in tests without making
 in-memory behavior the production model. Persistence configuration is
-externalized per subsystem: an explicitly configured PostgreSQL DSN is
-authoritative and failures are fail-closed, while an unset DSN selects only the
-documented process-local default. No general-purpose SQLite provider is
-currently defined for the PostgreSQL-only Control Plane, memory, or durable
-session surfaces; any future support must be explicit, migration-owned, and
-limited to single-process local deployments. Lower-level A2A and rate-limit
-stores may use SQLite explicitly where their underlying libraries support it,
-but that does not establish shared-production support.
+externalized per subsystem: an explicitly configured DSN is authoritative and
+failures are fail-closed, while an unset DSN selects only the documented
+process-local default. Control Plane, memory, and durable-session surfaces
+provide explicit file-backed SQLite providers for single-process local
+deployments, each with its own migration path; SQLite is never an automatic
+fallback or a shared-production provider. PostgreSQL remains the shared
+durable provider. `OSA_PERSISTENCE_POLICY=shared` enforces that production
+posture for enabled stateful surfaces. Lower-level A2A and rate-limit stores
+may use SQLite explicitly where their underlying libraries support it.
 
 ## Runtime and deployment lifecycle
 

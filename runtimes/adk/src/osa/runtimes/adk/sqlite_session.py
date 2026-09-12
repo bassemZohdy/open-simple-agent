@@ -1,14 +1,4 @@
-"""Durable PostgreSQL session provider and its explicit schema migrations.
-
-The generic session contract is synchronous because framework adapters call it
-while an invocation is already running inside an event loop.  This provider
-therefore uses SQLAlchemy's synchronous PostgreSQL driver and performs each
-short transaction directly; it never calls ``asyncio.run`` from request code.
-
-Schema ownership is deliberately separate from the Control Plane Alembic
-history.  ``osa-session-migrate`` owns this database's small, versioned schema
-and runtime startup only validates that the required version is present.
-"""
+"""File-backed SQLite session provider for local single-process deployments."""
 
 from __future__ import annotations
 
@@ -16,6 +6,7 @@ import json
 import os
 from datetime import UTC, datetime
 from importlib.util import find_spec
+from pathlib import Path
 from typing import Any
 
 from osa.generic_agent import (
@@ -29,126 +20,171 @@ from osa.generic_agent import (
 )
 from osa.generic_agent.session import DEFAULT_MAX_HISTORY_MESSAGES
 
-SCHEMA_VERSION_TABLE = "osa_session_schema_versions"
+SCHEMA_VERSION_TABLE = "osa_session_sqlite_schema_versions"
 SESSION_TABLE = "osa_runtime_sessions"
 CURRENT_SCHEMA_VERSION = 1
-SESSION_DATABASE_URL_ENV_VAR = "OSA_SESSION_DATABASE_URL"
-
-_MIGRATIONS: dict[int, tuple[str, ...]] = {
-    1: (
-        f"""
-        CREATE TABLE {SESSION_TABLE} (
-            session_id TEXT PRIMARY KEY,
-            agent_name TEXT NOT NULL,
-            user_id TEXT NULL,
-            tenant_id TEXT NULL,
-            created_at TIMESTAMPTZ NOT NULL,
-            last_active_at TIMESTAMPTZ NOT NULL,
-            ttl_seconds INTEGER NULL,
-            max_history_messages INTEGER NOT NULL,
-            metadata JSONB NOT NULL DEFAULT '{{}}'::jsonb,
-            conversation_history JSONB NOT NULL DEFAULT '[]'::jsonb,
-            revision BIGINT NOT NULL DEFAULT 0
-        )
-        """,
-        f"CREATE INDEX ix_{SESSION_TABLE}_owner ON {SESSION_TABLE} (tenant_id, agent_name, user_id)",
-        f"CREATE INDEX ix_{SESSION_TABLE}_last_active ON {SESSION_TABLE} (last_active_at)",
-    ),
-}
 
 
-def _require_dependencies() -> None:
-    if find_spec("sqlalchemy") is None or find_spec("pg8000") is None:
+def _require_sqlite() -> None:
+    if find_spec("sqlalchemy") is None:
         raise SessionConfigurationError(
-            "The PostgreSQL session provider requires 'sqlalchemy' and 'pg8000'; "
-            "install the 'osa-adk-runtime[postgres]' extra"
+            "The SQLite session provider requires 'sqlalchemy'; install the 'osa-adk-runtime[sqlite]' extra"
         )
 
 
-def _validate_postgres_dsn(dsn: str) -> None:
-    """Reject unsupported or malformed configured database URLs early."""
+def _sqlite_url(dsn: str) -> Any:
     from sqlalchemy.engine import make_url
     from sqlalchemy.exc import ArgumentError
 
     try:
-        backend = make_url(dsn).get_backend_name()
+        url = make_url(dsn)
     except (ArgumentError, ValueError) as exc:
-        raise SessionConfigurationError("Session database URL must be a valid PostgreSQL DSN") from exc
-    if backend != "postgresql":
-        raise SessionConfigurationError(
-            "Session database URL must use PostgreSQL; SQLite and in-memory URLs are unsupported"
-        )
+        raise SessionConfigurationError("Session SQLite URL is invalid") from exc
+    if url.get_backend_name() != "sqlite":
+        raise SessionConfigurationError("Session SQLite provider requires a SQLite DSN")
+    if url.database in {None, ":memory:"}:
+        raise SessionConfigurationError("SQLite session persistence requires a file-backed database")
+    if url.get_driver_name() not in {"pysqlite", "aiosqlite"}:
+        raise SessionConfigurationError("SQLite session persistence requires the pysqlite or aiosqlite driver")
+    return url
 
 
-def _sync_dsn(dsn: str) -> str:
-    """Accept the asyncpg DSN used by the other OSA stores as input."""
-    if "+asyncpg" in dsn:
-        return dsn.replace("+asyncpg", "+pg8000", 1)
-    if dsn.startswith("postgresql://"):
-        return dsn.replace("postgresql://", "postgresql+pg8000://", 1)
-    return dsn
+def _normalize_dsn(dsn: str) -> str:
+    return str(_sqlite_url(dsn).set(drivername="sqlite+pysqlite").render_as_string(hide_password=False))
 
 
-def _utc(value: datetime) -> datetime:
-    return value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)
+def _restrict_file_permissions(dsn: str) -> None:
+    """Keep an existing/newly migrated SQLite file private on POSIX hosts."""
+    if os.name == "nt":
+        return
+    database = _sqlite_url(dsn).database
+    if database is None or database == ":memory:":
+        return
+    path = Path(database)
+    try:
+        for candidate in (path, Path(f"{path}-wal"), Path(f"{path}-shm")):
+            if candidate.exists():
+                candidate.chmod(0o600)
+    except OSError as exc:
+        raise SessionConfigurationError("Unable to restrict SQLite session file permissions") from exc
+
+
+def _configure_sqlite_engine(engine: Any) -> None:
+    from sqlalchemy import event
+
+    @event.listens_for(engine, "connect")
+    def configure_connection(dbapi_connection: Any, _connection_record: Any) -> None:
+        cursor = dbapi_connection.cursor()
+        cursor.execute("PRAGMA busy_timeout=5000")
+        cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.execute("PRAGMA journal_mode=WAL")
+        cursor.close()
+
+
+def _iso(value: datetime) -> str:
+    normalized = value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)
+    return normalized.isoformat()
+
+
+def _utc(value: object) -> datetime:
+    parsed = value if isinstance(value, datetime) else datetime.fromisoformat(str(value))
+    return parsed.replace(tzinfo=UTC) if parsed.tzinfo is None else parsed.astimezone(UTC)
 
 
 def _json(value: object) -> str:
     return json.dumps(value, separators=(",", ":"))
 
 
-class PostgresSessionProvider(SessionProvider):
-    """Session provider with ownership checks and optimistic concurrency."""
+class SqliteSessionProvider(SessionProvider):
+    """Ownership-checked session provider backed by a local SQLite file."""
 
     def __init__(self, dsn: str) -> None:
-        _require_dependencies()
-        _validate_postgres_dsn(dsn)
+        _require_sqlite()
+        _restrict_file_permissions(dsn)
         from sqlalchemy import create_engine
 
-        self._engine = create_engine(_sync_dsn(dsn), pool_pre_ping=True)
+        self._engine = create_engine(_normalize_dsn(dsn), connect_args={"timeout": 5}, pool_pre_ping=True)
+        _configure_sqlite_engine(self._engine)
 
     def migrate(self) -> int:
-        """Apply all pending session migrations and return the new version."""
+        """Apply the explicit SQLite session schema."""
         from sqlalchemy import text
 
         with self._engine.begin() as connection:
             connection.execute(
                 text(
                     f"CREATE TABLE IF NOT EXISTS {SCHEMA_VERSION_TABLE} "
-                    "(version INTEGER PRIMARY KEY, applied_at TIMESTAMPTZ NOT NULL DEFAULT now())"
+                    "(version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)"
                 )
             )
             current = int(
                 connection.execute(text(f"SELECT COALESCE(MAX(version), 0) FROM {SCHEMA_VERSION_TABLE}")).scalar_one()
             )
-            for version in range(current + 1, CURRENT_SCHEMA_VERSION + 1):
-                for statement in _MIGRATIONS[version]:
-                    connection.execute(text(statement))
+            if current < CURRENT_SCHEMA_VERSION:
+                connection.execute(
+                    text(
+                        f"""
+                        CREATE TABLE IF NOT EXISTS {SESSION_TABLE} (
+                            session_id TEXT PRIMARY KEY,
+                            agent_name TEXT NOT NULL,
+                            user_id TEXT NULL,
+                            tenant_id TEXT NULL,
+                            created_at TEXT NOT NULL,
+                            last_active_at TEXT NOT NULL,
+                            ttl_seconds INTEGER NULL,
+                            max_history_messages INTEGER NOT NULL,
+                            metadata TEXT NOT NULL DEFAULT '{{}}',
+                            conversation_history TEXT NOT NULL DEFAULT '[]',
+                            revision INTEGER NOT NULL DEFAULT 0
+                        )
+                        """
+                    )
+                )
+                connection.execute(
+                    text(
+                        f"CREATE INDEX IF NOT EXISTS ix_{SESSION_TABLE}_owner "
+                        f"ON {SESSION_TABLE} (tenant_id, agent_name, user_id)"
+                    )
+                )
+                connection.execute(
+                    text(
+                        f"CREATE INDEX IF NOT EXISTS ix_{SESSION_TABLE}_last_active ON {SESSION_TABLE} (last_active_at)"
+                    )
+                )
                 connection.execute(
                     text(f"INSERT INTO {SCHEMA_VERSION_TABLE} (version) VALUES (:version)"),
-                    {"version": version},
+                    {"version": CURRENT_SCHEMA_VERSION},
                 )
-                current = version
+                current = CURRENT_SCHEMA_VERSION
+        _restrict_file_permissions(str(self._engine.url))
         return current
 
     def ensure_schema(self) -> None:
-        """Validate connectivity and require an operator-applied schema."""
+        """Validate the schema without mutating it during runtime startup."""
         from sqlalchemy import text
 
         try:
             with self._engine.connect() as connection:
-                current = connection.execute(
-                    text(f"SELECT COALESCE(MAX(version), 0) FROM {SCHEMA_VERSION_TABLE}")
-                ).scalar_one()
+                current = int(
+                    connection.execute(
+                        text(f"SELECT COALESCE(MAX(version), 0) FROM {SCHEMA_VERSION_TABLE}")
+                    ).scalar_one()
+                )
+                present = int(
+                    connection.execute(
+                        text("SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = :name"),
+                        {"name": SESSION_TABLE},
+                    ).scalar_one()
+                )
         except Exception as exc:
             raise SessionConfigurationError(
-                "The runtime session schema is unavailable; run 'osa-session-migrate' "
-                "against OSA_SESSION_DATABASE_URL before starting the runtime"
+                "The runtime SQLite session schema is unavailable; run 'osa-session-migrate' "
+                "against OSA_SESSION_DATABASE_URL before starting"
             ) from exc
-        if int(current) < CURRENT_SCHEMA_VERSION:
+        if current < CURRENT_SCHEMA_VERSION or present != 1:
             raise SessionConfigurationError(
-                f"Session schema version {current} is older than required {CURRENT_SCHEMA_VERSION}; "
-                "run 'osa-session-migrate' before starting the runtime"
+                f"SQLite session schema version {current} is older than required {CURRENT_SCHEMA_VERSION}; "
+                "run 'osa-session-migrate' before starting"
             )
 
     def create(
@@ -177,8 +213,7 @@ class PostgresSessionProvider(SessionProvider):
                     "(session_id, agent_name, user_id, tenant_id, created_at, last_active_at, "
                     "ttl_seconds, max_history_messages, metadata, conversation_history, revision) "
                     "VALUES (:session_id, :agent_name, :user_id, :tenant_id, :created_at, :last_active_at, "
-                    ":ttl_seconds, :max_history_messages, CAST(:metadata AS jsonb), "
-                    "CAST(:conversation_history AS jsonb), :revision)"
+                    ":ttl_seconds, :max_history_messages, :metadata, :conversation_history, :revision)"
                 ),
                 self._parameters(session),
             )
@@ -219,11 +254,11 @@ class PostgresSessionProvider(SessionProvider):
             result = connection.execute(
                 text(
                     f"UPDATE {SESSION_TABLE} SET last_active_at = :last_active_at, "
-                    "metadata = CAST(:metadata AS jsonb), conversation_history = CAST(:conversation_history AS jsonb), "
+                    "metadata = :metadata, conversation_history = :conversation_history, "
                     "revision = :next_revision WHERE session_id = :session_id AND revision = :revision"
                 ),
                 {
-                    "last_active_at": session.last_active_at,
+                    "last_active_at": _iso(session.last_active_at),
                     "metadata": _json(session.metadata),
                     "conversation_history": _json(session.conversation_history),
                     "next_revision": next_revision,
@@ -257,7 +292,7 @@ class PostgresSessionProvider(SessionProvider):
             result = connection.execute(
                 text(
                     f"DELETE FROM {SESSION_TABLE} WHERE ttl_seconds IS NOT NULL "
-                    "AND now() - last_active_at >= ttl_seconds * INTERVAL '1 second'"
+                    "AND (julianday('now') - julianday(last_active_at)) * 86400 >= ttl_seconds"
                 )
             )
         return int(result.rowcount or 0)
@@ -320,8 +355,8 @@ class PostgresSessionProvider(SessionProvider):
             "agent_name": session.agent_name,
             "user_id": session.user_id,
             "tenant_id": session.tenant_id,
-            "created_at": session.created_at,
-            "last_active_at": session.last_active_at,
+            "created_at": _iso(session.created_at),
+            "last_active_at": _iso(session.last_active_at),
             "ttl_seconds": session.ttl_seconds,
             "max_history_messages": session.max_history_messages,
             "metadata": _json(session.metadata),
@@ -330,30 +365,4 @@ class PostgresSessionProvider(SessionProvider):
         }
 
 
-def migrate_cli(argv: list[str] | None = None) -> int:
-    """Apply runtime session migrations from the operator environment."""
-    import argparse
-
-    parser = argparse.ArgumentParser(prog="osa-session-migrate")
-    parser.add_argument("--database-url", default=os.environ.get(SESSION_DATABASE_URL_ENV_VAR))
-    args = parser.parse_args(argv)
-    if not args.database_url or not args.database_url.strip():
-        parser.error(f"--database-url is required (or set {SESSION_DATABASE_URL_ENV_VAR})")
-    backend = args.database_url.split(":", 1)[0].split("+", 1)[0].lower()
-    provider: SessionProvider
-    if backend == "sqlite":
-        from osa.runtimes.adk.sqlite_session import SqliteSessionProvider
-
-        provider = SqliteSessionProvider(args.database_url)
-    elif backend == "postgresql":
-        provider = PostgresSessionProvider(args.database_url)
-    else:
-        parser.error(f"{SESSION_DATABASE_URL_ENV_VAR} must use PostgreSQL or SQLite")
-    try:
-        print(f"Applied session schema version {provider.migrate()}")
-    finally:
-        provider.close()
-    return 0
-
-
-__all__ = ["CURRENT_SCHEMA_VERSION", "PostgresSessionProvider", "migrate_cli"]
+__all__ = ["CURRENT_SCHEMA_VERSION", "SCHEMA_VERSION_TABLE", "SESSION_TABLE", "SqliteSessionProvider"]

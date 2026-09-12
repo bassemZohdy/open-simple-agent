@@ -247,6 +247,10 @@ class PostgresExternalAgentRepository(ExternalAgentRepository):
         return None
 
 
+class SqliteExternalAgentRepository(PostgresExternalAgentRepository):
+    """SQLite external-agent repository for explicit local use."""
+
+
 class ExternalAgentCatalog:
     """Tenant-scoped in-memory catalog of external agent records.
 
@@ -506,5 +510,6 @@ __all__ = [
     "ExternalAgentRepository",
     "InMemoryExternalAgentRepository",
     "PostgresExternalAgentRepository",
+    "SqliteExternalAgentRepository",
     "configure_external_agent_routes",
 ]
