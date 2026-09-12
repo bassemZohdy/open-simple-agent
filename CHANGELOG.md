@@ -26,6 +26,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   bounded HTTP rate-limit responses with retry headers, plus an optional
   bounded JSONL capability sink with sanitization and compaction.
 - Added PostgreSQL session and cross-replica resource acceptance coverage.
+- Added opt-in PostgreSQL-backed A2A task records using the pinned SDK store,
+  tenant/subject ownership, startup initialization, and runtime shutdown
+  disposal; active in-flight task ownership remains a follow-up.
+- Added a Docker-backed Kind CI acceptance job covering Kubernetes deployment
+  readiness, scale, restart, rollback, stop, and Control Plane-cache recovery.
+- Added Control Plane startup reconciliation and a cancellable polling watcher
+  that refresh persisted deployment records from provider-owned workloads after
+  a Control Plane restart.
+- Added an opt-in PostgreSQL-backed fixed-window rate-limit store and migration
+  CLI with atomic cross-replica updates, bounded route/identity keys, decision
+  metrics, and multi-instance race coverage.
 
 ### Fixed — Control Plane safety and state coherence
 - Hardened deployment bundle export with opaque staging paths, containment

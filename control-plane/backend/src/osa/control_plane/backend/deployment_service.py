@@ -263,6 +263,26 @@ class DeploymentService:
         await self._records.upsert(stored)
         return stored
 
+    async def reconcile_provider_state(self) -> int:
+        """Refresh persisted records from provider-owned workloads.
+
+        Providers such as Kubernetes can discover workloads from stable OSA
+        identity labels after a Control Plane restart. Only workloads with an
+        existing durable record are reconciled; an orphaned workload is never
+        promoted into a deployable record automatically.
+        """
+        observed_deployments = await self._provider.list_deployments()
+        reconciled = 0
+        for observed in observed_deployments:
+            stored = await self._records.get(observed.deployment_id)
+            if stored is None:
+                continue
+            stored.status = observed.status.value
+            stored.detail = observed.error or ""
+            await self._records.upsert(stored)
+            reconciled += 1
+        return reconciled
+
     async def get_record(self, deployment_id: str) -> DeploymentRecord | None:
         """Read persisted deployment intent before performing an operation."""
         return await self._records.get(deployment_id)

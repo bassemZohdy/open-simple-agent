@@ -16,6 +16,11 @@ dependencies = [
 # A2A client utilities (ADR-005). Server-side support lives in the ADK
 # runtime, which pins the same line with the http-server subextra.
 a2a = ["a2a-sdk>=1.0,<2"]
+# Shared HTTP rate limiting (optional; selected with OSA_RATE_LIMIT_DATABASE_URL).
+postgres = ["sqlalchemy[asyncio]>=2.0,<3", "asyncpg>=0.29", "pg8000>=1.31,<2"]
+
+[project.scripts]
+osa-rate-limit-migrate = "osa.generic_agent.rate_limit:migrate_cli"
 
 [build-system]
 requires = ["hatchling"]

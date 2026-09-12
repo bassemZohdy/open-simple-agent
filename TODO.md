@@ -13,8 +13,8 @@ The runnable-agent gate, managed-platform foundation, Manager Agent surface,
 Control Plane, runtime images, release automation, current English Control
 Panel, durable runtime sessions, migration-owned memory schema,
 operator-selected deployment provider, capability telemetry, identity contract
-coverage, and opt-in HTTP rate-limit contract are implemented and covered by
-tests/CI.
+coverage, and opt-in HTTP rate limiting (including a PostgreSQL shared store)
+are implemented and covered by tests/CI.
 
 Production-readiness limits are:
 
@@ -30,22 +30,27 @@ Production-readiness limits are:
 - outbound A2A, Streamable HTTP MCP, and OAuth token destinations have an
   application-level URL/DNS/redirect policy, with network egress still
   required as defense in depth;
-- A2A task state, HTTP capacity storage, and replica-wide telemetry collection
-  are not distributed-safe;
+- A2A task records can be durable/shareable with the opt-in SDK PostgreSQL
+  store, but active-task ownership/cancellation/recovery and replica-wide
+  telemetry collection are not distributed-safe; long-running operation
+  ownership and global gateway quotas remain deployment concerns;
 - translated locales, deployment-specific browser OIDC, package publication,
-  and the first public release remain open; Kubernetes follow-up is paused.
+  and the first public release remain open; Kubernetes lifecycle acceptance is
+  wired into CI but has not been run from this workstation because Docker is
+  unavailable.
 
 ## Pending work and gates
 
 The following are the current blockers or decision gates:
 
-- **Infrastructure-gated:** real Kind/Kubernetes acceptance and multi-process
+- **Infrastructure-gated:** the real Kind/Kubernetes workflow and multi-process
   deployment-operation ownership require a cluster-capable CI environment;
   concrete enterprise identity-source acceptance requires a selected provider
-  and test tenant.
-- **Architecture-gated:** distributed A2A task storage/cancellation, shared
-  rate-limit enforcement, and replica-wide capability telemetry require an
-  approved ownership, retention, ordering, and deduplication design.
+  and test tenant. The Kind lifecycle workflow is now present in CI; the
+  remaining real-cluster recovery acceptance still needs to pass there.
+- **Architecture-gated:** distributed A2A active-task ownership/cancellation
+  and replica-wide capability telemetry require an approved ownership,
+  retention, ordering, and deduplication design.
 - **Product-gated:** translated locales, browser OIDC issuer/client/redirect
   semantics, package registry publication, and the first public release need
   explicit product decisions.
@@ -55,26 +60,26 @@ The following are the current blockers or decision gates:
 ## Recommended next task
 
 Run the real Kind/Kubernetes acceptance workflow and define distributed
-operation ownership. The next decision gates are distributed A2A task state,
-shared capacity storage, shared telemetry collection, translated locales,
+operation ownership. The next decision gates are distributed A2A active-task state,
+shared telemetry collection, translated locales,
 browser OIDC contracts, package publication, and the first public release.
 
 ---
 
 # P1 — Managed platform
 
-## Kubernetes deployment provider — PAUSED
+## Kubernetes deployment provider — CI GATED
 
 Deployment/Service generation, bundle ConfigMaps, Secret references, probes,
 hardened pod security, scale/restart/rollback/status/log operations, provider
-selection, and OSA identity labels exist. Resume the real-cluster work when a
-cluster-capable CI environment is available or this item is explicitly
-reprioritized.
+selection, and OSA identity labels exist. Startup reconciliation and a
+cancellable polling watcher now refresh persisted records from provider-owned
+workloads after Control Plane restarts. A real Kind lifecycle acceptance
+workflow is committed, but this workstation cannot execute it while Docker is
+unavailable.
 
 - [ ] Validate deploy/readiness/scale/restart/rollback/recovery against Kind or
   another real cluster in CI.
-- [ ] Add status-watch and recovery behavior for Control Plane restarts and
-  already-running workloads in a real cluster.
 - [ ] Keep OpenShift-specific behavior separate from generic Kubernetes code.
 
 ---
@@ -90,11 +95,13 @@ identity-source acceptance remains open.
 - [ ] Run the lifecycle acceptance suite against a selected enterprise
   identity source and test tenant.
 
-## Distributed A2A task state — PENDING
+## Distributed A2A active-task state — PENDING
 
-The runtime A2A executor and SDK task store are process-local.
+The SDK task record can be persisted in PostgreSQL with
+`OSA_A2A_TASK_DATABASE_URL`, but the active executor registry is process-local.
+Completed-task lookup is restart-safe only when the durable store is enabled;
+in-flight work still needs an ownership and recovery protocol.
 
-- [ ] Select durable task storage, retention, ownership, and recovery rules.
 - [ ] Implement and wire replica-consistent task state.
 - [ ] Add multi-replica creation, completion, failure, lookup, and recovery
   acceptance tests without tenant/caller leakage.
@@ -108,19 +115,6 @@ implemented for a single process.
 
 - [ ] Select a shared collector or durable replica-wide sink contract with
   ordering, deduplication, and tenant-retention ownership.
-
-## Rate limiting and quotas — PARTIALLY COMPLETE
-
-Both HTTP applications expose an opt-in bounded fixed-window request budget and
-`429`/`Retry-After` contract, with isolation and streaming/A2A coverage. The
-built-in store is process-local.
-
-- [ ] Select replica-safe enforcement/storage for streaming and long-running
-  A2A/deployment operations.
-- [ ] Add integration coverage for the selected shared store, including
-  metrics and multi-replica race behavior.
-
----
 
 # P3 — Product surface and distribution
 

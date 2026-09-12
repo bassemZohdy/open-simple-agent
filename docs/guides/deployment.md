@@ -144,6 +144,7 @@ never accepts process commands.
 
 ## Remaining deployment work
 
-- Real Kind-cluster acceptance and distributed deployment-operation ownership
-  are still gated by the Kubernetes CI environment.
+- The real Kind-cluster lifecycle acceptance job is committed to CI; Control
+  Plane restart recovery and distributed deployment-operation ownership remain
+  gated by the Kubernetes CI environment.
 - Distributed A2A task state and cancellation semantics (P2.4)

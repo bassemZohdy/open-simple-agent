@@ -9,6 +9,9 @@ catalogs at startup so route-level validation keeps working unchanged.
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
+import logging
 from contextlib import asynccontextmanager
 from importlib import metadata
 from typing import TYPE_CHECKING, Any
@@ -38,10 +41,15 @@ from osa.generic_agent import (
     SecretResolver,
     SkillDefinition,
     ToolDefinition,
+    close_rate_limit_limiter,
+    initialize_rate_limit_limiter,
 )
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator
+    from collections.abc import AsyncIterator, Awaitable, Callable
+
+logger = logging.getLogger(__name__)
+DEPLOYMENT_RECONCILE_INTERVAL_SECONDS = 15.0
 
 # Resource kinds persisted via the resource definition repository, mapped to
 # their domain model and catalog registration.
@@ -108,16 +116,40 @@ def create_control_plane_app(
     @asynccontextmanager
     async def lifespan(fastapi_app: FastAPI) -> AsyncIterator[None]:
         await _materialize_resources(resource_catalogs, resources)
+        await initialize_rate_limit_limiter(fastapi_app)
+        deployment_service = getattr(fastapi_app.state, "deployment_service", None)
+        reconcile: Callable[[], Awaitable[object]] | None = getattr(
+            deployment_service, "reconcile_provider_state", None
+        )
+        if reconcile is not None:
+            with contextlib.suppress(Exception):
+                await reconcile()
+
+        async def watch_deployments(callback: Callable[[], Awaitable[object]]) -> None:
+            while True:
+                await asyncio.sleep(DEPLOYMENT_RECONCILE_INTERVAL_SECONDS)
+                try:
+                    await callback()
+                except Exception:  # noqa: BLE001 - the watcher must survive provider outages
+                    logger.warning("deployment provider reconciliation failed", exc_info=True)
+
+        reconcile_task: asyncio.Task[None] | None = None
+        if reconcile is not None:
+            reconcile_task = asyncio.create_task(watch_deployments(reconcile))
         try:
             yield
         finally:
-            deployment_service = getattr(fastapi_app.state, "deployment_service", None)
+            if reconcile_task is not None:
+                reconcile_task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await reconcile_task
             provider = getattr(deployment_service, "_provider", None)
             shutdown = getattr(provider, "shutdown", None)
             if shutdown is not None:
                 await shutdown()
             await agents.close()
             await resources.close()
+            await close_rate_limit_limiter(fastapi_app)
             if engine is not None:
                 await engine.dispose()
 

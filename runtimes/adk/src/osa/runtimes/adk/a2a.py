@@ -18,6 +18,9 @@ Requires the optional ``a2a`` extra (``osa-adk-runtime[a2a]``).
 
 from __future__ import annotations
 
+import os
+import re
+import warnings
 from importlib.util import find_spec
 from typing import TYPE_CHECKING, Any, cast
 from uuid import uuid4
@@ -29,15 +32,22 @@ __all__ = [
     "A2aError",
     "A2aNotInstalledError",
     "A2A_WELL_KNOWN_PATH",
+    "A2A_TASK_DATABASE_URL_ENV_VAR",
+    "A2A_TASK_TABLE_ENV_VAR",
     "OsaA2aAgentExecutor",
     "RemoteA2aError",
     "attach_a2a_routes",
     "build_agent_card",
+    "close_a2a_task_store",
     "invoke_remote_agent",
+    "initialize_a2a_task_store",
     "resolve_agent_card",
 ]
 
 A2A_WELL_KNOWN_PATH = "/.well-known/agent-card.json"
+A2A_TASK_DATABASE_URL_ENV_VAR = "OSA_A2A_TASK_DATABASE_URL"
+A2A_TASK_TABLE_ENV_VAR = "OSA_A2A_TASK_TABLE"
+DEFAULT_A2A_TASK_TABLE = "osa_a2a_tasks"
 DEFAULT_INPUT_MODES = ["text/plain"]
 DEFAULT_OUTPUT_MODES = ["text/plain"]
 
@@ -222,6 +232,93 @@ def _failure_message(text: str) -> Any:
     )
 
 
+def _a2a_task_owner(context: Any) -> str:
+    """Resolve a task owner from the shared OSA identity boundary.
+
+    The A2A SDK's default resolver only uses its protocol user name. OSA's
+    bearer middleware already validated the subject and tenant, so use both
+    when available to prevent a task lookup crossing tenant boundaries. The
+    SDK context remains the fallback for unauthenticated or embedded callers.
+    """
+    from osa.generic_agent import current_principal
+
+    principal = current_principal()
+    if principal is not None:
+        tenant = principal.tenant_id or "-"
+        return f"tenant:{tenant}:subject:{principal.subject}"
+    user = getattr(context, "user", None)
+    user_name = getattr(user, "user_name", None)
+    return str(user_name or "anonymous")
+
+
+def _validate_task_table_name(table_name: str) -> str:
+    if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", table_name) is None:
+        raise ValueError(f"{A2A_TASK_TABLE_ENV_VAR} must be a simple SQL identifier")
+    return table_name
+
+
+def _task_store_and_engine(app: Any) -> tuple[Any, Any | None]:
+    """Return the configured SDK task store and its optional owned engine."""
+    existing_store = getattr(app.state, "osa_a2a_task_store", None)
+    if existing_store is not None:
+        return existing_store, getattr(app.state, "osa_a2a_task_engine", None)
+
+    database_url = os.environ.get(A2A_TASK_DATABASE_URL_ENV_VAR)
+    if not database_url:
+        from a2a.server.tasks import InMemoryTaskStore
+
+        store: Any = InMemoryTaskStore(owner_resolver=_a2a_task_owner)
+        app.state.osa_a2a_task_store = store
+        app.state.osa_a2a_task_engine = None
+        return store, None
+
+    _require_a2a_sdk()
+    try:
+        from a2a.server.tasks import DatabaseTaskStore
+        from sqlalchemy.ext.asyncio import create_async_engine
+    except ImportError as exc:  # pragma: no cover - guarded by optional extras
+        raise A2aNotInstalledError(
+            "PostgreSQL-backed A2A task state requires the runtime postgres and a2a extras"
+        ) from exc
+
+    table_name = _validate_task_table_name(os.environ.get(A2A_TASK_TABLE_ENV_VAR, DEFAULT_A2A_TASK_TABLE))
+    engine = create_async_engine(database_url, pool_pre_ping=True)
+    # The SDK creates a dynamic ORM class for custom table names and emits a
+    # harmless registry replacement warning because that class intentionally
+    # reuses its standard model name.
+    with warnings.catch_warnings():
+        warnings.filterwarnings(
+            "ignore",
+            message="This declarative base already contains a class with the same class name",
+        )
+        store = DatabaseTaskStore(
+            engine,
+            create_table=True,
+            table_name=table_name,
+            owner_resolver=_a2a_task_owner,
+        )
+    app.state.osa_a2a_task_store = store
+    app.state.osa_a2a_task_engine = engine
+    return store, engine
+
+
+async def initialize_a2a_task_store(app: Any) -> None:
+    """Initialize configured durable task state before runtime readiness."""
+    store, _ = _task_store_and_engine(app)
+    initialize = getattr(store, "initialize", None)
+    if initialize is not None:
+        await initialize()
+
+
+async def close_a2a_task_store(app: Any) -> None:
+    """Dispose the database engine owned by the A2A task store, if any."""
+    engine = getattr(app.state, "osa_a2a_task_engine", None)
+    if engine is not None:
+        await engine.dispose()
+    app.state.osa_a2a_task_store = None
+    app.state.osa_a2a_task_engine = None
+
+
 def attach_a2a_routes(
     app: Any,
     agent: Any,
@@ -237,7 +334,6 @@ def attach_a2a_routes(
     from a2a.server import routes as a2a_routes
     from a2a.server.agent_execution import AgentExecutor
     from a2a.server.request_handlers import DefaultRequestHandler
-    from a2a.server.tasks import InMemoryTaskStore
 
     # OsaA2aAgentExecutor implements the executor surface; register it with
     # the SDK's ABC (defined lazily so the optional extra stays optional).
@@ -248,9 +344,10 @@ def attach_a2a_routes(
     card = build_agent_card(agent.definition, agent.skills, interface_url, auth_settings=auth_settings)
     handler = DefaultRequestHandler(
         agent_executor=cast("AgentExecutor", OsaA2aAgentExecutor(agent)),
-        task_store=InMemoryTaskStore(),
+        task_store=_task_store_and_engine(app)[0],
         agent_card=card,
     )
+    app.state.osa_a2a_handler = handler
     a2a_routes.add_a2a_routes_to_fastapi(
         app,
         jsonrpc_routes=a2a_routes.create_jsonrpc_routes(handler, rpc_url="/a2a"),

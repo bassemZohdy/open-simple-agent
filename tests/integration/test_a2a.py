@@ -15,9 +15,13 @@ import socket
 import threading
 import time
 from importlib.util import find_spec
+from typing import TYPE_CHECKING
 
 import pytest
 import uvicorn
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 from osa.generic_agent import (
     A2AConfig,
@@ -135,6 +139,74 @@ class TestAgentCardGeneration:
         assert scheme.WhichOneof("scheme") == "open_id_connect_security_scheme"
         assert len(card.security_requirements) == 1
         assert "osa_oidc" in card.security_requirements[0].schemes
+
+
+class TestA2aTaskStore:
+    async def test_database_task_store_persists_and_scopes_by_tenant_and_subject(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from fastapi import FastAPI
+
+        from osa.generic_agent import AuthenticatedPrincipal, reset_current_principal, set_current_principal
+        from osa.runtimes.adk.a2a import (
+            _task_store_and_engine,
+            close_a2a_task_store,
+            initialize_a2a_task_store,
+        )
+
+        monkeypatch.setenv(
+            "OSA_A2A_TASK_DATABASE_URL",
+            f"sqlite+aiosqlite:///{tmp_path / 'a2a-tasks.db'}",
+        )
+        app = FastAPI()
+        store, _ = _task_store_and_engine(app)
+        await initialize_a2a_task_store(app)
+
+        from a2a.server.context import ServerCallContext
+        from a2a.types import Task, TaskState, TaskStatus
+
+        task = Task(
+            id="task-tenant-a",
+            context_id="context-tenant-a",
+            status=TaskStatus(state=TaskState.TASK_STATE_COMPLETED),
+        )
+        principal_a = AuthenticatedPrincipal(
+            subject="subject-a",
+            issuer="https://issuer.example.test",
+            audience=("osa",),
+            scopes=frozenset(),
+            tenant_id="tenant-a",
+        )
+        token_a = set_current_principal(principal_a)
+        try:
+            await store.save(task, ServerCallContext())
+            assert (await store.get(task.id, ServerCallContext())) is not None
+        finally:
+            reset_current_principal(token_a)
+
+        principal_b = AuthenticatedPrincipal(
+            subject="subject-a",
+            issuer="https://issuer.example.test",
+            audience=("osa",),
+            scopes=frozenset(),
+            tenant_id="tenant-b",
+        )
+        token_b = set_current_principal(principal_b)
+        try:
+            assert (await store.get(task.id, ServerCallContext())) is None
+        finally:
+            reset_current_principal(token_b)
+            await close_a2a_task_store(app)
+
+    def test_database_task_table_name_is_validated(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from fastapi import FastAPI
+
+        from osa.runtimes.adk.a2a import _task_store_and_engine
+
+        monkeypatch.setenv("OSA_A2A_TASK_DATABASE_URL", "sqlite+aiosqlite:///ignored.db")
+        monkeypatch.setenv("OSA_A2A_TASK_TABLE", "tasks;drop")
+        with pytest.raises(ValueError, match="simple SQL identifier"):
+            _task_store_and_engine(FastAPI())
 
 
 class TestA2aServer:

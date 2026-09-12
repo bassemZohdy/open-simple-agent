@@ -322,7 +322,12 @@ served at the well-known path; when inbound authentication is protected, the
 card advertises the same bearer/OIDC requirement enforced by the runtime;
 `message/send` maps one A2A task per
 invocation through `GenericAdkAgent.invoke`, with the A2A context id mapped
-to an OSA session. The Control Plane tracks **external** A2A agents as
+to an OSA session. The SDK task store is process-local by default; when
+`OSA_A2A_TASK_DATABASE_URL` is set, OSA wires the SDK's SQLAlchemy
+`DatabaseTaskStore` with tenant/subject ownership and initializes it before
+readiness. The durable record is shareable across replicas, but active
+executor ownership and cancellation/recovery are not yet distributed. The
+Control Plane tracks **external** A2A agents as
 records distinct from managed agents: registration fetches and validates the
 remote Agent Card, refresh re-checks health, and invocation goes through the
 A2A client with bounded timeouts and `a2a_remote_failed` error mapping. The
@@ -343,6 +348,12 @@ observability helper. OpenTelemetry-compatible spans are emitted when an SDK
 provider/exporter is configured; prompts, outputs, authorization headers,
 tokens, secrets, and credentials are excluded from logs, metrics, and span
 attributes.
+
+HTTP rate limiting is an opt-in fixed-window contract keyed by method, route,
+and hashed caller identity. It uses a bounded in-memory store by default. When
+`OSA_RATE_LIMIT_DATABASE_URL` is configured, both HTTP applications use the
+shared PostgreSQL-compatible store with atomic conflict updates and stale
+window pruning; the schema is provisioned by `osa-rate-limit-migrate`.
 
 ## Tests and CI
 

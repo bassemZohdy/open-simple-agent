@@ -1,9 +1,10 @@
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import pytest
 
 from osa.control_plane.backend.agent_catalog import AgentRecord, AgentRecordStatus
+from osa.control_plane.backend.deployment import Deployment, DeploymentProvider, DeploymentStatus
 from osa.control_plane.backend.deployment_service import DeploymentError, DeploymentService
 from osa.control_plane.backend.repositories import (
     InMemoryAgentRepository,
@@ -57,3 +58,26 @@ def test_export_cleans_partial_bundle_when_resource_is_missing(tmp_path: Path, m
     with pytest.raises(DeploymentError, match="not present"):
         _service(ResourceCatalogs())._export_bundle(_record(model="missing"))
     assert list(tmp_path.iterdir()) == []
+
+
+@pytest.mark.asyncio
+async def test_reconcile_provider_state_refreshes_persisted_records_after_restart() -> None:
+    from osa.control_plane.backend.repositories import DeploymentRecord
+
+    class Provider:
+        async def list_deployments(self) -> list[Deployment]:
+            return [Deployment(deployment_id="d-1", agent_id="agent-1", status=DeploymentStatus.RUNNING)]
+
+    records = InMemoryDeploymentRecordRepository()
+    await records.upsert(DeploymentRecord(deployment_id="d-1", agent_id="agent-1", status="starting"))
+    service = DeploymentService(
+        provider=cast("DeploymentProvider", Provider()),
+        record_repository=records,
+        agent_repository=InMemoryAgentRepository(),
+        resource_catalogs=ResourceCatalogs(),
+    )
+
+    assert await service.reconcile_provider_state() == 1
+    refreshed = await records.get("d-1")
+    assert refreshed is not None
+    assert refreshed.status == "running"

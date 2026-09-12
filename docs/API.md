@@ -8,7 +8,8 @@ external-agent records are shared through PostgreSQL; route and deployment
 reads reconcile local resource catalogs. Durable Control Planes require the
 Kubernetes provider; local provider processes remain process-local by design.
 Cross-replica resource acceptance runs in the PostgreSQL CI suite. Both
-applications provide an opt-in process-local rate-limit contract.
+applications provide an opt-in rate-limit contract with a process-local
+default and an optional PostgreSQL shared store.
 Both use the stable OSA error envelope `{"error": {"code", "message"}}`
 and share the optional JWT Bearer authentication boundary described below.
 
@@ -222,8 +223,11 @@ includes `X-RateLimit-Limit`, `X-RateLimit-Remaining`, and
 ```
 
 with status `429` and a `Retry-After` header in seconds. The built-in limiter
-is process-local and bounded; production replicas must enforce the same policy
-at a replica-safe gateway or service mesh.
+is process-local and bounded. Set `OSA_RATE_LIMIT_DATABASE_URL` to use the
+atomic PostgreSQL-compatible shared window store across replicas; its table
+is created by `osa-rate-limit-migrate` (and validated/initialized at service
+startup). Long-running operation ownership and gateway-level quotas remain
+deployment policy.
 
 ### Definition resource policy
 
@@ -303,6 +307,14 @@ with the `osa-adk-runtime[a2a]` extra), the runtime API serves:
   failed (deterministic error text). The A2A context id maps to an OSA
   session created on first contact, so multi-turn conversations keep one
   session per conversation.
+
+By default A2A task records are process-local. Set
+`OSA_A2A_TASK_DATABASE_URL` to use the SDK's PostgreSQL-capable
+`DatabaseTaskStore`; records are scoped by validated tenant and subject and
+the table is initialized before runtime readiness. This makes completed-task
+lookup restart-safe and shareable across replicas. In-flight executor
+ownership, cancellation ordering, retries, and replica-failure recovery are
+not implied by the durable record and remain open distributed-runtime work.
 
 External agents are A2A servers outside OSA, tracked as records distinct
 from managed agents (they are never deployed). The PostgreSQL-backed registry

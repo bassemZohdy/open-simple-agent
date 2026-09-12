@@ -15,6 +15,9 @@ The provider uses the operator's existing `kubectl` context and RBAC boundary. I
 - Restart, stop, scale, rollback, and bounded logs.
 - Hardened container security context (`runAsNonRoot`, no privilege escalation, read-only root filesystem, all capabilities dropped).
 - OSA identity labels on managed resources for discovery after Control Plane restart.
+- A real-cluster lifecycle acceptance test at
+  `tests/acceptance/test_kubernetes_provider.py`, run by the `kubernetes-acceptance`
+  CI job against a Docker-backed Kind cluster.
 
 ## Usage
 
@@ -72,9 +75,10 @@ session database.
 
 Before marking the Kubernetes follow-up complete:
 
-1. Validate deploy/readiness/scale/restart/rollback/stop against a real Kind cluster in CI.
-2. Confirm restart recovery with persisted deployment records and Kubernetes labels.
-3. Select and implement a workload resource request/limit contract if OSA should
-   generate those fields rather than rely on namespace policy.
+1. Keep deploy/readiness/scale/restart/rollback/stop passing against a real Kind
+   cluster in CI; local execution requires Docker to be running.
+2. Confirm Control Plane restart recovery with persisted deployment records and
+   Kubernetes labels, including status-watch behavior for already-running
+   workloads.
 
 OpenShift-specific behavior remains deferred; the provider targets standard Kubernetes APIs first.

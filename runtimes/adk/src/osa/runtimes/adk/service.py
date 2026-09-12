@@ -191,18 +191,24 @@ def create_runtime_app(
             runtime_api.set_start_error(str(exc))
             raise
         runtime_api.maybe_attach_a2a(agent, app=app)
+        await runtime_api.initialize_a2a_task_store(app)
+        await runtime_api.initialize_rate_limit_store(app)
         runtime_api.set_runtime(runtime, agent)
-        yield
-        await runtime.shutdown()
-        provider = runtime.memory_provider
-        close = getattr(provider, "close", None)
-        if close is not None:
-            await close()
-        session_provider = runtime.session_provider
-        close_session = getattr(session_provider, "close", None)
-        if close_session is not None:
-            close_session()
-        runtime_api.reset_runtime()
+        try:
+            yield
+        finally:
+            await runtime.shutdown()
+            provider = runtime.memory_provider
+            close = getattr(provider, "close", None)
+            if close is not None:
+                await close()
+            session_provider = runtime.session_provider
+            close_session = getattr(session_provider, "close", None)
+            if close_session is not None:
+                close_session()
+            await runtime_api.close_a2a_task_store(app)
+            await runtime_api.close_rate_limit_store(app)
+            runtime_api.reset_runtime()
 
     try:
         version = metadata.version("osa-adk-runtime")

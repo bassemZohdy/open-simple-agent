@@ -130,11 +130,20 @@ from osa.generic_agent.outbound import (
     validate_outbound_url,
 )
 from osa.generic_agent.rate_limit import (
+    DEFAULT_RATE_LIMIT_TABLE,
     InMemoryRateLimiter,
+    PostgresRateLimiter,
     RateLimitConfig,
     RateLimitDecision,
+    RateLimiter,
     RateLimitMiddleware,
     add_rate_limit_middleware,
+    build_rate_limiter,
+    close_rate_limit_limiter,
+    initialize_rate_limit_limiter,
+)
+from osa.generic_agent.rate_limit import (
+    migrate_cli as rate_limit_migrate_cli,
 )
 from osa.generic_agent.runtime import AgentFactory, AgentRuntime, RuntimeDependencies
 from osa.generic_agent.secret import (
@@ -189,10 +198,17 @@ __all__ = [
     "AgentStreamEvent",
     "RuntimeDependencies",
     "RateLimitConfig",
+    "RateLimiter",
     "RateLimitDecision",
     "RateLimitMiddleware",
     "InMemoryRateLimiter",
+    "PostgresRateLimiter",
+    "DEFAULT_RATE_LIMIT_TABLE",
     "add_rate_limit_middleware",
+    "build_rate_limiter",
+    "initialize_rate_limit_limiter",
+    "close_rate_limit_limiter",
+    "rate_limit_migrate_cli",
     "AgentSpec",
     "AgentStatus",
     "AuthMode",

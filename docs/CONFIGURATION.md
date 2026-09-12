@@ -197,6 +197,31 @@ The runtime then uses `OSA_SESSION_DATABASE_URL` for ownership-checked,
 bounded-history sessions with optimistic concurrent-update protection. If the
 flag is false, sessions remain process-local even when a DSN is present.
 
+## A2A task persistence
+
+Inbound A2A task state is process-local unless `OSA_A2A_TASK_DATABASE_URL` is
+set. With that variable, the runtime uses the A2A SDK's SQLAlchemy
+`DatabaseTaskStore` and creates the configured table before readiness. The
+default table is `osa_a2a_tasks`; operators may set `OSA_A2A_TASK_TABLE` to a
+simple SQL identifier when multiple runtime databases share a schema. The DSN
+must use an async SQLAlchemy driver, for example:
+
+```bash
+OSA_A2A_TASK_DATABASE_URL=postgresql+asyncpg://... \
+  OSA_A2A_TASK_TABLE=osa_a2a_tasks \
+  uv run osa-runtime --config ./agent-bundle
+```
+
+Durable records are scoped by the validated OSA tenant and subject when the
+shared authentication boundary is active; unauthenticated embedded callers
+use the A2A protocol user scope. This makes completed task lookup survive
+process restarts and allows replicas to share the task record. In-flight
+executor ownership, cancellation ordering, retries, and recovery after a
+replica failure remain a separate distributed-runtime requirement. The
+database-backed store currently creates its table through the pinned A2A SDK;
+deployment owners should provision a dedicated database/schema and back it up
+according to their operational policy.
+
 Timeouts, TTLs, limits, and iterations carry positive/range validation
 (`timeout_seconds > 0`, `ttl_seconds > 0`, `max_iterations >= 1`,
 `max_entries >= 1`, model `temperature` in 0..2, `top_p` in 0..1, token
@@ -221,17 +246,25 @@ The runtime also accepts these service-level controls:
 |---|---|---:|
 | `OSA_MEMORY_DATABASE_URL` | PostgreSQL DSN for durable runtime memory | unset (in-memory) |
 | `OSA_SESSION_DATABASE_URL` | PostgreSQL DSN for durable sessions when persistence is enabled | required only for persistent agents |
+| `OSA_A2A_TASK_DATABASE_URL` | Async SQLAlchemy DSN for durable A2A task records | unset (in-memory) |
+| `OSA_A2A_TASK_TABLE` | SQL identifier used by the A2A SDK task store | `osa_a2a_tasks` |
 | `OSA_RATE_LIMIT_REQUESTS` | Per-route, per-caller fixed-window request budget; `0` disables | `0` |
 | `OSA_RATE_LIMIT_WINDOW_SECONDS` | Rate-limit window length | `60` |
 | `OSA_RATE_LIMIT_BURST` | Optional per-window burst capacity | request budget |
+| `OSA_RATE_LIMIT_DATABASE_URL` | Async SQLAlchemy DSN for atomic shared rate-limit windows | unset (in-memory) |
+| `OSA_RATE_LIMIT_TABLE` | SQL identifier used by the shared rate-limit store | `osa_rate_limit_windows` |
 | `OSA_CAPABILITY_TELEMETRY_PATH` | Optional bounded JSONL file for capability outcomes | unset |
 | `OSA_CAPABILITY_TELEMETRY_MAX_BYTES` | Maximum JSONL sink size before newest-event compaction | `10000000` |
 
 When enabled, the HTTP services expose rate-limit headers (`X-RateLimit-Limit`,
 `X-RateLimit-Remaining`, and `X-RateLimit-Reset`) and return `429` with
 `Retry-After` when the route/caller window is exhausted. The built-in store is
-bounded and process-local; use a gateway or service mesh for replica-safe
-enforcement until a shared application store is selected.
+bounded and process-local. Set `OSA_RATE_LIMIT_DATABASE_URL` to use the
+atomic PostgreSQL-compatible shared store across replicas; run
+`uv run osa-rate-limit-migrate --database-url postgresql+asyncpg://...` before
+starting a production service. The key contains only a method, bounded route,
+and hashed caller identity; request payloads are never stored. Long-running
+operation ownership and gateway-level global quotas remain deployment policy.
 
 Capability telemetry is emitted for model, native-tool, and MCP spans as
 bounded Prometheus counters. Set `OSA_CAPABILITY_TELEMETRY_PATH` to enable the

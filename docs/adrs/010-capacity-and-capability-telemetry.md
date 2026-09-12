@@ -13,8 +13,12 @@ identity digest, so bearer material is never stored or emitted. Exhausted
 requests return `429`, `Retry-After`, and bounded `X-RateLimit-*` headers.
 
 The built-in store is process-local and suitable for development or a single
-replica. Production deployments must enforce the same policy at a shared API
-gateway/service mesh until a replica-safe application store is selected.
+replica. When `OSA_RATE_LIMIT_DATABASE_URL` is configured, both services use
+an async SQLAlchemy PostgreSQL-compatible store with atomic fixed-window
+conflict updates and stale-window pruning. `osa-rate-limit-migrate` provisions
+the bounded window table, and service startup validates/initializes it before
+readiness. This shares request budgets across replicas, but does not claim
+ownership of long-running A2A/deployment operations or gateway-wide quotas.
 
 Model, native-tool, and MCP spans emit bounded capability counters and may be
 sent to an optional sink. The default sink is disabled; operators may select

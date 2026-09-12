@@ -55,8 +55,10 @@ from osa.generic_agent import (
     SessionError,
     SessionNotFoundError,
     add_rate_limit_middleware,
+    close_rate_limit_limiter,
     configure_structured_logging,
     error_payload,
+    initialize_rate_limit_limiter,
     log_context,
     log_event,
     reset_current_principal,
@@ -189,6 +191,34 @@ def maybe_attach_a2a(
         settings = AuthSettings.from_env()
     url = os.environ.get("OSA_A2A_URL", "http://localhost:8080/")
     attach_a2a_routes(target_app, agent, url, auth_settings=settings)
+
+
+async def initialize_a2a_task_store(app: FastAPI) -> None:
+    """Initialize a configured A2A task store before readiness."""
+    if getattr(app.state, "osa_a2a_handler", None) is None:
+        return
+    from osa.runtimes.adk.a2a import initialize_a2a_task_store as initialize_store
+
+    await initialize_store(app)
+
+
+async def close_a2a_task_store(app: FastAPI) -> None:
+    """Close resources owned by a configured A2A task store."""
+    if getattr(app.state, "osa_a2a_handler", None) is None:
+        return
+    from osa.runtimes.adk.a2a import close_a2a_task_store as close_store
+
+    await close_store(app)
+
+
+async def initialize_rate_limit_store(app: FastAPI) -> None:
+    """Initialize a configured shared HTTP rate-limit store."""
+    await initialize_rate_limit_limiter(app)
+
+
+async def close_rate_limit_store(app: FastAPI) -> None:
+    """Close a configured shared HTTP rate-limit store."""
+    await close_rate_limit_limiter(app)
 
 
 def reset_runtime() -> None:
