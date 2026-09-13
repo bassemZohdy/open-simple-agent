@@ -12,6 +12,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-09-13
+
 ### Added — Docker Hub release publishing
 - Release automation now publishes the same runtime and Control Plane image
   digests to Docker Hub alongside GHCR, signs both registry references with

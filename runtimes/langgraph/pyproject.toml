@@ -1,6 +1,6 @@
 [project]
 name = "osa-langgraph-runtime"
-version = "0.1.0"
+version = "0.1.1"
 description = "Open Simple Agent LangChain and LangGraph runtime implementation."
 requires-python = ">=3.12"
 license = "Apache-2.0"
