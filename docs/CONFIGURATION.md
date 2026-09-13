@@ -329,9 +329,11 @@ write, so an expired or superseded worker cannot persist a late task mutation.
 The event table and bounded polling relay are migration-owned foundations for
 the future cross-process A2A stream handler. Independent PostgreSQL-worker
 acceptance covers takeover fencing, late-event rejection, ordered terminal
-delivery, and resumable sequence cursors, but the relay is not attached to a
-public route. Inbound A2A streaming remains disabled until ADR-011 is accepted
-and route-level acceptance passes.
+delivery, and resumable sequence cursors. The `OsaA2aRequestHandler` adapter
+can attach the relay to the SDK stream-handler surface through the explicit,
+default-disabled `enable_durable_streaming` acceptance hook; the normal runtime
+does not enable that hook. Inbound A2A streaming remains disabled until
+ADR-011 is accepted and route-level acceptance passes.
 Terminal events drain through the SDK consumer before the owner releases its
 lease. Process-boundary PostgreSQL acceptance covers shared task creation,
 lookup, cancellation, and crash recovery. Expired-owner retries finalize

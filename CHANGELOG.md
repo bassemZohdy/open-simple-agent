@@ -13,6 +13,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added — Explicit A2A stream-handler acceptance adapter
+- Added `OsaA2aRequestHandler`, which delegates local SDK-owned tasks and
+  relays durable remote task events through the migration-owned cursor store
+  when `enable_durable_streaming` is explicitly enabled. The normal runtime
+  keeps the adapter disabled and the Agent Card non-streaming until ADR-011
+  approval and public route-level acceptance.
+
 ## [0.1.1] - 2026-09-13
 
 ### Added — Docker Hub release publishing

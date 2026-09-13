@@ -359,8 +359,10 @@ a durable terminal task. Run `osa-a2a-migrate` before startup; runtime startup
 only validates the task, ownership, and schema-version-2 event tables.
 The bounded polling relay reads those events by tenant-scoped cursor, and
 independent PostgreSQL workers are accepted for takeover fencing, late-event
-rejection, ordered terminal delivery, and cursor replay. It is not attached to
-a public route yet; PostgreSQL is the
+rejection, ordered terminal delivery, and cursor replay. `OsaA2aRequestHandler`
+can attach it to the SDK stream-handler surface through the explicit,
+default-disabled `enable_durable_streaming` acceptance hook; the normal runtime
+does not enable that hook. PostgreSQL is the
 shared-production choice; SQLite is an explicit local-only option where the
 SDK supports it. The SDK active-task registry remains process-local. Its
 durable task saves carry the ownership snapshot through the SDK call context

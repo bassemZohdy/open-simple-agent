@@ -35,12 +35,13 @@ creation, lookup, cancellation, and crash recovery. Terminal events drain
 through the SDK consumer before lease release. Expired-owner retries fail
 closed with a stable terminal failure and never replay unknown model/tool side
 effects. Schema version 2 now provisions the migration-owned append-only event
-cursor and bounded polling-relay foundations; the relay consumes durable
-events by cursor but is not attached to a runtime stream route yet. Independent
+cursor and bounded polling-relay foundations; `OsaA2aRequestHandler` can attach
+the relay to the SDK stream-handler surface through the explicit,
+default-disabled `enable_durable_streaming` acceptance hook. Independent
 PostgreSQL-worker acceptance now covers durable relay takeover fencing,
 late-event rejection, ordered terminal delivery, and cursor replay. The SDK
-active-task registry and public multi-process streaming route integration are
-still open, so this ADR remains proposed until the full
+active-task registry and normal-runtime public multi-process streaming route
+integration are still open, so this ADR remains proposed until the full
 acceptance criteria and open review questions are resolved.
 
 The deployment slice now applies the same conservative boundary to the
