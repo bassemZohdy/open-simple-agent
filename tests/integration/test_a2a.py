@@ -1599,6 +1599,53 @@ class TestA2aServer:
             assert card["name"] == "card-server"
             assert any(s["id"] == "support" for s in card["skills"])
 
+    async def test_durable_streaming_is_explicit_and_requires_migrated_store(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The relay handler is review-gated and never enabled by default."""
+        from fastapi import FastAPI
+
+        from osa.runtimes.adk.a2a import (
+            OsaA2aRequestHandler,
+            _task_store_and_engine,
+            attach_a2a_routes,
+            close_a2a_task_store,
+            initialize_a2a_task_store,
+        )
+        from osa.runtimes.adk.a2a_migrations import migrate_a2a_schema
+
+        local_app = FastAPI()
+        local_card = attach_a2a_routes(local_app, _make_agent("local-card"), url="http://test")
+        assert local_card.capabilities.streaming is False
+        await close_a2a_task_store(local_app)
+
+        monkeypatch.setenv(
+            "OSA_A2A_TASK_DATABASE_URL",
+            f"sqlite+aiosqlite:///{tmp_path / 'durable-streaming.db'}",
+        )
+        monkeypatch.setenv("OSA_A2A_TASK_TABLE", "durable_streaming_tasks")
+        durable_app = FastAPI()
+        task_store, engine = _task_store_and_engine(durable_app)
+        assert engine is not None
+        await migrate_a2a_schema(
+            engine,
+            task_table_name="durable_streaming_tasks",
+            task_store=task_store,
+            ownership_store=durable_app.state.osa_a2a_ownership_store,
+            event_store=durable_app.state.osa_a2a_event_store,
+        )
+        await initialize_a2a_task_store(durable_app)
+
+        durable_card = attach_a2a_routes(
+            durable_app,
+            _make_agent("durable-card"),
+            url="http://test",
+            enable_durable_streaming=True,
+        )
+        assert durable_card.capabilities.streaming is True
+        assert isinstance(durable_app.state.osa_a2a_handler, OsaA2aRequestHandler)
+        await close_a2a_task_store(durable_app)
+
     async def test_message_send_completes_task_with_output(self) -> None:
         port = self._serve(_make_agent("echo-server", provider=FakeModelProvider(response="a2a answer")))
         output = await invoke_remote_agent(f"http://127.0.0.1:{port}", "hello over a2a", timeout_seconds=20)

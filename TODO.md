@@ -210,6 +210,9 @@ route integration remains open; owner loss is fail-closed by default.
 - [x] Add multi-process/multi-worker PostgreSQL acceptance for durable relay
   streaming, takeover fencing, late-event rejection, and cursor replay; the
   SDK active-task registry remains local to each process.
+- [x] Implement the explicit, default-disabled `OsaA2aRequestHandler` relay
+  adapter and acceptance coverage for the SDK stream-handler surface; runtime
+  capability advertisement remains disabled until the ADR is accepted.
 - [ ] Integrate the durable relay with public `SubscribeToTask` /
   `message/stream` handler routes and enable the Agent Card capability only
   after ADR-011 approval and route-level acceptance.

@@ -358,10 +358,12 @@ owner-loss message and never replays unknown model/tool side effects. The
 bounded polling relay can read migration-owned events after a tenant-scoped
 sequence cursor for future reconnects. Before each tenant-indexed event-page
 read, it verifies the full tenant-and-subject ownership scope for the task.
-No public A2A route uses it yet. Independent PostgreSQL-worker relay acceptance
+`OsaA2aRequestHandler` now integrates that relay with the SDK stream-handler
+surface for explicit route acceptance, while the normal runtime keeps the
+hook disabled by default. Independent PostgreSQL-worker relay acceptance
 covers takeover fencing, late-event rejection, ordered terminal delivery, and
-cursor replay; public multi-process streaming-route acceptance remains open
-distributed-runtime work.
+cursor replay; public multi-process streaming-route acceptance remains gated
+on ADR-011 approval.
 
 External agents are A2A servers outside OSA, tracked as records distinct
 from managed agents (they are never deployed). The PostgreSQL-backed registry
@@ -466,7 +468,8 @@ task lookup, cancellation, terminal replay, and owner-loss fencing work across
 replicas. The migration-owned relay now has independent PostgreSQL-worker
 acceptance for takeover fencing, late-event rejection, ordered terminal
 delivery, and cursor replay; public `SubscribeToTask` / `message/stream` route
-integration remains explicitly gated until ADR-011 is accepted.
+integration is available only through the explicit, default-disabled
+`enable_durable_streaming` acceptance hook until ADR-011 is accepted.
 
 ### Invoke request
 

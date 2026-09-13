@@ -142,8 +142,10 @@ and OSA's versioned ownership and append-only event tables. Runtime startup
 validates those tables but never creates or alters them. The event table and
 bounded polling relay are storage foundations with independent PostgreSQL-worker
 acceptance for takeover fencing, late-event rejection, ordered terminal
-delivery, and cursor replay. Relay route integration and cross-process A2A
-streaming remain disabled pending ADR-011 approval and route-level acceptance.
+delivery, and cursor replay. The SDK stream-handler adapter is available through
+the explicit, default-disabled `enable_durable_streaming` acceptance hook;
+runtime deployments keep it off pending ADR-011 approval and route-level
+acceptance.
 
 Run `osa-capability-telemetry-migrate` when
 `OSA_CAPABILITY_TELEMETRY_DATABASE_URL` is configured. It provisions the

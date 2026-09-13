@@ -12,6 +12,9 @@ Built on the pinned ``a2a-sdk`` 1.x line (protobuf-typed protocol messages):
 - When a database-backed task store is selected, a separate OSA ownership
   lease/fencing record serializes active execution and persists cancellation;
   the schema is provisioned by ``osa-a2a-migrate``.
+- The durable cross-replica stream adapter is available only through the
+  explicit ``enable_durable_streaming`` integration hook. It is disabled by
+  default until ADR-011 and its public-route acceptance are approved.
 - :func:`invoke_remote_agent` calls a remote A2A agent (managed or external)
   with a bounded timeout; :class:`RemoteA2aError` maps remote failures to a
   deterministic OSA error.
@@ -57,6 +60,7 @@ __all__ = [
     "A2A_TASK_LEASE_SECONDS_ENV_VAR",
     "A2A_TASK_CANCEL_WAIT_SECONDS_ENV_VAR",
     "OsaA2aAgentExecutor",
+    "OsaA2aRequestHandler",
     "RemoteA2aError",
     "attach_a2a_routes",
     "build_agent_card",
@@ -100,6 +104,8 @@ def build_agent_card(
     skills: list[SkillDefinition],
     url: str,
     auth_settings: AuthSettings | None = None,
+    *,
+    streaming: bool = False,
 ) -> Any:
     """Build an A2A Agent Card from a definition, skills, and auth contract."""
     _require_a2a_sdk()
@@ -120,7 +126,7 @@ def build_agent_card(
         description=definition.spec.description or definition.metadata.description or definition.metadata.name,
         version=definition.metadata.version,
         supported_interfaces=[AgentInterface(url=url, protocol_binding="JSONRPC")],
-        capabilities=AgentCapabilities(streaming=False, push_notifications=False),
+        capabilities=AgentCapabilities(streaming=streaming, push_notifications=False),
         default_input_modes=DEFAULT_INPUT_MODES,
         default_output_modes=DEFAULT_OUTPUT_MODES,
         skills=agent_skills,
@@ -560,6 +566,112 @@ class OsaA2aAgentExecutor:
         await updater.cancel()
 
 
+class OsaA2aRequestHandler:
+    """Bridge public stream routes to the durable relay when explicitly enabled.
+
+    The A2A SDK's ``ActiveTaskRegistry`` is intentionally process-local. The
+    regular SDK handler remains authoritative for tasks owned by this process;
+    this adapter uses the migration-owned event relay only when a durable task
+    has no local active task. That makes a second replica a read-only stream
+    consumer and prevents it from starting a duplicate executor.
+
+    This class is deliberately not selected by the runtime default. Its
+    public capability is gated by ``attach_a2a_routes``'s explicit argument
+    until ADR-011 and route-level acceptance are approved.
+    """
+
+    def __init__(self, delegate: Any, *, event_relay: Any, ownership_store: Any, task_store: Any) -> None:
+        self._delegate = delegate
+        self._event_relay = event_relay
+        self._ownership_store = ownership_store
+        self._task_store = task_store
+
+    async def aclose(self) -> None:
+        """Drain the SDK-owned local registry through the delegated handler."""
+        await self._delegate.aclose()
+
+    def __getattr__(self, name: str) -> Any:
+        """Preserve every non-streaming SDK request-handler operation."""
+        return getattr(self._delegate, name)
+
+    async def on_message_send_stream(self, params: Any, context: Any) -> Any:
+        """Stream a local task through the SDK or a remote task through storage."""
+        _validate_a2a_stream_request(params)
+        task_id = str(getattr(getattr(params, "message", None), "task_id", "") or "")
+        if not task_id or not await self._should_use_relay(task_id, context):
+            delegate_stream = self._delegate.on_message_send_stream(params, context)
+            try:
+                async for event in delegate_stream:
+                    yield event
+            finally:
+                await delegate_stream.aclose()
+            return
+
+        relay_stream = self._event_relay.stream(
+            scope_key=_a2a_task_owner(context),
+            task_id=task_id,
+        )
+        try:
+            async for event in relay_stream:
+                yield _apply_a2a_stream_history(event, params)
+        finally:
+            await relay_stream.aclose()
+
+    async def on_subscribe_to_task(self, params: Any, context: Any) -> Any:
+        """Subscribe locally when possible, otherwise relay the durable task events."""
+        _validate_a2a_stream_request(params)
+        task_id = str(getattr(params, "id", "") or "")
+        if not task_id or not await self._should_use_relay(task_id, context):
+            delegate_stream = self._delegate.on_subscribe_to_task(params, context)
+            try:
+                async for event in delegate_stream:
+                    yield event
+            finally:
+                await delegate_stream.aclose()
+            return
+
+        relay_stream = self._event_relay.stream(
+            scope_key=_a2a_task_owner(context),
+            task_id=task_id,
+        )
+        try:
+            async for event in relay_stream:
+                yield event
+        finally:
+            await relay_stream.aclose()
+
+    async def _should_use_relay(self, task_id: str, context: Any) -> bool:
+        """Return true only for an authorized durable task without a local owner."""
+        task = await self._task_store.get(task_id, context)
+        if task is None:
+            return False
+        ownership = await self._ownership_store.get(task_id, _a2a_task_owner(context))
+        if ownership is None:
+            return False
+
+        registry = getattr(self._delegate, "_active_task_registry", None)
+        get_active = getattr(registry, "get", None)
+        if not callable(get_active):
+            return True
+        return await get_active(task_id) is None
+
+
+def _apply_a2a_stream_history(event: Any, params: Any) -> Any:
+    """Apply the SDK's history policy to task snapshots replayed by the relay."""
+    from a2a.types import Task
+    from a2a.utils.task import apply_history_length
+
+    return apply_history_length(event, params.configuration) if isinstance(event, Task) else event
+
+
+def _validate_a2a_stream_request(params: Any) -> None:
+    """Keep required-field validation when the durable adapter bypasses the SDK method."""
+    from a2a.utils.proto_utils import validate_proto_required_fields
+
+    if params is not None:
+        validate_proto_required_fields(params)
+
+
 class _TrackedEventQueue:
     """Record protocol events before handing them to the SDK queue."""
 
@@ -769,10 +881,14 @@ def attach_a2a_routes(
     url: str,
     *,
     auth_settings: AuthSettings | None = None,
+    enable_durable_streaming: bool = False,
 ) -> Any:
     """Attach A2A JSON-RPC + Agent Card routes for ``agent`` to ``app``.
 
     The card URL is the A2A well-known path; JSON-RPC lives at ``/a2a``.
+    ``enable_durable_streaming`` is an explicit review/acceptance hook. It
+    requires a migrated database-backed task store (PostgreSQL for shared
+    replicas) and remains disabled by default until ADR-011 is accepted.
     """
     _require_a2a_sdk()
     from a2a.server import routes as a2a_routes
@@ -785,21 +901,47 @@ def attach_a2a_routes(
 
     # The interface URL is the client-facing JSON-RPC endpoint.
     interface_url = url.rstrip("/") + "/a2a"
-    card = build_agent_card(agent.definition, agent.skills, interface_url, auth_settings=auth_settings)
     task_store, _ = _task_store_and_engine(app)
-    handler = DefaultRequestHandler(
+    ownership_store = getattr(app.state, "osa_a2a_ownership_store", None)
+    event_store = getattr(app.state, "osa_a2a_event_store", None)
+    if enable_durable_streaming and (ownership_store is None or event_store is None):
+        raise RuntimeError("Durable A2A streaming requires OSA_A2A_TASK_DATABASE_URL and its migrated event schema")
+    if enable_durable_streaming:
+        assert ownership_store is not None
+        assert event_store is not None
+
+    card = build_agent_card(
+        agent.definition,
+        agent.skills,
+        interface_url,
+        auth_settings=auth_settings,
+        streaming=enable_durable_streaming,
+    )
+    sdk_handler = DefaultRequestHandler(
         agent_executor=cast(
             "AgentExecutor",
             OsaA2aAgentExecutor(
                 agent,
-                ownership_store=getattr(app.state, "osa_a2a_ownership_store", None),
+                ownership_store=ownership_store,
                 task_store=task_store,
-                event_store=getattr(app.state, "osa_a2a_event_store", None),
+                event_store=event_store,
             ),
         ),
         task_store=task_store,
         agent_card=card,
     )
+    handler: Any = sdk_handler
+    if enable_durable_streaming:
+        from osa.runtimes.adk.a2a_event_relay import A2aTaskEventRelay
+
+        assert event_store is not None
+        assert ownership_store is not None
+        handler = OsaA2aRequestHandler(
+            sdk_handler,
+            event_relay=A2aTaskEventRelay(event_store, ownership_store),
+            ownership_store=ownership_store,
+            task_store=task_store,
+        )
     app.state.osa_a2a_handler = handler
     a2a_routes.add_a2a_routes_to_fastapi(
         app,
