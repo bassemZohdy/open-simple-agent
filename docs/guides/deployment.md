@@ -223,5 +223,5 @@ never accepts process commands.
   PostgreSQL workers are also accepted in CI for provider-side-effect
   serialization, lease expiry/takeover, late-result rejection, tenant
   isolation, and restart/reconciliation recovery of the covered operations.
-- Integrate the accepted durable A2A relay with public streaming routes and
-  complete route-level acceptance (P2.4)
+- Approve ADR-011, enable the durable A2A streaming capability in the normal
+  runtime, and complete production multi-process route acceptance (P2.4)

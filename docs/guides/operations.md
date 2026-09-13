@@ -126,6 +126,6 @@ health probe; startup failures carry the captured logs in the record detail.
 
 ## Remaining operational work
 
-- Integrate the accepted durable A2A relay with public streaming routes and
-  complete route-level acceptance (P2.4)
+- Approve ADR-011, enable the durable A2A streaming capability in the normal
+  runtime, and complete production multi-process route acceptance (P2.4)
 - Gateway-level quota policy

@@ -102,9 +102,11 @@ enable a gated feature.
 
 ## Recommended next task
 
-Return to the architecture-gated public A2A streaming and late-event route
-acceptance after the ADR review; the durable cursor relay and independent-worker
-acceptance are ready to support that handler integration. Deployment-operation
+Review and approve the architecture-gated public A2A streaming and late-event
+route contract. The durable cursor relay, independent-worker acceptance, and
+explicit SDK stream-handler integration are complete; approval is the remaining
+step before enabling the Agent Card capability in the normal runtime and
+running production multi-process route acceptance. Deployment-operation
 ownership is implemented and its
 independent-worker PostgreSQL acceptance passes in CI for the exposed
 deploy/stop/restart/rollback paths, including takeover, stale-result fencing,
@@ -170,7 +172,7 @@ route. Concrete identity-source acceptance remains open.
 - [ ] Run the lifecycle acceptance suite against a selected enterprise
   identity source and test tenant.
 
-## Distributed A2A active-task state — PENDING
+## Distributed A2A active-task state — PARTIALLY COMPLETE
 
 The SDK task record can be persisted in PostgreSQL with
 `OSA_A2A_TASK_DATABASE_URL`. OSA now adds an explicit versioned ownership table
