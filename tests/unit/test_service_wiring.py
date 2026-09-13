@@ -10,6 +10,7 @@ from osa.control_plane.backend.deployment_ownership import (
     PostgresDeploymentOperationOwnershipStore,
 )
 from osa.control_plane.backend.deployment_service import create_deployment_provider
+from osa.control_plane.backend.openshift_deployment import OpenShiftDeploymentProvider
 from osa.control_plane.backend.repositories import (
     InMemoryDeploymentRecordRepository,
     PostgresDeploymentRecordRepository,
@@ -59,9 +60,26 @@ def test_durable_control_plane_requires_shared_provider(monkeypatch: pytest.Monk
         create_deployment_provider(require_shared=True)
 
 
-def test_openshift_requires_a_dedicated_provider(monkeypatch: pytest.MonkeyPatch) -> None:
-    """OpenShift-specific behavior must not be silently routed through Kubernetes."""
+def test_openshift_selects_dedicated_provider(monkeypatch: pytest.MonkeyPatch) -> None:
+    """OpenShift uses its own provider and is never an alias for Kubernetes."""
     monkeypatch.setenv("OSA_DEPLOY_PROVIDER", "openshift")
+    monkeypatch.setenv("OSA_OPENSHIFT_IMAGE", "quay.io/example/osa-runtime:ci")
 
-    with pytest.raises(DeploymentError, match="dedicated deployment provider"):
+    assert isinstance(create_deployment_provider(), OpenShiftDeploymentProvider)
+    assert isinstance(create_deployment_provider(require_shared=True), OpenShiftDeploymentProvider)
+
+
+def test_openshift_requires_its_image(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("OSA_DEPLOY_PROVIDER", "openshift")
+    monkeypatch.delenv("OSA_OPENSHIFT_IMAGE", raising=False)
+
+    with pytest.raises(DeploymentError, match="OSA_OPENSHIFT_IMAGE"):
         create_deployment_provider()
+
+
+def test_control_plane_rejects_sqlite_for_openshift(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("OSA_DEPLOY_PROVIDER", "openshift")
+    monkeypatch.setenv("OSA_OPENSHIFT_IMAGE", "quay.io/example/osa-runtime:ci")
+
+    with pytest.raises(AgentCatalogError, match="local-only"):
+        create_control_plane_app(database_url="sqlite+aiosqlite:///control-plane.db")

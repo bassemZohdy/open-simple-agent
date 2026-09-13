@@ -317,10 +317,13 @@ never accepted from API input. Intent and observed state persist through the
 `DeploymentRecordRepository` (in-memory, or PostgreSQL when the Control
 Plane uses a database); rollback relaunches an earlier immutable version
 snapshot under the same ownership boundary as other mutations.
-Durable Control Plane deployments select the Kubernetes provider. Deployed
-runtimes are external processes: no ADK internals are imported. Kubernetes
-status/list operations rehydrate workloads from OSA identity labels after a
-Control Plane restart; real Kind validation passes in CI. Mutating deploy,
+Durable Control Plane deployments select the Kubernetes or dedicated OpenShift
+provider. Deployed runtimes are external processes: no ADK internals are
+imported. Kubernetes and OpenShift status/list operations rehydrate workloads
+from OSA identity labels after a Control Plane restart; real Kind validation
+passes in CI. The OpenShift provider adds an OpenShift Route and uses `oc`
+without adding provider-specific conditionals to the generic Kubernetes path.
+Mutating deploy,
 stop, restart, and rollback operations use a tenant/resource-scoped lease with
 a stable operation ID and monotonically increasing fencing epoch. The
 PostgreSQL ownership table is created only by migration 0010; a heartbeat
@@ -329,9 +332,9 @@ writes reject late results. Status, logs, and provider reconciliation remain
 read-only observation paths. Independent-worker PostgreSQL acceptance passes
 in CI for provider-side-effect serialization, expiry/takeover, late-result
 rejection, tenant isolation, and restart/reconciliation recovery.
-The provider factory rejects `OSA_DEPLOY_PROVIDER=openshift` until a separate
-OpenShift provider is implemented; OpenShift API and admission behavior must
-not be added as conditional paths to the generic Kubernetes provider.
+OpenShift Route, SCC/security-context, admission, and lifecycle behavior still
+requires acceptance against a selected OpenShift cluster; it is not implied by
+the Kubernetes Kind acceptance.
 
 Deployment records expose an optional public runtime invoke URL synthesized
 from `OSA_DEPLOY_INVOKE_URL_TEMPLATE` (ADR-008, migration 0007). The Control

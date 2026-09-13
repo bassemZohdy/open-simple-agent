@@ -71,9 +71,9 @@ OSA_CAPABILITY_TELEMETRY_DATABASE_URL=... uv run osa-capability-telemetry-migrat
 
 Deployment retry identity, rollback stop/relaunch/persist ordering, and bundle
 publication are hardened. Durable Control Plane deployments must select the
-Kubernetes provider; its status/list paths rehydrate labelled workloads after
-a Control Plane restart. The local provider remains a single-process
-development topology.
+Kubernetes or OpenShift provider; their status/list paths rehydrate labelled
+workloads after a Control Plane restart. The local provider remains a
+single-process development topology.
 
 ## Agent definitions
 

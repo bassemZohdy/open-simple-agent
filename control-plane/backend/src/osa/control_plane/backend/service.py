@@ -121,20 +121,22 @@ def create_control_plane_app(
     if dsn is not None:
         backend = database_backend(dsn)
         require_shared_database(dsn, "Control Plane state")
-        if (
-            persistence_policy == PersistencePolicy.SHARED
-            and os.environ.get("OSA_DEPLOY_PROVIDER", "").strip().lower() != "kubernetes"
-        ):
+        if persistence_policy == PersistencePolicy.SHARED and os.environ.get(
+            "OSA_DEPLOY_PROVIDER", ""
+        ).strip().lower() not in {"kubernetes", "openshift"}:
             raise PersistenceConfigurationError(
-                "OSA_PERSISTENCE_POLICY=shared requires the Kubernetes deployment provider "
-                "(OSA_DEPLOY_PROVIDER=kubernetes) for the Control Plane"
+                "OSA_PERSISTENCE_POLICY=shared requires the Kubernetes or OpenShift deployment provider "
+                "(OSA_DEPLOY_PROVIDER=kubernetes|openshift) for the Control Plane"
             )
-        if backend == "sqlite" and os.environ.get("OSA_DEPLOY_PROVIDER", "").strip().lower() == "kubernetes":
+        if backend == "sqlite" and os.environ.get("OSA_DEPLOY_PROVIDER", "").strip().lower() in {
+            "kubernetes",
+            "openshift",
+        }:
             from osa.control_plane.backend.agent_catalog import AgentCatalogError
 
             raise AgentCatalogError(
                 "SQLite persistence is local-only and cannot be combined with "
-                "OSA_DEPLOY_PROVIDER=kubernetes or a shared deployment"
+                "OSA_DEPLOY_PROVIDER=kubernetes|openshift or a shared deployment"
             )
         engine = create_db_engine(dsn)
         if backend == "postgresql":

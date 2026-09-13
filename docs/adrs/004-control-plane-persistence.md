@@ -103,9 +103,10 @@ SQLAlchemy 2.0 async, Alembic.
 - Resource definition records are durable, and route/activation/deployment
   reads reconcile the process-local catalogs from them; live cross-replica
   PostgreSQL cross-replica resource acceptance is exercised in CI; Kind
-  Kubernetes lifecycle acceptance passes in CI, while OpenShift behavior and
-  distributed deployment-operation ownership is implemented and independently
-  accepted for the exposed mutations; public A2A streaming/late-event route
+  Kubernetes lifecycle acceptance passes in CI, while the dedicated OpenShift
+  provider is implemented and its real-cluster behavior remains gated on a
+  selected target. Distributed deployment-operation ownership is implemented
+  and independently accepted for the exposed mutations; public A2A streaming/late-event route
   ownership and any future provider-wide expansion remain tracked separately in
   `TODO.md`.
 - External A2A agent records are durable in the PostgreSQL repository; the

@@ -1,0 +1,56 @@
+name: OpenShift provider acceptance
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  openshift-acceptance:
+    name: Selected OpenShift cluster
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      KUBECONFIG: ${{ runner.temp }}/osa-openshift-kubeconfig
+      OSA_OPENSHIFT_KUBECONFIG: ${{ secrets.OSA_OPENSHIFT_KUBECONFIG }}
+      OSA_OPENSHIFT_ACCEPTANCE_IMAGE: ${{ vars.OSA_OPENSHIFT_ACCEPTANCE_IMAGE }}
+      OSA_OPENSHIFT_ACCEPTANCE: "1"
+    steps:
+      - uses: actions/checkout@v7
+      - name: Detect OpenShift acceptance opt-in
+        id: opt_in
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -n "$OSA_OPENSHIFT_KUBECONFIG" && -n "$OSA_OPENSHIFT_ACCEPTANCE_IMAGE" ]]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::OpenShift acceptance is disabled; configure OSA_OPENSHIFT_KUBECONFIG and OSA_OPENSHIFT_ACCEPTANCE_IMAGE to opt in."
+          fi
+      - name: Install OpenShift CLI
+        if: steps.opt_in.outputs.enabled == 'true'
+        uses: redhat-actions/oc-installer@v1
+      - name: Configure selected cluster context
+        if: steps.opt_in.outputs.enabled == 'true'
+        env:
+          OSA_OPENSHIFT_KUBECONFIG: ${{ secrets.OSA_OPENSHIFT_KUBECONFIG }}
+        run: |
+          set -euo pipefail
+          umask 077
+          printf '%s' "$OSA_OPENSHIFT_KUBECONFIG" > "$KUBECONFIG"
+          oc whoami
+          oc version --client
+      - uses: astral-sh/setup-uv@v10.0.1
+        if: steps.opt_in.outputs.enabled == 'true'
+      - uses: actions/setup-python@v7
+        if: steps.opt_in.outputs.enabled == 'true'
+        with:
+          python-version: "3.12"
+      - name: Install Python dependencies
+        if: steps.opt_in.outputs.enabled == 'true'
+        run: uv sync --all-packages --extra postgres --extra a2a --extra sqlite
+      - name: Run OpenShift lifecycle acceptance
+        if: steps.opt_in.outputs.enabled == 'true'
+        run: uv run pytest -q tests/acceptance/test_openshift_provider.py

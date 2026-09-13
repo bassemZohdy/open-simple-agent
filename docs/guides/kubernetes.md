@@ -81,10 +81,11 @@ The generic Kubernetes lifecycle is validated by the CI acceptance job:
    records and Kubernetes labels, including status-watch behavior for
    already-running workloads.
 
-OpenShift-specific behavior remains deferred; the provider targets standard Kubernetes APIs first.
-
 The provider boundary is intentional: `OSA_DEPLOY_PROVIDER=kubernetes` selects
-only `KubernetesDeploymentProvider`, while `OSA_DEPLOY_PROVIDER=openshift` is
-rejected until a dedicated OpenShift provider exists. OpenShift API, security
-context, route, and admission behavior must not be added as conditional paths
-to this generic Kubernetes provider.
+only `KubernetesDeploymentProvider`. OpenShift has a separate
+`OpenShiftDeploymentProvider` and guide so its `oc`, Route, security-context,
+and admission behavior are not conditional paths in this generic Kubernetes
+provider. OpenShift real-cluster acceptance remains a separate gate.
+
+See the [OpenShift guide](openshift.md) for its configuration, Route policy,
+and required cluster validation.

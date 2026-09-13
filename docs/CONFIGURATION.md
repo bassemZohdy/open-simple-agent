@@ -132,11 +132,11 @@ spec:
 
 Allow/deny overlap is invalid. The policy is independent of the prompt;
 enterprise policy evaluation remains open. Inbound A2A security is enforced by
-the shared OIDC/OAuth boundary. Kubernetes provider selection is available via
-operator configuration; real Kind validation passes in CI. The provider
-factory rejects `OSA_DEPLOY_PROVIDER=openshift` until a dedicated OpenShift
-provider is implemented, so OpenShift-specific behavior is not mixed into the
-generic Kubernetes path.
+the shared OIDC/OAuth boundary. Kubernetes and dedicated OpenShift provider
+selection is available via operator configuration; real Kind validation passes
+in CI. The OpenShift provider uses `oc`, emits a Route, and keeps its
+API/admission behavior outside the generic Kubernetes provider. Real OpenShift
+validation remains gated on a selected cluster.
 
 | Path | Type | Default | Current behavior |
 |---|---|---:|---|
@@ -194,7 +194,7 @@ development must be an explicit, subsystem-specific choice; it is not a
 general fallback or a shared-replica provider. Set
 `OSA_PERSISTENCE_POLICY=shared` to make this production posture fail closed:
 enabled stateful surfaces require PostgreSQL, and the Control Plane also
-requires the Kubernetes deployment provider.
+requires the Kubernetes or OpenShift deployment provider.
 
 ### Current provider matrix
 

@@ -7,8 +7,8 @@ the runtime uses its configured session provider and memory can use either
 PostgreSQL or explicit local SQLite. With a PostgreSQL Control Plane DSN,
 agents, resources, deployment records, audit events, and external-agent
 records are shared; route and deployment reads reconcile local resource
-catalogs. Durable shared Control Planes require the Kubernetes provider; local
-provider processes remain process-local by design.
+catalogs. Durable shared Control Planes require the Kubernetes or OpenShift
+provider; local provider processes remain process-local by design.
 Cross-replica resource acceptance runs in the PostgreSQL CI suite. Both
 applications provide an opt-in rate-limit contract with a process-local
 default and an optional PostgreSQL shared store.

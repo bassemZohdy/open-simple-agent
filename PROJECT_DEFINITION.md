@@ -279,13 +279,15 @@ separate from `AgentRuntime`, which owns in-process behavior.
 
 The local deployment provider is integrated through the Control Plane lifecycle
 API and is development-only. Durable Control Plane deployments select the
-generic `kubectl`-backed Kubernetes provider, which supports
-Deployment/Service/config/secret/probe/lifecycle behavior and rehydrates
-status from OSA identity labels after a Control Plane restart. Real Kind and
-independent-worker PostgreSQL deployment-operation ownership acceptance pass
-in CI. Public A2A multi-process streaming-route/late-event acceptance remains
-architecture-gated.
-OpenShift-specific behavior remains separately deferred.
+generic `kubectl`-backed Kubernetes provider or the dedicated `oc`-backed
+OpenShift provider. Both support Deployment/Service/config/secret/probe/
+lifecycle behavior and rehydrate status from OSA identity labels after a
+Control Plane restart; the OpenShift provider additionally emits an
+OpenShift Route. Real Kind and independent-worker PostgreSQL
+deployment-operation ownership acceptance pass in CI. OpenShift Route,
+security-context, admission, and lifecycle validation remains gated on a
+selected cluster. Public A2A multi-process streaming-route/late-event
+acceptance remains architecture-gated.
 
 ### Control Panel
 

@@ -83,7 +83,8 @@ health probe; startup failures carry the captured logs in the record detail.
   shared-replica coordination.
 - `OSA_PERSISTENCE_POLICY=shared` is the explicit production guard. It rejects
   process-local and SQLite state for enabled surfaces and requires PostgreSQL;
-  the Control Plane additionally requires the Kubernetes deployment provider.
+  the Control Plane additionally requires the Kubernetes or OpenShift
+  deployment provider.
 - When inbound A2A task persistence is configured, run
   `OSA_A2A_TASK_DATABASE_URL=... uv run osa-a2a-migrate` before rollout. The
   runtime validates the SDK task, OSA ownership, and paired event tables at
@@ -121,8 +122,9 @@ health probe; startup failures carry the captured logs in the record detail.
    (`Dockerfile`, `Dockerfile.control-plane`).
 4. Rolling restarts of runtime replicas are safe when sessions use a shared
    migrated `PostgresSessionProvider`; the default in-memory provider remains
-   single-process. Durable Control Plane deployments must select Kubernetes;
-   its status/list paths rehydrate labelled workloads after a restart.
+   single-process. Durable Control Plane deployments must select Kubernetes or
+   OpenShift; their status/list paths rehydrate labelled workloads after a
+   restart.
 
 ## Remaining operational work
 

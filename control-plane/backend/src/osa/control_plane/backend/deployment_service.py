@@ -71,6 +71,7 @@ RUNTIME_CORS_PASSTHROUGH_ENV_VAR = "OSA_RUNTIME_ALLOWED_ORIGINS"
 DEPLOY_PROVIDER_ENV_VAR = "OSA_DEPLOY_PROVIDER"
 KUBERNETES_IMAGE_ENV_VAR = "OSA_KUBERNETES_IMAGE"
 OPENSHIFT_PROVIDER_NAME = "openshift"
+OPENSHIFT_IMAGE_ENV_VAR = "OSA_OPENSHIFT_IMAGE"
 
 
 def create_deployment_provider(*, require_shared: bool = False) -> DeploymentProvider:
@@ -81,9 +82,9 @@ def create_deployment_provider(*, require_shared: bool = False) -> DeploymentPro
     process-local workloads when the operator expected cluster scheduling.
     """
     provider_name = os.environ.get(DEPLOY_PROVIDER_ENV_VAR, "local").strip().lower()
-    if require_shared and provider_name != "kubernetes":
+    if require_shared and provider_name not in {"kubernetes", OPENSHIFT_PROVIDER_NAME}:
         raise DeploymentError(
-            "A durable Control Plane requires OSA_DEPLOY_PROVIDER=kubernetes; "
+            "A durable Control Plane requires OSA_DEPLOY_PROVIDER=kubernetes or openshift; "
             "the local provider is process-local and development-only"
         )
     if provider_name == "local":
@@ -102,8 +103,20 @@ def create_deployment_provider(*, require_shared: bool = False) -> DeploymentPro
             rollout_timeout_seconds=_positive_env_int("OSA_KUBERNETES_ROLLOUT_TIMEOUT_SECONDS", 60),
         )
     if provider_name == OPENSHIFT_PROVIDER_NAME:
-        raise DeploymentError(
-            "OpenShift requires a dedicated deployment provider; it is not an alias for the generic Kubernetes provider"
+        image = os.environ.get(OPENSHIFT_IMAGE_ENV_VAR, "").strip()
+        if not image:
+            raise DeploymentError(f"{OPENSHIFT_IMAGE_ENV_VAR} is required when {DEPLOY_PROVIDER_ENV_VAR}=openshift")
+        from osa.control_plane.backend.openshift_deployment import OpenShiftDeploymentProvider
+
+        return OpenShiftDeploymentProvider(
+            image=image,
+            namespace=os.environ.get("OSA_OPENSHIFT_NAMESPACE", "default"),
+            replicas=_positive_env_int("OSA_OPENSHIFT_REPLICAS", 1),
+            oc=os.environ.get("OSA_OC", "oc"),
+            rollout_timeout_seconds=_positive_env_int("OSA_OPENSHIFT_ROLLOUT_TIMEOUT_SECONDS", 60),
+            route_host=os.environ.get("OSA_OPENSHIFT_ROUTE_HOST") or None,
+            route_tls_termination=os.environ.get("OSA_OPENSHIFT_ROUTE_TLS_TERMINATION", "edge") or None,
+            route_insecure_edge_policy=os.environ.get("OSA_OPENSHIFT_ROUTE_INSECURE_EDGE_POLICY", "Redirect"),
         )
     raise DeploymentError(f"Unsupported {DEPLOY_PROVIDER_ENV_VAR} value: {provider_name}")
 

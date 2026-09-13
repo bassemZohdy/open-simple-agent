@@ -13,6 +13,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added — Dedicated OpenShift deployment provider
+- Added an opt-in `OpenShiftDeploymentProvider` using `oc` and an explicit
+  OpenShift Route, with validated route host/TLS options and shared/local
+  persistence wiring. Real-cluster OpenShift acceptance remains gated on a
+  selected target environment.
+
 ### Added — Explicit A2A stream-handler acceptance adapter
 - Added `OsaA2aRequestHandler`, which delegates local SDK-owned tasks and
   relays durable remote task events through the migration-owned cursor store

@@ -35,6 +35,7 @@ from osa.control_plane.backend.kubernetes_deployment import (
     KubernetesDeploymentProvider,
     KubernetesSecretRef,
 )
+from osa.control_plane.backend.openshift_deployment import OpenShiftDeploymentProvider
 from osa.control_plane.backend.repositories import (
     AgentRepository,
     AuditEvent,
@@ -99,6 +100,7 @@ __all__ = [
     "KubernetesDeploymentProvider",
     "KubernetesSecretRef",
     "KubectlError",
+    "OpenShiftDeploymentProvider",
     "RESEARCH_TEMPLATE",
     "LocalDeploymentProvider",
     "PostgresAgentRepository",
