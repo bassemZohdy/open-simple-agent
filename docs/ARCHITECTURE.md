@@ -473,8 +473,9 @@ CI runs.
   default.
 - Package manifests share one lockstep release version, enforced by
   `tests/unit/test_versioning.py`; release automation publishes GitHub Release
-  assets and signed/attested GHCR images, while the first public release and
-  optional package-registry publication remain pending (P3.3).
+  assets and signed/attested GHCR and Docker Hub images. The first public
+  release (`v0.1.1`) is complete; optional Python package-registry publication
+  remains pending (P3.3).
 
 ## Architectural invariants
 

@@ -60,9 +60,10 @@ Production-readiness limits are:
   PostgreSQL acceptance now proves serialization, takeover, late-result
   rejection, tenant isolation, and recovery for the covered operations;
   global gateway quotas remain a deployment concern;
-- deployment-specific browser OIDC, package publication, and the first public
-  release remain open; the Kubernetes lifecycle acceptance passes in CI, while
-  this workstation cannot run it locally because Docker is unavailable.
+- deployment-specific browser OIDC and optional Python package publication
+  remain open; the first automated public release (`v0.1.1`) is complete. The
+  Kubernetes lifecycle acceptance passes in CI, while this workstation cannot
+  run it locally because Docker is unavailable.
 
 ## Pending work and gates
 
@@ -75,10 +76,10 @@ The following are the current blockers or decision gates:
 - **Architecture-gated:** completing the remaining public distributed A2A
   multi-process/active-task streaming and late-event route contract requires approval
   of `docs/adrs/011-distributed-operation-ownership.md`.
-- **Product-gated:** browser OIDC issuer/client/redirect semantics, package
-  registry publication, and the first public release need explicit product
-  decisions. English and Arabic are the currently supported Control Panel
-  locales; adding further locales remains a product decision.
+- **Product-gated:** browser OIDC issuer/client/redirect semantics and Python
+  package registry publication need explicit product decisions. The first
+  public release is complete. English and Arabic are the currently supported
+  Control Panel locales; adding further locales remains a product decision.
 - **Requirement-gated:** the deferred section below remains intentionally
   paused until a concrete product or integration requirement exists.
 
@@ -95,7 +96,7 @@ enable a gated feature.
 | OpenShift provider | Select a target OpenShift version/cluster and confirm route, security-context, admission, and operator ownership requirements. | Keep the standard Kubernetes provider as the supported production target; add a dedicated OpenShift provider only after a real compatibility environment is available. | OpenShift deployment-provider acceptance. |
 | Browser OIDC | Choose deployment-owned issuer, client registration, redirect, refresh, logout, and token-storage semantics. | Authorization Code + PKCE with deployment-specific configuration; never place bearer tokens in URLs, source, logs, or persistent configuration. | Control Panel browser login/refresh implementation. |
 | Public bundle import/export | Decide whether third parties may import/export public agent-definition bundles, and define compatibility, trust, and secret/reference rules. | Keep public definition import/export out of scope until a versioned compatibility and trust contract is approved; retain server-side deployment export and resource import/export. | Public bundle API and UI scope. |
-| Package publication/release | Select PyPI/another registry/private-only distribution, then choose the first public version and release notes. | Keep the existing signed GHCR/GitHub Release path as the baseline; publish Python packages only after a registry and support policy are selected. | First automated public release. |
+| Python package publication | Select PyPI/another registry/private-only distribution and its support policy. | Keep the signed GitHub Release, GHCR, and Docker Hub paths as the baseline; publish Python packages only after a registry and support policy are selected. | Optional Python package-registry publication. |
 | Further locales | Choose target markets, translation ownership, and locale acceptance criteria. | Keep English and Arabic supported; add locales only with an identified market and maintained translations. | Additional Control Panel locales. |
 
 ## Recommended next task
@@ -248,11 +249,12 @@ through `Intl`; API and machine values remain stable.
 ## Packaging, CI/CD, and release — PARTIALLY COMPLETE
 
 Lockstep validation, Python distributions, signed/attested GHCR and Docker Hub
-images, SBOMs, and digest rollback automation exist.
+images, SBOMs, digest rollback automation, and the first automated public
+release (`v0.1.1`) exist.
 
 - [ ] Decide whether Python packages need PyPI or another registry.
-- [ ] Perform the first automated public release after intentionally selecting
-  a version and moving its changelog entries out of `Unreleased`.
+- [x] Perform the first automated public release (`v0.1.1`) after intentionally
+  selecting the version and moving its changelog entries out of `Unreleased`.
 
 ---
 
