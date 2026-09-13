@@ -64,7 +64,7 @@ Production-readiness limits are:
   rejection, tenant isolation, and recovery for the covered operations;
   global gateway quotas remain a deployment concern;
 - deployment-specific browser OIDC and optional Python package publication
-  remain open; public releases through `v0.1.2` are complete. The
+  remain open; public releases through `v0.1.3` are complete. The
   Kubernetes lifecycle acceptance passes in CI, while this workstation cannot
   run it locally because Docker is unavailable.
 
@@ -261,12 +261,12 @@ through `Intl`; API and machine values remain stable.
 ## Packaging, CI/CD, and release — PARTIALLY COMPLETE
 
 Lockstep validation, Python distributions, signed/attested GHCR and Docker Hub
-images, SBOMs, digest rollback automation, and public release `v0.1.2` exist.
+images, SBOMs, digest rollback automation, and public release `v0.1.3` exist.
 
 - [ ] Decide whether Python packages need PyPI or another registry.
 - [x] Perform the first automated public release (`v0.1.1`) after intentionally
   selecting the version and moving its changelog entries out of `Unreleased`.
-- [x] Publish the lockstep `v0.1.2` release with GitHub artifacts, checksums,
+- [x] Publish the lockstep `v0.1.3` release with GitHub artifacts, checksums,
   GHCR images, and Docker Hub images.
 
 ---

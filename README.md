@@ -52,7 +52,7 @@ silently falls back between PostgreSQL, SQLite, and memory.
 | Deployment | Local provider with bounded logs, health probing, startup-failure capture, identity-aware retry, safe bundle export, and persisted deploy/status/stop/restart/logs/rollback APIs; operator-selected Kubernetes or dedicated OpenShift provider with labelled status rehydration, probes, scaling, rollback, logs, bundle ConfigMaps, Secret references, hardened pod security, and OpenShift Routes | Kind and independent-worker PostgreSQL ownership acceptance pass in CI; OpenShift provider implementation exists but real cluster validation remains a separate gate |
 | Runtime API | Invoke, capabilities, liveness, readiness, optional A2A Agent Card/JSON-RPC, shared JWT/OIDC bearer authentication including RFC 7662 opaque-token introspection, opt-in route permissions, tenant-claim binding, request IDs, Prometheus metrics including model/tool/MCP capability outcomes, optional bounded JSONL or migration-owned PostgreSQL capability sink, redaction-safe structured logs and runtime/A2A audit events; SSE streaming (`/v1/invoke/stream`) with stable OSA events; `osa-runtime` CLI with bundle bootstrap; shared outbound URL/DNS/redirect policy; opt-in bounded HTTP rate-limit contract with optional PostgreSQL shared store | In-memory rate limiting and JSONL sink are process-local by default; public A2A multi-process streaming-route integration and global gateway quotas remain deployment concerns |
 | CI | Ruff format/lint, strict mypy, full Python suite with PostgreSQL + A2A services and an 84% coverage gate, Control Panel typecheck/test/build, both image smoke tests, Docker-backed Kind Kubernetes lifecycle acceptance, dependency/license scanning, CycloneDX SBOMs, a gated live-provider acceptance job, and a manual enterprise-identity acceptance workflow | Live-provider and enterprise-identity execution require opt-in credentials; public A2A streaming-route acceptance remains architecture-gated |
-| Release | Lockstep release validation; four Python distributions; GHCR and Docker Hub runtime/Control Plane images; SBOM/provenance attestations; keyless Cosign image signing; GitHub Releases with checksums; immutable-digest channel rollback | Current public release `v0.1.2` is complete; optional Python package-registry publication remains open |
+| Release | Lockstep release validation; four Python distributions; GHCR and Docker Hub runtime/Control Plane images; SBOM/provenance attestations; keyless Cosign image signing; GitHub Releases with checksums; immutable-digest channel rollback | Current public release `v0.1.3` is complete; optional Python package-registry publication remains open |
 
 ## Architecture
 
@@ -378,7 +378,7 @@ open-simple-agent/
 The P0 runnable-agent gate, managed-platform foundation, current Control Panel,
 and production images are implemented. Release automation can build validated
 Python artifacts and signed/attested GHCR and Docker Hub images from an
-intentional version/tag. The current public release is `v0.1.2`; the remaining
+intentional version/tag. The current public release is `v0.1.3`; the remaining
 gated work is listed in [TODO.md](TODO.md), notably
 public distributed A2A streaming-route/late-event acceptance, deployment-specific browser
 OIDC, and optional Python package-registry publication. Live-provider acceptance
