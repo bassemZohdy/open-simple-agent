@@ -247,8 +247,8 @@ through `Intl`; API and machine values remain stable.
 
 ## Packaging, CI/CD, and release — PARTIALLY COMPLETE
 
-Lockstep validation, Python distributions, signed/attested GHCR images, SBOMs,
-and digest rollback automation exist.
+Lockstep validation, Python distributions, signed/attested GHCR and Docker Hub
+images, SBOMs, and digest rollback automation exist.
 
 - [ ] Decide whether Python packages need PyPI or another registry.
 - [ ] Perform the first automated public release after intentionally selecting

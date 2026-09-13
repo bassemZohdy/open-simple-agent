@@ -160,8 +160,14 @@ The workflow publishes:
 - `ghcr.io/<owner>/<repo>-runtime:X.Y.Z` and
   `ghcr.io/<owner>/<repo>-control-plane:X.Y.Z`, plus the corresponding
   `latest` tags. Image names are normalized to lowercase for OCI compatibility.
-- OCI provenance/SBOM metadata and GitHub artifact attestations for both
-  images, followed by keyless Cosign signing using GitHub OIDC.
+- `docker.io/<DOCKERHUB_USERNAME>/open-simple-agent-runtime:X.Y.Z` and
+  `docker.io/<DOCKERHUB_USERNAME>/open-simple-agent-control-plane:X.Y.Z`, plus
+  the corresponding `latest` tags. Docker Hub publishing uses the
+  `DOCKERHUB_USERNAME` repository variable and the short-lived
+  `DOCKERHUB_TOKEN` access-token secret.
+- OCI provenance/SBOM metadata for both registry copies, GitHub artifact
+  attestations for the GHCR copies, and keyless Cosign signing for both
+  registries using GitHub OIDC.
 
 Release tags are immutable. To roll back a deployment, select a previously
 published immutable version/digest rather than rebuilding or replacing an old

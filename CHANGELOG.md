@@ -12,6 +12,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added — Docker Hub release publishing
+- Release automation now publishes the same runtime and Control Plane image
+  digests to Docker Hub alongside GHCR, signs both registry references with
+  keyless Cosign, and documents the required Docker Hub username variable and
+  short-lived access-token secret.
+
 ### Added — Multi-process A2A relay acceptance
 - Added PostgreSQL independent-worker acceptance for durable event relay
   takeover fencing, late-event rejection, ordered terminal delivery, and

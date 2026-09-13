@@ -376,8 +376,8 @@ open-simple-agent/
 
 The P0 runnable-agent gate, managed-platform foundation, current Control Panel,
 and production images are implemented. Release automation can build validated
-Python artifacts and signed/attested GHCR images from an intentional
-version/tag. The remaining gated work is listed in [TODO.md](TODO.md), notably
+Python artifacts and signed/attested GHCR and Docker Hub images from an
+intentional version/tag. The remaining gated work is listed in [TODO.md](TODO.md), notably
 public distributed A2A streaming-route/late-event acceptance, deployment-specific browser
 OIDC, and the first public release decision. Live-provider acceptance is available
 when its repository secret is intentionally enabled.
