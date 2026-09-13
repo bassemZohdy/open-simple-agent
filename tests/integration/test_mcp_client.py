@@ -155,12 +155,14 @@ class TestStdioProtocol:
             assert len(resources) == 1
             assert resources[0].uri == "test://greeting"
             assert resources[0].name == "greeting"
+            assert resources[0].mcp_name == "test-echo"
 
             contents = await connection.read_resource("test://greeting")
             assert [content.text for content in contents] == ["hello from an MCP resource"]
 
             prompts = await connection.list_prompts()
             assert [prompt.name for prompt in prompts] == ["explain"]
+            assert prompts[0].mcp_name == "test-echo"
             assert prompts[0].arguments[0]["name"] == "topic"
 
             result = await connection.get_prompt("explain", {"topic": "MCP"})

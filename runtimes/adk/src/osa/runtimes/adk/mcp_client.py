@@ -486,7 +486,7 @@ class McpConnection:
                         name=resource_name,
                         description=str(_read_model_field(resource, "description") or ""),
                         mime_type=_read_model_field(resource, "mimeType", "mime_type"),
-                        mcp_name=resource_name,
+                        mcp_name=self.name,
                     )
                 )
             cursor = _read_model_field(result, "nextCursor", "next_cursor")
@@ -555,7 +555,7 @@ class McpConnection:
                         name=prompt_name,
                         description=str(_read_model_field(prompt, "description") or ""),
                         arguments=arguments,
-                        mcp_name=prompt_name,
+                        mcp_name=self.name,
                     )
                 )
             cursor = _read_model_field(result, "nextCursor", "next_cursor")

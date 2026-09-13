@@ -8,10 +8,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 > development milestones; they are not published package releases. All package
 > manifests now share one lockstep release version, enforced by
 > `tests/unit/test_versioning.py`. The first public release was `v0.1.1` and
-> the current public release is `v0.1.3`; optional Python package-registry
+> the current public release is `v0.1.4`; optional Python package-registry
 > publication remains tracked in `TODO.md` (P3.3).
 
 ## [Unreleased]
+
+## [0.1.4] - 2026-09-13
+
+### Fixed — MCP metadata origin
+- Corrected resource and prompt metadata to retain the configured MCP server
+  name in `mcp_name`, matching tool metadata and origin semantics.
 
 ## [0.1.3] - 2026-09-13
 
