@@ -192,8 +192,11 @@ creation, lookup, cancellation, and crash recovery. Schema version 2 now also
 provisions a migration-owned append-only event cursor and bounded polling
 relay foundation, with independent PostgreSQL-worker acceptance for takeover
 fencing, late-event rejection, ordered terminal delivery, and cursor replay.
-Public route integration and the SDK active-task registry remain backlog work;
-the Agent Card continues to advertise non-streaming capabilities.
+The explicit `OsaA2aRequestHandler` acceptance hook integrates the relay with
+the SDK's public stream-handler surface, while the SDK active-task registry
+remains process-local. Normal-runtime public route enablement remains backlog
+work; the Agent Card continues to advertise non-streaming capabilities by
+default.
 Expired-owner retries never replay unknown model/tool side effects. Future work may
 deepen delegation/consent semantics without turning A2A into a management
 protocol.

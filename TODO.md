@@ -185,10 +185,11 @@ up shared active tasks, wait for a remote owner to publish cancellation, and
 safely take over an expired owner lease; terminal snapshots are replayed through
 read-only SDK events so a second handler does not write duplicate task history.
 Process-boundary PostgreSQL acceptance covers task creation, lookup, remote
-cancellation, and crash/lease-expiry recovery. Independent PostgreSQL-worker
-acceptance also covers durable relay takeover fencing, late-event rejection,
-ordered terminal delivery, and cursor replay. Public multi-process streaming
-route integration remains open; owner loss is fail-closed by default.
+  cancellation, and crash/lease-expiry recovery. Independent PostgreSQL-worker
+  acceptance also covers durable relay takeover fencing, late-event rejection,
+  ordered terminal delivery, and cursor replay. The explicit stream-handler
+  route adapter is covered, while normal-runtime public multi-process streaming
+  enablement remains open; owner loss is fail-closed by default.
 
 - [x] Fence SDK task mutations and add explicit owner-loss handling. The
   database adapter rejects missing, expired, or superseded fences without
@@ -214,9 +215,11 @@ route integration remains open; owner loss is fail-closed by default.
 - [x] Implement the explicit, default-disabled `OsaA2aRequestHandler` relay
   adapter and acceptance coverage for the SDK stream-handler surface; runtime
   capability advertisement remains disabled until the ADR is accepted.
-- [ ] Integrate the durable relay with public `SubscribeToTask` /
-  `message/stream` handler routes and enable the Agent Card capability only
-  after ADR-011 approval and route-level acceptance.
+- [x] Integrate the durable relay with public `SubscribeToTask` /
+  `message/stream` handler routes through the explicit, default-disabled
+  `OsaA2aRequestHandler` acceptance hook and add route-level coverage.
+- [ ] Approve ADR-011, then enable the durable stream capability in the normal
+  runtime and complete production multi-process route acceptance.
 - [x] Decide and implement the non-idempotent owner-loss/retry policy: an
   expired owner is fenced out, the durable task is finalized as failed with a
   stable owner-loss message, and the replacement never replays unknown
