@@ -1,6 +1,6 @@
 [project]
 name = "open-simple-agent"
-version = "0.1.1"
+version = "0.1.2"
 description = "A lightweight, configuration-driven platform for creating, running, managing, and discovering AI agents."
 requires-python = ">=3.12"
 license = "Apache-2.0"
