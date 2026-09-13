@@ -148,22 +148,6 @@ rather than replaying unknown side effects. Independent-worker PostgreSQL
 acceptance passes in CI for provider-side-effect serialization, expiry/takeover,
 late-result rejection, tenant isolation, and restart/reconciliation recovery.
 
-- [x] Decide that all mutating operations for one deployment serialize under
-  one key while read-only observations remain concurrent. Deploy creation uses
-  the agent key until a deployment ID exists; stop, restart, and rollback use
-  the deployment key.
-- [x] Implement migration-owned deployment-operation ownership with tenant and
-  resource scope, leases, fencing epochs, bounded takeover, and a stable
-  operation ID in migration 0010. PostgreSQL is shared; SQLite/in-memory is
-  process-local by design.
-- [x] Pass operation metadata to deployment providers and prevent stale
-  deploy/stop/restart/rollback workers from persisting durable state. The
-  Kubernetes provider records operation metadata in workload annotations;
-  provider-only `scale()` is not exposed through the Control Plane service yet.
-- [x] Add PostgreSQL acceptance with two independent workers covering command
-  serialization, cancellation/expiry, late results, tenant isolation, and
-  restart/reconciliation recovery.
-
 ## Enterprise identity lifecycle — PARTIALLY COMPLETE
 
 Claim-driven lifecycle semantics, OIDC/JWKS validation, RFC 7662 opaque-token
@@ -196,40 +180,8 @@ Process-boundary PostgreSQL acceptance covers task creation, lookup, remote
   route adapter is covered, while normal-runtime public multi-process streaming
   enablement remains open; owner loss is fail-closed by default.
 
-- [x] Fence SDK task mutations and add explicit owner-loss handling. The
-  database adapter rejects missing, expired, or superseded fences without
-  publishing a synthetic failure from the stale worker.
-- [x] Add PostgreSQL task-store/ownership acceptance for creation, completion,
-  failure, lookup, recovery, and tenant/caller isolation across two independent
-  ownership workers.
-- [x] Add independent-handler acceptance for shared active-task lookup,
-  remote cancellation waiting, and expired-owner cancellation takeover; the
-  SDK active-task registry remains local to each process.
-- [x] Complete the cross-replica cancellation request path: remote handlers
-  wait for the durable terminal task, expired owners can be fenced out and
-  cancellation can be finalized safely, and terminal snapshots replay without
-  a second durable write.
-- [x] Add process-boundary PostgreSQL acceptance for active-task creation,
-  shared lookup, remote cancellation, and crash/lease-expiry recovery; the SDK
-  active-task registry remains local to each process.
-- [x] Add a migration-owned event cursor and bounded polling relay foundation
-  with tenant-scoped reconnect cursors and terminal-event handling.
-- [x] Add multi-process/multi-worker PostgreSQL acceptance for durable relay
-  streaming, takeover fencing, late-event rejection, and cursor replay; the
-  SDK active-task registry remains local to each process.
-- [x] Implement the explicit, default-disabled `OsaA2aRequestHandler` relay
-  adapter and acceptance coverage for the SDK stream-handler surface; runtime
-  capability advertisement remains disabled until the ADR is accepted.
-- [x] Integrate the durable relay with public `SubscribeToTask` /
-  `message/stream` handler routes through the explicit, default-disabled
-  `OsaA2aRequestHandler` acceptance hook and add route-level coverage.
 - [ ] Approve ADR-011, then enable the durable stream capability in the normal
   runtime and complete production multi-process route acceptance.
-- [x] Decide and implement the non-idempotent owner-loss/retry policy: an
-  expired owner is fenced out, the durable task is finalized as failed with a
-  stable owner-loss message, and the replacement never replays unknown
-  model/tool side effects. Explicit idempotent replay remains a future opt-in
-  contract, not a default.
 
 ## Capability-level audit telemetry — COMPLETE
 
@@ -239,9 +191,6 @@ implemented for a single process. An optional migration-owned PostgreSQL sink
 provides replica-wide durable events with stable IDs, tenant/operation
 metadata, deterministic ingestion ordering, deduplication, retention pruning,
 and explicit tenant deletion.
-
-- [x] Select and implement the shared PostgreSQL capability telemetry contract
-  with ordering, deduplication, and tenant-retention ownership.
 
 # P3 — Product surface and distribution
 
@@ -264,10 +213,6 @@ Lockstep validation, Python distributions, signed/attested GHCR and Docker Hub
 images, SBOMs, digest rollback automation, and public release `v0.1.4` exist.
 
 - [ ] Decide whether Python packages need PyPI or another registry.
-- [x] Perform the first automated public release (`v0.1.1`) after intentionally
-  selecting the version and moving its changelog entries out of `Unreleased`.
-- [x] Publish the lockstep `v0.1.4` release with GitHub artifacts, checksums,
-  GHCR images, and Docker Hub images.
 
 ---
 
