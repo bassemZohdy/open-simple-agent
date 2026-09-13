@@ -7,9 +7,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 > **Versioning note:** entries `0.1.0` through `0.14.0` record internal
 > development milestones; they are not published package releases. All package
 > manifests now share one lockstep release version, enforced by
-> `tests/unit/test_versioning.py`. The first public release is `v0.1.1`;
-> optional Python package-registry publication remains tracked in `TODO.md`
-> (P3.3).
+> `tests/unit/test_versioning.py`. The first public release was `v0.1.1` and
+> the current public release is `v0.1.2`; optional Python package-registry
+> publication remains tracked in `TODO.md` (P3.3).
 
 ## [Unreleased]
 
