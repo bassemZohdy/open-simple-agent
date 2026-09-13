@@ -12,7 +12,6 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 40
     env:
-      KUBECONFIG: ${{ runner.temp }}/osa-openshift-kubeconfig
       OSA_OPENSHIFT_ACCEPTANCE_IMAGE: ${{ vars.OSA_OPENSHIFT_ACCEPTANCE_IMAGE }}
       OSA_OPENSHIFT_ACCEPTANCE: "1"
     steps:
@@ -36,11 +35,13 @@ jobs:
       - name: Configure selected cluster context
         if: ${{ steps.opt_in.outputs.enabled == 'true' }}
         env:
+          KUBECONFIG: ${{ runner.temp }}/osa-openshift-kubeconfig
           OSA_OPENSHIFT_KUBECONFIG: ${{ secrets.OSA_OPENSHIFT_KUBECONFIG }}
         run: |
           set -euo pipefail
           umask 077
           printf '%s' "$OSA_OPENSHIFT_KUBECONFIG" > "$KUBECONFIG"
+          echo "KUBECONFIG=$KUBECONFIG" >> "$GITHUB_ENV"
           oc whoami
           oc version --client
       - uses: astral-sh/setup-uv@v10.0.1
