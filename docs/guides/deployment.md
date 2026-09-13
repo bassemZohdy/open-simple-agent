@@ -39,7 +39,7 @@ Environment variables:
 | `OSA_CAPABILITY_TELEMETRY_RETENTION_DAYS` | Shared capability event retention window; default 30 days |
 | `OSA_CAPABILITY_TELEMETRY_PATH` | Bounded process-local JSONL capability sink |
 | `OSA_RATE_LIMIT_DATABASE_URL` | PostgreSQL DSN for replica-safe route/caller rate-limit windows; unset keeps the process-local limiter |
-| `OSA_PERSISTENCE_POLICY` | `local` (default) or `shared`; shared requires PostgreSQL for enabled state and Kubernetes for the durable Control Plane |
+| `OSA_PERSISTENCE_POLICY` | `local` (default) or `shared`; shared requires PostgreSQL for enabled state and Kubernetes or OpenShift for the durable Control Plane |
 | `OSA_MEMORY_DATABASE_URL` | PostgreSQL DSN for shared memory, or file-backed `sqlite+aiosqlite:///...` for local memory (optional; in-memory without it) |
 | `OSA_AUTH_*` | Bearer/OIDC validation for inbound calls (see the security guide) |
 | `OSA_LOG_FORMAT=json` | Structured JSON logs |
