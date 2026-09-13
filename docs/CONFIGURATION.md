@@ -661,28 +661,40 @@ wire-model field names, and the Streamable HTTP client. The checked-in lock is
 authoritative for normal installs; CI also runs the MCP protocol and ADK Runner
 suites against representative versions of both supported majors.
 
-- **Transports:** `stdio` (uses `command`/`args`/`env`) and
-  `streamable_http` (uses `endpoint`). Legacy `sse` is not supported at
-  runtime and fails with `mcp_transport_not_supported`.
+- **Transports:** `stdio` (uses `command`/`args`/`env`),
+  `streamable_http` (uses `endpoint`), and explicitly selected legacy `sse`
+  (also uses `endpoint`). All HTTP transports validate the endpoint through
+  the outbound URL/DNS/redirect policy; SSE is retained for compatibility but
+  new deployments should prefer `streamable_http`.
 - **Credentials:** `credential` resolves through the shared outbound adapter
   at connect time; API-key and OAuth2 credentials are sent as configured HTTP
   headers, and mTLS supplies the client certificate/key and optional CA bundle.
   For stdio, API-key/OAuth2 credentials can be injected into an explicitly
   configured environment variable. The legacy `credential_ref` shorthand
   retains its bearer/stdio behavior. Values are never stored or logged.
-- **Options:** `timeout_seconds` bounds connection and call attempts;
+- **Options:** `timeout_seconds` bounds connection and request attempts;
   `max_retries`/`retry_delay_seconds` bound transient failures;
   `tls_verify` disables certificate verification for HTTP servers;
-  `max_response_bytes` caps tool results (excess raises
-  `mcp_response_too_large`).
+  `max_response_bytes` caps tool, resource, and prompt payloads (excess raises
+  `mcp_response_too_large`); `max_discovery_items` caps paginated resource and
+  prompt discovery.
 - **Filtering and namespacing:** the server definition's `tools_filter` and
   the agent reference's `tools_filter` intersect; tools are exposed as
-  `<server>_<tool>` with origin metadata preserved.
+  `<server>_<tool>` with origin metadata preserved. `resources_filter` and
+  `prompts_filter` constrain the application-controlled
+  `list_resources`/`read_resource` and `list_prompts`/`get_prompt` operations
+  by resource name/URI or prompt name.
+- **Resources and prompts:** `McpConnection.list_resources()` and
+  `read_resource(uri)` return normalized metadata/content models;
+  `list_prompts()` and `get_prompt(name, arguments)` return normalized prompt
+  metadata/messages. These are application-controlled operations and are not
+  automatically injected into the model's ADK tool list.
 - **Failures are deterministic:** a server that cannot connect, authorize,
   answer in time, or stay within limits produces stable OSA errors
-  (`mcp_connection_failed`, `mcp_tool_failed`, `mcp_response_too_large`) —
-  the invocation fails with a clear message rather than silently losing the
-  tools.
+  (`mcp_connection_failed`, `mcp_tool_failed`, `mcp_resource_failed`,
+  `mcp_prompt_failed`, `mcp_response_too_large`) — the operation fails with a
+  clear message rather than silently losing the tools or returning unbounded
+  content.
 
 ## Precedence
 

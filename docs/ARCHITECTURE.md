@@ -165,18 +165,22 @@ function calling — the earlier `TOOL_CALL` text protocol is gone.
 
 ## MCP runtime
 
-`osa.runtimes.adk.mcp_client` connects to MCP servers over stdio or Streamable
-HTTP (legacy SSE is rejected) using the official `mcp` SDK (ADR-002).
-Connections are lazy, pooled per runtime (agents sharing a server share one
-connection), owned by a keeper task so anyio cancel scopes are entered and
-exited in one task, and closed on runtime shutdown. Server-level and
-agent-level tool filters intersect; tools are namespaced `<server>_<tool>`
-with origin metadata preserved and are resolved by ADK per invocation through
-`OsaMcpToolset`. `GenericAdkAgent` pre-flights every MCP connection before a
-run — ADK resolves toolsets fail-open (a dead server silently loses its
-tools), which OSA replaces with a deterministic `mcp_connection_failed`
-failure. Retries, timeouts, TLS verification, response-size caps, and
-credential resolution (never storing values) follow `McpDefinition`.
+`osa.runtimes.adk.mcp_client` connects to MCP servers over stdio, Streamable
+HTTP, or explicitly selected legacy SSE using the official `mcp` SDK
+(ADR-002). Connections are lazy, pooled per runtime (agents sharing a server
+share one connection), owned by a keeper task so anyio cancel scopes are
+entered and exited in one task, and closed on runtime shutdown. Server-level
+and agent-level tool filters intersect; tools are namespaced
+`<server>_<tool>` with origin metadata preserved and are resolved by ADK per
+invocation through `OsaMcpToolset`. Application callers can use the same
+connection to discover filtered resources/prompts and read or resolve them;
+resource and prompt payloads are normalized to OSA models and bounded by the
+configured discovery/response limits. `GenericAdkAgent` pre-flights every MCP
+connection before a run — ADK resolves toolsets fail-open (a dead server
+silently loses its tools), which OSA replaces with a deterministic
+`mcp_connection_failed` failure. Retries, timeouts, TLS verification,
+response-size caps, and credential resolution (never storing values) follow
+`McpDefinition`.
 
 ## Sessions and memory
 

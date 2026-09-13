@@ -1,4 +1,4 @@
-# ADR-002: MCP runtime client — official Python SDK, stdio + Streamable HTTP
+# ADR-002: MCP runtime client — official Python SDK and explicit transports
 
 ## Status
 
@@ -34,11 +34,11 @@ catalog/schema types (`osa.generic_agent.mcp`).
 ## Considered options
 
 1. **Official MCP Python SDK (`mcp`)** — maintained alongside the
-   specification; ships stdio and Streamable HTTP clients plus a server
-   implementation usable for deterministic tests.
+   specification; ships stdio, Streamable HTTP, and legacy SSE clients plus a
+   server implementation usable for deterministic tests.
 2. **ADK's `MCPToolset`** — would offload bridging, but hides connection
    lifecycle, limits, and credential resolution that OSA must own, and
-   couples OSA tests to ADK's MCP layer.
+  couples OSA tests to ADK's MCP layer.
 3. **Hand-rolled JSON-RPC transports** — full control, unacceptable
    maintenance cost.
 
@@ -51,10 +51,10 @@ catalog/schema types (`osa.generic_agent.mcp`).
   versions; SDK majors 1.x and 2.x are the current compatibility boundary.
   Both majors are exercised by CI, and a future major requires a compatibility
   port and an ADR revision.
-- **Transports:** `stdio` (subprocess) and `streamable_http` (the current
-  MCP standard). **Legacy `sse` is not supported at runtime** — definitions
-  remain schema-valid, but the client rejects them with a deterministic
-  error directing users to `streamable_http`.
+- **Transports:** `stdio` (subprocess), `streamable_http` (the current MCP
+  standard), and explicitly selected legacy `sse`. SSE remains available for
+  compatibility, but new deployments should migrate to Streamable HTTP; all
+  HTTP transports use OSA's endpoint validation and disabled-redirect policy.
 - Connection lifecycle is owned by OSA (`osa.runtimes.adk.mcp_client`):
   lazy connection on first use, per-server connection pool shared across an
   agent runtime, bounded retries (`max_retries`, `retry_delay_seconds`),
@@ -69,6 +69,11 @@ catalog/schema types (`osa.generic_agent.mcp`).
   `<server>_<tool>` (sanitized ADK identifiers), and bridged to ADK as
   function tools whose declarations come from the MCP `inputSchema`.
   Origin metadata (server name, original tool name) is preserved.
+- Application callers can discover and retrieve server resources and prompts
+  through the same pooled connection. OSA normalizes metadata, text/blob
+  resource content, and prompt messages, applies server-level filters, and
+  bounds discovery and response payloads. These operations are not silently
+  injected into the model tool list.
 
 ## Consequences
 
@@ -84,7 +89,9 @@ catalog/schema types (`osa.generic_agent.mcp`).
 
 - One more dependency surface (`mcp` SDK majors may introduce protocol
   changes) — mitigated by the normalized client boundary and dual-major CI.
-- Legacy SSE deployments need migration to Streamable HTTP.
+- Legacy SSE remains a compatibility path; operators should prefer Streamable
+  HTTP for new deployments and plan migration when the upstream server supports
+  it.
 
 ## MCP 2.x compatibility assessment — 2026-09-12
 
@@ -100,9 +107,9 @@ extra, whose metadata remains v1-only.
 
 - Protocol-level integration tests run a deterministic stdio MCP server
   (`tests/mcp_fixtures/echo_server.py`) covering discovery, filtering,
-  invocation, timeouts, oversized responses, and connection failures; a
-  localhost Streamable HTTP server covers HTTP transport and 401 auth
-  failures.
+  invocation, resources, prompts, timeouts, oversized responses, and
+  connection failures; localhost Streamable HTTP and legacy SSE servers cover
+  HTTP transports and 401/auth behavior.
 - Acceptance (P1.3): a configured agent discovers and invokes a
   filtered MCP tool through the ADK Runner; timeout/auth/oversize/disconnect
   failures are deterministic errors surfaced to the model or caller. This is
@@ -113,5 +120,6 @@ extra, whose metadata remains v1-only.
 - [x] Review the MCP 2.x release and record the compatibility assessment above.
 - [x] Port OSA to MCP 2.x, validate the supported google-adk combination, and
       widen the dependency pin with dual-major CI coverage.
-- [ ] Consider resource/prompt exposure (list_resources, prompts) once a
-      concrete requirement exists.
+- [x] Add application-controlled resource/prompt discovery and retrieval with
+      bounded normalized payloads, and support legacy SSE through the same
+      official-SDK connection boundary.

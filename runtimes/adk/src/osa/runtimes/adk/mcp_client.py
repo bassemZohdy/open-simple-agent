@@ -2,16 +2,17 @@
 
 Implements the OSA MCP runtime policy on top of the official `mcp` SDK
 (ADR-002): lazy connections from `McpDefinition` settings, a per-server
-connection pool shared across a runtime, stdio and Streamable HTTP
-transports (legacy SSE is rejected), bounded retries, response-size caps,
-credential resolution through the `SecretResolver` contract, tool filtering,
-namespacing, and origin metadata.
+connection pool shared across a runtime, stdio, Streamable HTTP, and
+explicitly selected legacy SSE transports, bounded retries, response-size
+caps, credential resolution through the `SecretResolver` contract,
+tool/resource/prompt filtering, namespacing, and origin metadata.
 """
 
 from __future__ import annotations
 
 import asyncio
 import contextlib
+import json
 import logging
 import re
 from contextlib import AsyncExitStack
@@ -22,12 +23,18 @@ from typing import Any
 
 import mcp.types as mcp_types
 from mcp import ClientSession, StdioServerParameters
+from mcp.client.sse import sse_client
 from mcp.client.stdio import stdio_client
 from mcp.client.streamable_http import streamable_http_client
 
 from osa.generic_agent import (
     CredentialResolutionError,
     McpDefinition,
+    McpPromptMessage,
+    McpPromptMetadata,
+    McpPromptResult,
+    McpResourceContent,
+    McpResourceMetadata,
     Observability,
     ResolvedOutboundCredential,
     SecretError,
@@ -38,6 +45,9 @@ from osa.generic_agent import (
 )
 from osa.generic_agent.errors import (
     McpConnectionError,
+    McpError,
+    McpPromptError,
+    McpResourceError,
     McpResponseTooLargeError,
     McpToolExecutionError,
     McpTransportNotSupportedError,
@@ -45,7 +55,7 @@ from osa.generic_agent.errors import (
 
 logger = logging.getLogger(__name__)
 
-SUPPORTED_TRANSPORTS = ("stdio", "streamable_http")
+SUPPORTED_TRANSPORTS = ("stdio", "streamable_http", "sse")
 _HTTP_HEADERS_KEY = "Authorization"
 
 
@@ -69,6 +79,19 @@ def _read_model_field(model: Any, *names: str) -> Any:
         if value is not None:
             return value
     return None
+
+
+def _model_dump(model: Any) -> dict[str, Any]:
+    """Serialize one MCP SDK model without depending on its major version."""
+    if isinstance(model, dict):
+        return dict(model)
+    dump = getattr(model, "model_dump", None)
+    if callable(dump):
+        return dict(dump(mode="json", by_alias=True, exclude_none=True))
+    legacy_dump = getattr(model, "dict", None)
+    if callable(legacy_dump):
+        return dict(legacy_dump(by_alias=True, exclude_none=True))
+    raise TypeError(f"unsupported MCP model type: {type(model).__name__}")
 
 
 def _read_timeout_value(seconds: float) -> Any:
@@ -203,6 +226,32 @@ class McpConnection:
             trust_env=outbound_trust_env(),
         )
 
+    def _sse_httpx_client_factory(self, material: ResolvedOutboundCredential) -> Any:
+        """Build the legacy SSE client's HTTP client without enabling redirects."""
+        httpx = _mcp_httpx()
+        options = self._definition.connection_options
+        verify: str | bool = options.tls_verify
+        if options.tls_verify and material.verify is not None:
+            verify = material.verify
+
+        def factory(*, headers: dict[str, Any] | None = None, timeout: Any = None, auth: Any = None) -> Any:
+            merged_headers = dict(material.headers)
+            if headers:
+                merged_headers.update(headers)
+            client_options: dict[str, Any] = {
+                "verify": verify,
+                "cert": material.cert,
+                "headers": merged_headers,
+                "timeout": timeout if timeout is not None else httpx.Timeout(options.timeout_seconds),
+                "follow_redirects": False,
+                "trust_env": outbound_trust_env(),
+            }
+            if auth is not None:
+                client_options["auth"] = auth
+            return httpx.AsyncClient(**client_options)
+
+        return factory
+
     async def _enter_streams(self, stack: Any) -> tuple[Any, Any]:
         definition = self._definition
         if definition.transport == "stdio":
@@ -228,6 +277,24 @@ class McpConnection:
                     url=endpoint,
                     http_client=http_client,
                     terminate_on_close=True,
+                )
+            )
+            return transport_stack[0], transport_stack[1]
+        if definition.transport == "sse":
+            if not definition.endpoint:
+                raise McpConnectionError(self.name, "sse transport requires 'endpoint'")
+            try:
+                endpoint = validate_outbound_url(definition.endpoint, purpose=f"MCP server '{self.name}' endpoint")
+            except ValueError as exc:
+                raise McpConnectionError(self.name, str(exc)) from exc
+            material = await self._resolve_credentials()
+            transport_stack = await stack.enter_async_context(
+                sse_client(
+                    url=endpoint,
+                    headers=material.headers or None,
+                    timeout=definition.connection_options.timeout_seconds,
+                    sse_read_timeout=definition.connection_options.timeout_seconds,
+                    httpx_client_factory=self._sse_httpx_client_factory(material),
                 )
             )
             return transport_stack[0], transport_stack[1]
@@ -345,6 +412,191 @@ class McpConnection:
                 )
             )
         return handles
+
+    async def _list_page(self, method_name: str, cursor: str | None, error_type: Any) -> Any:
+        """Request one paginated discovery page across MCP SDK majors."""
+        session: Any = await self.connect()
+        method = getattr(session, method_name)
+        try:
+            async with self._observability.span("mcp.discovery", labels={"server": self.name}):
+                if _MCP_SDK_MAJOR >= 2:
+                    params = mcp_types.PaginatedRequestParams(cursor=cursor) if cursor is not None else None
+                    return await asyncio.wait_for(
+                        method(params=params),
+                        timeout=self._definition.connection_options.timeout_seconds,
+                    )
+                return await asyncio.wait_for(
+                    method(cursor=cursor),
+                    timeout=self._definition.connection_options.timeout_seconds,
+                )
+        except McpError:
+            raise
+        except Exception as exc:
+            raise error_type(self.name, method_name, f"request failed: {exc}", cause=exc) from exc
+
+    async def _request(self, operation: str, request_factory: Any, error_type: Any) -> Any:
+        """Run one bounded MCP request and normalize protocol failures."""
+        try:
+            async with self._observability.span("mcp.request", labels={"server": self.name, "operation": operation}):
+                return await asyncio.wait_for(
+                    request_factory(),
+                    timeout=self._definition.connection_options.timeout_seconds,
+                )
+        except McpError:
+            raise
+        except Exception as exc:
+            raise error_type(self.name, operation, f"request failed: {exc}", cause=exc) from exc
+
+    def _ensure_response_size(self, operation: str, payload: Any) -> None:
+        """Apply the configured response cap to application-controlled payloads."""
+        limit = self._definition.connection_options.max_response_bytes
+        if limit is None:
+            return
+        size_bytes = len(json.dumps(payload, ensure_ascii=False, default=str, separators=(",", ":")).encode("utf-8"))
+        if size_bytes > limit:
+            operation_kind = "resource" if "resource" in operation else "prompt" if "prompt" in operation else "tool"
+            raise McpResponseTooLargeError(self.name, operation, size_bytes, limit, operation_kind=operation_kind)
+
+    async def list_resources(self) -> list[McpResourceMetadata]:
+        """Discover filtered MCP resources for application-controlled use."""
+        resources: list[McpResourceMetadata] = []
+        cursor: str | None = None
+        seen_cursors: set[str] = set()
+        discovered_count = 0
+        allowed = set(self._definition.resources_filter) if self._definition.resources_filter else None
+        limit = self._definition.connection_options.max_discovery_items
+        while True:
+            result = await self._list_page("list_resources", cursor, McpResourceError)
+            page = _read_model_field(result, "resources") or []
+            discovered_count += len(page)
+            if discovered_count > limit:
+                raise McpResourceError(
+                    self.name,
+                    "list_resources",
+                    f"discovery exceeded the {limit}-item limit",
+                )
+            for resource in page:
+                resource_name = str(_read_model_field(resource, "name") or "")
+                uri = str(_read_model_field(resource, "uri") or "")
+                if allowed is not None and resource_name not in allowed and uri not in allowed:
+                    continue
+                resources.append(
+                    McpResourceMetadata(
+                        uri=uri,
+                        name=resource_name,
+                        description=str(_read_model_field(resource, "description") or ""),
+                        mime_type=_read_model_field(resource, "mimeType", "mime_type"),
+                        mcp_name=resource_name,
+                    )
+                )
+            cursor = _read_model_field(result, "nextCursor", "next_cursor")
+            if not cursor:
+                break
+            if cursor in seen_cursors:
+                raise McpResourceError(self.name, "list_resources", "server returned a repeated pagination cursor")
+            seen_cursors.add(cursor)
+        self._ensure_response_size("list_resources", [resource.model_dump(mode="json") for resource in resources])
+        return resources
+
+    async def read_resource(self, uri: str) -> list[McpResourceContent]:
+        """Read one MCP resource with a bounded, stable OSA payload."""
+        session: Any = await self.connect()
+        result = await self._request(
+            "read_resource",
+            lambda: session.read_resource(uri),
+            McpResourceError,
+        )
+        raw_contents = _read_model_field(result, "contents")
+        if not isinstance(raw_contents, list):
+            raise McpResourceError(self.name, "read_resource", "server returned no resource contents")
+        contents: list[McpResourceContent] = []
+        try:
+            for content in raw_contents:
+                text = _read_model_field(content, "text")
+                blob = _read_model_field(content, "blob")
+                contents.append(
+                    McpResourceContent(
+                        uri=str(_read_model_field(content, "uri") or uri),
+                        mime_type=_read_model_field(content, "mimeType", "mime_type"),
+                        text=text if isinstance(text, str) else None,
+                        blob=blob if isinstance(blob, str) else None,
+                    )
+                )
+        except (TypeError, ValueError) as exc:
+            raise McpResourceError(self.name, "read_resource", f"invalid resource contents: {exc}", cause=exc) from exc
+        self._ensure_response_size("read_resource", [content.model_dump(mode="json") for content in contents])
+        return contents
+
+    async def list_prompts(self) -> list[McpPromptMetadata]:
+        """Discover filtered MCP prompts for application-controlled use."""
+        prompts: list[McpPromptMetadata] = []
+        cursor: str | None = None
+        seen_cursors: set[str] = set()
+        discovered_count = 0
+        allowed = set(self._definition.prompts_filter) if self._definition.prompts_filter else None
+        limit = self._definition.connection_options.max_discovery_items
+        while True:
+            result = await self._list_page("list_prompts", cursor, McpPromptError)
+            page = _read_model_field(result, "prompts") or []
+            discovered_count += len(page)
+            if discovered_count > limit:
+                raise McpPromptError(
+                    self.name,
+                    "list_prompts",
+                    f"discovery exceeded the {limit}-item limit",
+                )
+            for prompt in page:
+                prompt_name = str(_read_model_field(prompt, "name") or "")
+                if allowed is not None and prompt_name not in allowed:
+                    continue
+                arguments = [_model_dump(argument) for argument in (_read_model_field(prompt, "arguments") or [])]
+                prompts.append(
+                    McpPromptMetadata(
+                        name=prompt_name,
+                        description=str(_read_model_field(prompt, "description") or ""),
+                        arguments=arguments,
+                        mcp_name=prompt_name,
+                    )
+                )
+            cursor = _read_model_field(result, "nextCursor", "next_cursor")
+            if not cursor:
+                break
+            if cursor in seen_cursors:
+                raise McpPromptError(self.name, "list_prompts", "server returned a repeated pagination cursor")
+            seen_cursors.add(cursor)
+        self._ensure_response_size("list_prompts", [prompt.model_dump(mode="json") for prompt in prompts])
+        return prompts
+
+    async def get_prompt(self, name: str, arguments: dict[str, str] | None = None) -> McpPromptResult:
+        """Resolve one MCP prompt with original content fields preserved."""
+        allowed = set(self._definition.prompts_filter) if self._definition.prompts_filter else None
+        if allowed is not None and name not in allowed:
+            raise McpPromptError(self.name, "get_prompt", f"prompt '{name}' is not allowed by the server filter")
+        session = await self.connect()
+        result = await self._request(
+            "get_prompt",
+            lambda: session.get_prompt(name, arguments or None),
+            McpPromptError,
+        )
+        raw_messages = _read_model_field(result, "messages")
+        if not isinstance(raw_messages, list):
+            raise McpPromptError(self.name, "get_prompt", "server returned no prompt messages")
+        try:
+            messages = [
+                McpPromptMessage(
+                    role=str(_read_model_field(message, "role") or ""),
+                    content=_model_dump(_read_model_field(message, "content")),
+                )
+                for message in raw_messages
+            ]
+            prompt = McpPromptResult(
+                description=str(_read_model_field(result, "description") or ""),
+                messages=messages,
+            )
+        except (TypeError, ValueError) as exc:
+            raise McpPromptError(self.name, "get_prompt", f"invalid prompt result: {exc}", cause=exc) from exc
+        self._ensure_response_size("get_prompt", prompt.model_dump(mode="json"))
+        return prompt
 
     async def call_tool(self, handle_server_tool_name: str, arguments: dict[str, Any]) -> dict[str, Any]:
         """Invoke a tool with retries and a bounded response.

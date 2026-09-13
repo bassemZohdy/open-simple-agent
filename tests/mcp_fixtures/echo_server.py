@@ -63,5 +63,19 @@ def big_text() -> str:
     return "x" * 10_000
 
 
+@mcp.resource(  # type: ignore[untyped-decorator]
+    "test://greeting", name="greeting", description="A deterministic greeting resource", mime_type="text/plain"
+)
+def greeting_resource() -> str:
+    """Return a small deterministic text resource."""
+    return "hello from an MCP resource"
+
+
+@mcp.prompt(name="explain")  # type: ignore[untyped-decorator]
+def explain_prompt(topic: str) -> list[dict[str, Any]]:
+    """Return a deterministic prompt message for a topic."""
+    return [{"role": "user", "content": {"type": "text", "text": f"Explain {topic}."}}]
+
+
 if __name__ == "__main__":
     mcp.run(transport="stdio")

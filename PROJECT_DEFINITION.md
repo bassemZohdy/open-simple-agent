@@ -151,8 +151,9 @@ prompts. The MCP Catalog stores connection definitions. The runtime owns
 connection lifecycle, discovery, filtering, invocation, limits, and errors.
 The current runtime supports the official MCP SDK 1.x and 2.x compatibility
 lines through a normalized OSA client boundary. Deterministic protocol and ADK
-Runner validation run against both major lines; resources/prompts exposure and
-legacy SSE remain deferred in `TODO.md` and ADR-002.
+Runner validation run against both major lines. Application-controlled
+resource/prompt discovery and retrieval and explicitly selected legacy SSE are
+implemented for the ADK runtime; LangGraph MCP integration remains deferred.
 
 ### Skills
 

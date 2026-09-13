@@ -26,6 +26,7 @@ class McpConnectionOptions(StrictModel):
     retry_delay_seconds: float = Field(default=1.0, ge=0)
     tls_verify: bool = True
     max_response_bytes: int | None = Field(default=None, gt=0)
+    max_discovery_items: int = Field(default=1000, gt=0, le=10000)
 
 
 class McpDefinition(StrictModel):
@@ -44,6 +45,8 @@ class McpDefinition(StrictModel):
     credential_ref: SecretReference | None = None
     connection_options: McpConnectionOptions = Field(default_factory=McpConnectionOptions)
     tools_filter: list[str] = Field(default_factory=list)
+    resources_filter: list[str] = Field(default_factory=list)
+    prompts_filter: list[str] = Field(default_factory=list)
     enabled: bool = True
 
     @model_validator(mode="after")
@@ -72,6 +75,21 @@ class McpResourceMetadata(StrictModel):
     mcp_name: str = ""
 
 
+class McpResourceContent(StrictModel):
+    """One bounded text or base64-encoded MCP resource payload."""
+
+    uri: str
+    mime_type: str | None = None
+    text: str | None = None
+    blob: str | None = None
+
+    @model_validator(mode="after")
+    def _validate_one_content_kind(self) -> McpResourceContent:
+        if (self.text is None) == (self.blob is None):
+            raise ValueError("MCP resource content must contain exactly one of text or blob")
+        return self
+
+
 class McpPromptMetadata(StrictModel):
     """Metadata about a prompt exposed by an MCP server."""
 
@@ -79,6 +97,20 @@ class McpPromptMetadata(StrictModel):
     description: str = ""
     arguments: list[dict[str, Any]] = Field(default_factory=list)
     mcp_name: str = ""
+
+
+class McpPromptMessage(StrictModel):
+    """A prompt message with the original MCP content object preserved."""
+
+    role: str
+    content: dict[str, Any]
+
+
+class McpPromptResult(StrictModel):
+    """A resolved MCP prompt returned to an application caller."""
+
+    description: str = ""
+    messages: list[McpPromptMessage] = Field(default_factory=list)
 
 
 class McpCatalog:

@@ -1,6 +1,6 @@
 [project]
 name = "osa-adk-runtime"
-version = "0.1.2"
+version = "0.1.3"
 description = "Open Simple Agent ADK runtime implementation."
 requires-python = ">=3.12"
 license = "Apache-2.0"

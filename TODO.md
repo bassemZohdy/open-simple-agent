@@ -18,8 +18,10 @@ English/Arabic Control Panel locale coverage are implemented and covered by
 tests/CI.
 
 The MCP runtime supports the official SDK 1.x and 2.x compatibility lines;
-dual-major protocol and ADK Runner coverage runs in CI. Resource/prompt
-exposure and legacy SSE remain intentionally deferred.
+dual-major protocol and ADK Runner coverage runs in CI. Application-controlled
+resource/prompt discovery and retrieval, bounded normalized payloads, and
+explicit legacy SSE compatibility are implemented. LangGraph MCP integration
+remains deferred.
 
 Persistence selection is externalized per subsystem. PostgreSQL is the shared,
 durable provider; Control Plane, memory, and durable sessions also have
@@ -27,7 +29,7 @@ explicit file-backed SQLite providers for local single-process use. An unset
 DSN uses only the subsystem's documented process-local default, and a
 configured DSN is authoritative and fail-closed. `OSA_PERSISTENCE_POLICY=shared`
 rejects process-local and SQLite state for enabled surfaces and requires the
-shared PostgreSQL/Kubernetes posture.
+shared PostgreSQL/Kubernetes-or-OpenShift posture.
 
 Production-readiness limits are:
 
@@ -271,7 +273,6 @@ images, SBOMs, digest rollback automation, and public release `v0.1.2` exist.
 
 # Deferred until a concrete requirement
 
-- [ ] MCP resources/prompts exposure and legacy SSE transport support.
 - [ ] Configurable custom model-adapter registration after a second production
   adapter is required.
 - [ ] Complete the bounded LangGraph contract/security/durability POC; see

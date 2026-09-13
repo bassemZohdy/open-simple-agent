@@ -119,13 +119,22 @@ class McpResponseTooLargeError(McpError):
 
     code = "mcp_response_too_large"
 
-    def __init__(self, server_name: str, tool_name: str, size_bytes: int, limit_bytes: int) -> None:
+    def __init__(
+        self,
+        server_name: str,
+        tool_name: str,
+        size_bytes: int,
+        limit_bytes: int,
+        operation_kind: str = "tool",
+    ) -> None:
         self.server_name = server_name
         self.tool_name = tool_name
+        self.operation = tool_name
+        self.operation_kind = operation_kind
         self.size_bytes = size_bytes
         self.limit_bytes = limit_bytes
         super().__init__(
-            f"MCP server '{server_name}' tool '{tool_name}' returned {size_bytes} bytes, "
+            f"MCP server '{server_name}' {operation_kind} '{tool_name}' returned {size_bytes} bytes, "
             f"exceeding the {limit_bytes}-byte limit"
         )
 
@@ -140,3 +149,27 @@ class McpToolExecutionError(McpError):
         self.tool_name = tool_name
         self.cause = cause
         super().__init__(f"MCP server '{server_name}' tool '{tool_name}': {message}")
+
+
+class McpResourceError(McpError):
+    """An MCP resource could not be discovered or read."""
+
+    code = "mcp_resource_failed"
+
+    def __init__(self, server_name: str, operation: str, message: str, cause: Exception | None = None) -> None:
+        self.server_name = server_name
+        self.operation = operation
+        self.cause = cause
+        super().__init__(f"MCP server '{server_name}' resource operation '{operation}': {message}")
+
+
+class McpPromptError(McpError):
+    """An MCP prompt could not be discovered or resolved."""
+
+    code = "mcp_prompt_failed"
+
+    def __init__(self, server_name: str, operation: str, message: str, cause: Exception | None = None) -> None:
+        self.server_name = server_name
+        self.operation = operation
+        self.cause = cause
+        super().__init__(f"MCP server '{server_name}' prompt operation '{operation}': {message}")

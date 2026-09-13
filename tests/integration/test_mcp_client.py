@@ -25,9 +25,9 @@ from osa.generic_agent import (
 )
 from osa.generic_agent.errors import (
     McpConnectionError,
+    McpPromptError,
     McpResponseTooLargeError,
     McpToolExecutionError,
-    McpTransportNotSupportedError,
 )
 from osa.runtimes.adk import McpConnection, McpConnectionPool, namespaced_tool_name
 
@@ -129,12 +129,13 @@ class TestStdioProtocol:
         with pytest.raises(McpConnectionError, match="connection failed after retries"):
             await connection.list_tools()
 
-    async def test_legacy_sse_rejected(self) -> None:
+    async def test_legacy_sse_connection_failure_is_deterministic(self) -> None:
         connection = McpConnection(
             McpDefinition(name="legacy", transport=McpTransport.SSE, endpoint="http://127.0.0.1:1/sse")
         )
-        with pytest.raises(McpTransportNotSupportedError, match="streamable_http"):
+        with pytest.raises(McpConnectionError, match="connection failed"):
             await connection.list_tools()
+        await connection.close()
 
     async def test_pool_shares_connections_by_server(self) -> None:
         pool = McpConnectionPool()
@@ -146,6 +147,47 @@ class TestStdioProtocol:
             assert handles
         finally:
             await pool.close()
+
+    async def test_resources_and_prompts_are_discovered_and_resolved(self) -> None:
+        connection = McpConnection(_stdio_definition())
+        try:
+            resources = await connection.list_resources()
+            assert len(resources) == 1
+            assert resources[0].uri == "test://greeting"
+            assert resources[0].name == "greeting"
+
+            contents = await connection.read_resource("test://greeting")
+            assert [content.text for content in contents] == ["hello from an MCP resource"]
+
+            prompts = await connection.list_prompts()
+            assert [prompt.name for prompt in prompts] == ["explain"]
+            assert prompts[0].arguments[0]["name"] == "topic"
+
+            result = await connection.get_prompt("explain", {"topic": "MCP"})
+            assert result.messages[0].role == "user"
+            assert result.messages[0].content["text"] == "Explain MCP."
+        finally:
+            await connection.close()
+
+    async def test_resource_prompt_filters_and_response_caps_are_enforced(self) -> None:
+        connection = McpConnection(_stdio_definition(resources_filter=["greeting"], prompts_filter=["explain"]))
+        try:
+            assert [resource.name for resource in await connection.list_resources()] == ["greeting"]
+            with pytest.raises(McpPromptError, match="not allowed"):
+                await connection.get_prompt("other")
+        finally:
+            await connection.close()
+
+        bounded_connection = McpConnection(
+            _stdio_definition(
+                connection_options=McpConnectionOptions(timeout_seconds=20, max_retries=0, max_response_bytes=20)
+            )
+        )
+        try:
+            with pytest.raises(McpResponseTooLargeError, match="20-byte limit"):
+                await bounded_connection.read_resource("test://greeting")
+        finally:
+            await bounded_connection.close()
 
 
 class TestCredentialResolution:
@@ -315,5 +357,56 @@ class TestStreamableHttp:
         try:
             handles = await connection.list_tools()
             assert [handle.server_tool_name for handle in handles] == ["add"]
+        finally:
+            await connection.close()
+
+
+class TestLegacySse:
+    @staticmethod
+    def _free_port() -> int:
+        with socket.socket() as sock:
+            sock.bind(("127.0.0.1", 0))
+            return int(sock.getsockname()[1])
+
+    @staticmethod
+    def _wait_for_server(port: int) -> None:
+        for _ in range(100):
+            try:
+                with socket.create_connection(("127.0.0.1", port), timeout=0.1):
+                    return
+            except OSError:
+                time.sleep(0.01)
+        raise RuntimeError(f"localhost server on port {port} did not start")
+
+    @classmethod
+    def _serve(cls, port: int) -> None:
+        from importlib import import_module
+
+        import uvicorn
+
+        fixture = import_module("tests.mcp_fixtures.echo_server")
+        app = fixture.mcp.sse_app()
+        server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=port, log_level="error"))
+        thread = threading.Thread(target=server.run, daemon=True)
+        thread.start()
+        cls._wait_for_server(port)
+
+    async def test_legacy_sse_discovery_and_invocation(self) -> None:
+        port = self._free_port()
+        self._serve(port)
+        connection = McpConnection(
+            McpDefinition(
+                name="legacy-sse",
+                transport=McpTransport.SSE,
+                endpoint=f"http://127.0.0.1:{port}/sse",
+                connection_options=McpConnectionOptions(timeout_seconds=20, max_retries=0),
+            )
+        )
+        try:
+            handles = await connection.list_tools()
+            assert any(handle.server_tool_name == "add" for handle in handles)
+            result = await connection.call_tool("add", {"a": 4, "b": 5})
+            assert result == {"success": True, "output": "9", "error": None}
+            assert (await connection.read_resource("test://greeting"))[0].text == "hello from an MCP resource"
         finally:
             await connection.close()

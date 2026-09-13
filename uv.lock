@@ -2176,7 +2176,7 @@ wheels = [
 
 [[package]]
 name = "open-simple-agent"
-version = "0.1.2"
+version = "0.1.3"
 source = { virtual = "." }
 
 [package.dev-dependencies]
@@ -2388,7 +2388,7 @@ wheels = [
 
 [[package]]
 name = "osa-adk-runtime"
-version = "0.1.2"
+version = "0.1.3"
 source = { editable = "runtimes/adk" }
 dependencies = [
     { name = "google-adk" },
@@ -2430,7 +2430,7 @@ provides-extras = ["litellm", "postgres", "sqlite", "a2a"]
 
 [[package]]
 name = "osa-control-plane"
-version = "0.1.2"
+version = "0.1.3"
 source = { editable = "control-plane/backend" }
 dependencies = [
     { name = "fastapi" },
@@ -2468,7 +2468,7 @@ provides-extras = ["postgres", "sqlite", "runtime"]
 
 [[package]]
 name = "osa-generic-agent"
-version = "0.1.2"
+version = "0.1.3"
 source = { editable = "generic-agent" }
 dependencies = [
     { name = "httpx" },
@@ -2504,7 +2504,7 @@ provides-extras = ["a2a", "postgres"]
 
 [[package]]
 name = "osa-langgraph-runtime"
-version = "0.1.2"
+version = "0.1.3"
 source = { editable = "runtimes/langgraph" }
 dependencies = [
     { name = "langchain" },
