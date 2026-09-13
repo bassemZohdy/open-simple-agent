@@ -49,10 +49,11 @@ Production-readiness limits are:
   remote-handler cancellation waiting, expired-owner cancellation, read-only
   terminal replay, terminal-event drain-before-release, and fail-closed
   owner-loss handling are implemented. Migration-owned event-cursor storage is
-  provisioned as schema version 2 and a bounded cursor-relay foundation is
-  available; independent PostgreSQL workers now accept takeover fencing,
-  late-event rejection, ordered terminal delivery, and cursor replay. Public
-  multi-process streaming route acceptance remains incomplete; replica-wide
+  provisioned as schema version 2 and a bounded cursor-relay foundation plus an
+  explicit default-disabled SDK stream-handler adapter are available;
+  independent PostgreSQL workers now accept takeover fencing, late-event
+  rejection, ordered terminal delivery, and cursor replay. Public multi-process
+  streaming route acceptance remains incomplete; replica-wide
   capability telemetry now has an optional migration-owned PostgreSQL sink
   with deduplication, ordering, and tenant-retention controls;
   deployment-operation ownership now has a migration-owned PostgreSQL lease,

@@ -1,9 +1,10 @@
 """Durable, fenced A2A protocol-event storage.
 
 The A2A SDK owns the in-process event queues. This module provides the
-replica-shared append-only cursor that a future cross-process stream relay can
-read. Event writes run inside the ownership store's row-lock transaction, so a
-worker that loses its fencing epoch cannot publish a late event.
+replica-shared append-only cursor consumed by the explicitly gated
+cross-process stream relay. Event writes run inside the ownership store's
+row-lock transaction, so a worker that loses its fencing epoch cannot publish
+a late event.
 """
 
 from __future__ import annotations

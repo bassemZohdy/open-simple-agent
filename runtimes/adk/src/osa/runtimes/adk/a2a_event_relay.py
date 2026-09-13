@@ -1,10 +1,11 @@
 """Bounded polling relay for migration-owned A2A task events.
 
 The A2A SDK's queue manager remains process-local. This module provides the
-small cross-process primitive needed by a future request-handler adapter:
-read durable events after a caller cursor, preserve tenant scope, and stop at
-one durable terminal event. It deliberately does not attach a route or enable
-streaming in the Agent Card.
+small cross-process primitive used by the explicitly gated
+``OsaA2aRequestHandler`` adapter: read durable events after a caller cursor,
+preserve tenant scope, and stop at one durable terminal event. The relay itself
+does not attach routes or enable streaming in the Agent Card; those behaviors
+remain owned by the explicit adapter integration hook.
 """
 
 from __future__ import annotations
