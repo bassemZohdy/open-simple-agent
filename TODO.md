@@ -241,6 +241,11 @@ independently of enterprise identity, ADR-011, and OpenShift acceptance gates.
   **Acceptance:** all images required for the documented full-app demo can
   be pulled at one released version, and the browser reaches the real API
   and runtime. Verify actual image manifests before claiming ARM64 support.
+  **Progress (2026-09-15):** PR #15 adds the Control Panel release image,
+  corrected frontend Docker build context, startup API URL configuration,
+  release-note entries, and image/port documentation. Keep this task open
+  until a tagged release is built, pulled from both registries, and its
+  published manifest and browser path are verified.
 
 - [ ] **DEMO-02 — Add a reproducible local Docker demo.**
   Provide a downloadable versioned Compose/configuration bundle and concise
