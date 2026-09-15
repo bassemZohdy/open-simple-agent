@@ -220,10 +220,10 @@ Goal: a new user can pull released images, open the Control Panel, configure
 and run an agent, and understand the result using a visual guide. Screenshots
 are required; a short narrated/captioned video is an optional follow-up.
 
-Current gap: the README starts with source/developer setup and separate
-container examples. A frontend Dockerfile exists, but the release workflow
-currently publishes only runtime and Control Plane images. There is no
-checked-in Compose demo, screenshot gallery, or demo video.
+Current gap: the README still starts with source/developer setup and separate
+container examples. The Compose demo, walkthrough, capture script, screenshot
+gallery contract, and manual smoke workflow are checked in; real screenshots,
+video, and tagged-release validation remain open.
 
 Implement in order: DEMO-01 → DEMO-02 → DEMO-03 → DEMO-04.
 DEMO-05 is optional after DEMO-04. DEMO-06 publishes the completed guide/assets;
@@ -267,8 +267,7 @@ independently of enterprise identity, ADR-011, and OpenShift acceptance gates.
   guide and its provider/migration requirements.
   **Progress (2026-09-15):** The Compose bundle, deterministic seed script,
   fixed local child-runtime port, browser-reachable invoke URL, explicit fake
-  provider forwarding, and static bundle contract tests are implemented on
-  the DEMO-02 branch. Docker execution remains the final acceptance check.
+  provider forwarding, and static bundle contract tests are implemented and merged from PR #16. Docker execution remains the final acceptance check.
 
 - [ ] **DEMO-03 — Write the end-user walkthrough and capture script.**
   Add a Docker-first getting-started guide covering prerequisites and verified
@@ -341,8 +340,8 @@ independently of enterprise identity, ADR-011, and OpenShift acceptance gates.
   **Acceptance:** the walkthrough passes from a clean environment, a failed
   invocation cannot be mistaken for success, and maintainers can reproduce
   the screenshots without secret credentials.
-  **Progress (2026-09-15):** A manual
-  `.github/workflows/docker-demo.yml` workflow builds candidate images and
+  **Progress (2026-09-15):** The merged
+  `.github/workflows/docker-demo.yml` manual workflow builds candidate images and
   exercises readiness, browser configuration, seed/create/activate/deploy,
   direct invocation, and stop, with logs and cleanup on failure. Run it on a
   Docker-enabled GitHub runner before declaring the demo acceptance complete.
