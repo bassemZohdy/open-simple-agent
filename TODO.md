@@ -341,6 +341,11 @@ independently of enterprise identity, ADR-011, and OpenShift acceptance gates.
   **Acceptance:** the walkthrough passes from a clean environment, a failed
   invocation cannot be mistaken for success, and maintainers can reproduce
   the screenshots without secret credentials.
+  **Progress (2026-09-15):** A manual
+  `.github/workflows/docker-demo.yml` workflow builds candidate images and
+  exercises readiness, browser configuration, seed/create/activate/deploy,
+  direct invocation, and stop, with logs and cleanup on failure. Run it on a
+  Docker-enabled GitHub runner before declaring the demo acceptance complete.
 
 ## Packaging, CI/CD, and release — PARTIALLY COMPLETE
 
