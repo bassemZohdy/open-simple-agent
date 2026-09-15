@@ -24,7 +24,7 @@ server {
     # React Router owns deep links. Static assets must still fail closed so a
     # typo cannot return the application shell with a successful asset status.
     location ~* \.(?:css|js|json|map|png|jpg|jpeg|gif|svg|ico|woff2?)$ {
-        try_files $$uri =404;
+        try_files $uri =404;
         add_header Cache-Control "public, max-age=31536000, immutable";
     }
 
@@ -33,6 +33,6 @@ server {
     }
 
     location / {
-        try_files $$uri $$uri/ /index.html;
+        try_files $uri $uri/ /index.html;
     }
 }
