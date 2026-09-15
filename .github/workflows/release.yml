@@ -100,9 +100,14 @@ jobs:
       matrix:
         include:
           - component: runtime
+            context: .
             dockerfile: Dockerfile
           - component: control-plane
+            context: .
             dockerfile: Dockerfile.control-plane
+          - component: control-panel
+            context: control-plane/frontend
+            dockerfile: Dockerfile
     permissions:
       contents: read
       packages: write
@@ -144,7 +149,7 @@ jobs:
         id: build
         uses: docker/build-push-action@v6
         with:
-          context: .
+          context: ${{ matrix.context }}
           file: ${{ matrix.dockerfile }}
           push: true
           tags: |
@@ -221,8 +226,10 @@ jobs:
           Container images:
           - ${REGISTRY_BASE}-runtime:${VERSION}
           - ${REGISTRY_BASE}-control-plane:${VERSION}
+          - ${REGISTRY_BASE}-control-panel:${VERSION}
           - docker.io/${DOCKERHUB_BASE}-runtime:${VERSION}
           - docker.io/${DOCKERHUB_BASE}-control-plane:${VERSION}
+          - docker.io/${DOCKERHUB_BASE}-control-panel:${VERSION}
 
           Both registry copies are published by digest, carry OCI provenance/SBOM metadata, and are keyless-signed with Cosign using GitHub OIDC. GitHub build-provenance attestations are attached to the GHCR copies.
 
