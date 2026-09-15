@@ -265,6 +265,10 @@ independently of enterprise identity, ADR-011, and OpenShift acceptance gates.
   invoke it, and stop/reset it without installing Python or Node.
   Durable/production deployment remains covered by the existing deployment
   guide and its provider/migration requirements.
+  **Progress (2026-09-15):** The Compose bundle, deterministic seed script,
+  fixed local child-runtime port, browser-reachable invoke URL, explicit fake
+  provider forwarding, and static bundle contract tests are implemented on
+  the DEMO-02 branch. Docker execution remains the final acceptance check.
 
 - [ ] **DEMO-03 — Write the end-user walkthrough and capture script.**
   Add a Docker-first getting-started guide covering prerequisites and verified
