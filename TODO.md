@@ -285,7 +285,7 @@ independently of enterprise identity, ADR-011, and OpenShift acceptance gates.
   successful invocation and shutdown; every shown capability is implemented
   and supported by the chosen demo topology.
   **Progress (2026-09-15):** The Docker-first walkthrough and capture script
-  are implemented in `docs/guides/docker-demo.md` and
+  are implemented and merged from PR #17 in `docs/guides/docker-demo.md` and
   `docs/guides/docker-demo-capture.md`, with links from the demo and deployment
   guides. They use the same sample agent, prompt, ports, and deterministic
   output label; live Docker execution and media capture remain pending.
