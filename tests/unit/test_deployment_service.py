@@ -8,7 +8,7 @@ from osa.control_plane.backend.agent_catalog import AgentRecord, AgentRecordStat
 from osa.control_plane.backend.deployment import Deployment, DeploymentProvider, DeploymentStatus
 from osa.control_plane.backend.deployment_errors import DeploymentError, DeploymentOperationBusyError
 from osa.control_plane.backend.deployment_ownership import InMemoryDeploymentOperationOwnershipStore
-from osa.control_plane.backend.deployment_service import DeploymentService, deployment_port
+from osa.control_plane.backend.deployment_service import DeploymentService, _runtime_env, deployment_port
 from osa.control_plane.backend.repositories import (
     InMemoryAgentRepository,
     InMemoryDeploymentRecordRepository,
@@ -160,3 +160,12 @@ def test_deployment_port_rejects_privileged_or_invalid_values(monkeypatch: pytes
     monkeypatch.setenv("OSA_DEPLOY_PORT", "not-a-port")
     with pytest.raises(DeploymentError, match="OSA_DEPLOY_PORT"):
         deployment_port()
+
+
+def test_runtime_env_forwards_explicit_local_demo_settings(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("OSA_ALLOW_FAKE_PROVIDER", "1")
+    monkeypatch.setenv("OSA_DEPLOY_RUNTIME_ALLOWED_ORIGINS", "http://localhost:8080")
+    assert _runtime_env() == {
+        "OSA_ALLOW_FAKE_PROVIDER": "1",
+        "OSA_RUNTIME_ALLOWED_ORIGINS": "http://localhost:8080",
+    }
