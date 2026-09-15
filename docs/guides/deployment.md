@@ -2,6 +2,10 @@
 
 How to run Open Simple Agent services in containers or as processes.
 
+For the end-user Docker walkthrough, use [Docker demo](docker-demo.md); the
+screenshot and optional video sequence is in
+[docker-demo-capture.md](docker-demo-capture.md).
+
 ## Released container images
 
 Each tagged release publishes three signed images with the same version tag:
