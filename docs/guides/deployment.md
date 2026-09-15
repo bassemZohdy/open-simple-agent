@@ -2,6 +2,54 @@
 
 How to run Open Simple Agent services in containers or as processes.
 
+## Released container images
+
+Each tagged release publishes three signed images with the same version tag:
+
+| Component | GHCR image | Docker Hub image | Container port |
+|---|---|---|---:|
+| Runtime | `ghcr.io/bassemzohdy/open-simple-agent-runtime:<VERSION>` | `docker.io/<DOCKERHUB_USER>/open-simple-agent-runtime:<VERSION>` | 8080 |
+| Control Plane | `ghcr.io/bassemzohdy/open-simple-agent-control-plane:<VERSION>` | `docker.io/<DOCKERHUB_USER>/open-simple-agent-control-plane:<VERSION>` | 8000 |
+| Control Panel | `ghcr.io/bassemzohdy/open-simple-agent-control-panel:<VERSION>` | `docker.io/<DOCKERHUB_USER>/open-simple-agent-control-panel:<VERSION>` | 8080 |
+
+Replace `<VERSION>` with the release version and `<DOCKERHUB_USER>` with
+the Docker Hub namespace shown in the GitHub Release. The release workflow
+currently builds Linux `amd64` images. Docker Desktop can run these images
+under emulation on ARM hosts; ARM64 support must not be assumed until the
+published manifest is verified.
+
+The Control Panel image is configured at container startup, so the same
+published image can point at a different Control Plane without rebuilding:
+
+```bash
+docker run --rm --name osa-control-panel \
+  -p 127.0.0.1:8080:8080 \
+  -e OSA_API_BASE_URL=http://localhost:8000 \
+  ghcr.io/bassemzohdy/open-simple-agent-control-panel:<VERSION>
+```
+
+Open `http://localhost:8080` in a browser. The default
+`OSA_API_BASE_URL=http://localhost:8000` is suitable for a local Docker
+topology where the Control Plane is published on host port 8000. The browser
+must be able to resolve and reach the configured URL; Docker-internal service
+names such as `control-plane` are not browser URLs. Use a host-reachable
+HTTPS URL for a remote deployment and configure the Control Plane's CORS
+allowlist accordingly.
+
+For a standalone runtime, map its container port separately from the Control
+Panel:
+
+```bash
+docker run --rm --name osa-runtime \
+  -p 127.0.0.1:8081:8080 \
+  -e OSA_ALLOW_FAKE_PROVIDER=1 \
+  -v "$PWD/examples/smoke-bundle:/app/config:ro" \
+  ghcr.io/bassemzohdy/open-simple-agent-runtime:<VERSION>
+```
+
+Use the versioned images when recording or publishing screenshots and demos;
+the `latest` tag is provided for convenience and is mutable.
+
 ## The runtime (data plane)
 
 The runtime serves one externally configured agent from a **deployment
