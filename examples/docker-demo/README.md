@@ -1,5 +1,7 @@
 # Docker demo
 
+For the complete numbered walkthrough and recovery guidance, see the [Docker end-user walkthrough](../../docs/guides/docker-demo.md). The [capture script](../../docs/guides/docker-demo-capture.md) defines the screenshot and optional video sequence.
+
 This bundle runs the Open Simple Agent Control Plane, Control Panel, and one
 deterministic local runtime using Docker Compose. It is intended for screenshots
 and first-use exploration. The fake provider is enabled explicitly and every
