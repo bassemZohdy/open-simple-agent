@@ -81,6 +81,7 @@ Environment variables:
 | `OSA_BUNDLE` | Bundle path (the image default is `/app/config`; `--config` overrides) |
 | `OSA_MODEL_REF` | Override the agent's model reference at start time |
 | `OSA_ALLOW_FAKE_PROVIDER` | Opt-in deterministic fake model (`1`); never enabled by default |
+| `OSA_FAKE_PROVIDER_RESPONSE` | Optional deterministic fake response text, useful for clearly labeling local demos | `fake response` |
 | `OSA_A2A_URL` | Public URL advertised in the Agent Card when `spec.a2a.enabled` |
 | `OSA_A2A_TASK_DATABASE_URL` | Async SQLAlchemy DSN for durable A2A tasks and ownership; unset keeps the process-local SDK store |
 | `OSA_A2A_TASK_TABLE` | ASCII A2A task table name (maximum 53 characters); ownership and the schema-version-2 event cursor use the `<name>_ownership` and `<name>_events` companion tables |
