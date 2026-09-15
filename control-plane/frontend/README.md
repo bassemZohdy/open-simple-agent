@@ -24,6 +24,16 @@ regenerating `package-lock.json`.
 
 Set `VITE_OSA_API_BASE_URL` to the Control Plane origin when it is not `http://localhost:8000`.
 
+The published Control Panel container also accepts `OSA_API_BASE_URL` at startup. The nginx entrypoint generates `/config.js`, which the browser loads before the application bundle, so a pulled image can be pointed at a host-reachable Control Plane without rebuilding the frontend:
+
+```bash
+docker run --rm -p 127.0.0.1:8080:8080 \\
+  -e OSA_API_BASE_URL=http://localhost:8000 \\
+  ghcr.io/bassemzohdy/open-simple-agent-control-panel:<VERSION>
+```
+
+The value is used by the browser, so it must be reachable from the user's machine. Do not set it to a Docker-only service name.
+
 The shell supports an optional Bearer token for Control Plane instances using `OSA_AUTH_MODE=optional|required`. Tokens are stored only in `sessionStorage`; they are never written to source, configuration, URLs, or logs. The UI supports English and Arabic: it detects the browser language when no session choice exists, stores an explicit locale only in the current `sessionStorage` session, and applies RTL layout for Arabic. Dates continue to use the browser locale/timezone through `Intl`. OIDC login/refresh orchestration is intentionally not invented here because issuer/client/redirect semantics are deployment-specific and are not yet a stable Control Plane contract.
 
 ## Current implementation
