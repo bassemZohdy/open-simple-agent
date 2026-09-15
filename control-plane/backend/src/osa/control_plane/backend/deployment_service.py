@@ -202,7 +202,7 @@ def _runtime_env() -> dict[str, str]:
     """
     import os
 
-    env = {"OSA_ALLOW_FAKE_PROVIDER": "0"}
+    env = {"OSA_ALLOW_FAKE_PROVIDER": os.environ.get("OSA_ALLOW_FAKE_PROVIDER", "0")}
     origins = os.environ.get(RUNTIME_CORS_ENV_VAR, "")
     if origins:
         env[RUNTIME_CORS_PASSTHROUGH_ENV_VAR] = origins
