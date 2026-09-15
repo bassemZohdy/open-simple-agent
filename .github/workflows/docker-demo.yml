@@ -1,0 +1,79 @@
+name: Docker demo smoke
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  compose-demo:
+    name: Run the Docker end-user path
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Build candidate Control Plane image
+        run: docker build --tag osa-demo-control-plane:ci --file Dockerfile.control-plane .
+
+      - name: Build candidate Control Panel image
+        run: docker build --tag osa-demo-control-panel:ci --file control-plane/frontend/Dockerfile control-plane/frontend
+
+      - name: Select candidate images
+        working-directory: examples/docker-demo
+        run: |
+          cat > .env <<'EOF'
+          OSA_CONTROL_PLANE_IMAGE=osa-demo-control-plane:ci
+          OSA_CONTROL_PANEL_IMAGE=osa-demo-control-panel:ci
+          OSA_CONTROL_PLANE_PORT=8000
+          OSA_CONTROL_PANEL_PORT=8080
+          OSA_RUNTIME_PORT=8081
+          EOF
+
+      - name: Start the demo services
+        working-directory: examples/docker-demo
+        run: docker compose up -d control-plane control-panel
+
+      - name: Wait for readiness
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8000/health/ready >/dev/null &&
+              curl -fsS http://127.0.0.1:8080/health/live >/dev/null; then
+              break
+            fi
+            if [[ "$attempt" == 30 ]]; then
+              docker compose --project-directory examples/docker-demo logs
+              exit 1
+            fi
+            sleep 2
+          done
+          curl -fsS http://127.0.0.1:8080/config.js | grep -F 'localhost:8000'
+          docker compose --project-directory examples/docker-demo ps
+
+      - name: Seed, deploy, invoke, and stop the sample agent
+        run: |
+          set -euo pipefail
+          docker compose --project-directory examples/docker-demo --profile seed run --rm seed
+          agent_id="$(curl -fsS 'http://127.0.0.1:8000/agents?q=docker-demo-agent&limit=100' | jq -r '.agents[0].agent_id')"
+          test -n "$agent_id" && test "$agent_id" != "null"
+          deployment_id="$(curl -fsS "http://127.0.0.1:8000/agents/$agent_id/deployments" | jq -r '.[0].deployment_id')"
+          test -n "$deployment_id" && test "$deployment_id" != "null"
+          status="$(curl -fsS "http://127.0.0.1:8000/deployments/$deployment_id" | jq -r '.status')"
+          test "$status" = "running"
+          curl -fsS -X POST http://127.0.0.1:8081/v1/invoke             -H 'Content-Type: application/json'             -d '{"input":"What is running inside this Docker demo?"}' | grep -F 'DEMO RESPONSE'
+          curl -fsS -X POST "http://127.0.0.1:8000/deployments/$deployment_id/stop"             | jq -e '.status == "stopped"'
+
+      - name: Show service logs on failure
+        if: failure()
+        working-directory: examples/docker-demo
+        run: docker compose logs
+
+      - name: Stop the demo
+        if: always()
+        working-directory: examples/docker-demo
+        run: docker compose down --remove-orphans
