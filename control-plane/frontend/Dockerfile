@@ -11,10 +11,13 @@ COPY . ./
 RUN npm run build
 
 # The unprivileged image listens on 8080 and runs without root privileges.
+# OSA_API_BASE_URL is substituted into nginx.conf.template at container startup.
 FROM nginxinc/nginx-unprivileged:1.27-alpine
 
 COPY --from=build /app/dist /usr/share/nginx/html
-COPY nginx.conf /etc/nginx/conf.d/default.conf
+COPY nginx.conf.template /etc/nginx/templates/default.conf.template
+
+ENV OSA_API_BASE_URL=http://localhost:8000
 
 EXPOSE 8080
 

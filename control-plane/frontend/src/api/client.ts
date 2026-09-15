@@ -382,4 +382,14 @@ export class ControlPlaneClient {
   }
 }
 
-export const defaultApiBaseUrl = import.meta.env.VITE_OSA_API_BASE_URL ?? "http://localhost:8000";
+interface RuntimeConfiguration {
+  apiBaseUrl?: string;
+}
+
+const runtimeConfiguration = (
+  globalThis as typeof globalThis & { __OSA_RUNTIME_CONFIG__?: RuntimeConfiguration }
+).__OSA_RUNTIME_CONFIG__;
+
+const configuredApiBaseUrl = runtimeConfiguration?.apiBaseUrl?.trim();
+export const defaultApiBaseUrl =
+  configuredApiBaseUrl || import.meta.env.VITE_OSA_API_BASE_URL || "http://localhost:8000";
