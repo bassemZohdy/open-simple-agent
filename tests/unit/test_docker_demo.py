@@ -13,7 +13,9 @@ def test_docker_demo_bundle_has_required_services_and_seed_contract() -> None:
     assert set(compose["services"]) == {"control-plane", "control-panel", "seed"}
     control_plane = compose["services"]["control-plane"]
     assert control_plane["environment"]["OSA_DEPLOY_PORT"] == "${OSA_RUNTIME_PORT:-8081}"
-    assert control_plane["environment"]["OSA_DEPLOY_INVOKE_URL_TEMPLATE"] == (\n        "http://localhost:${OSA_RUNTIME_PORT:-8081}"\n    )
+    assert control_plane["environment"]["OSA_DEPLOY_INVOKE_URL_TEMPLATE"] == (
+        "http://localhost:${OSA_RUNTIME_PORT:-8081}"
+    )
     assert control_plane["environment"]["OSA_ALLOW_FAKE_PROVIDER"] == "1"
     assert "127.0.0.1:${OSA_RUNTIME_PORT:-8081}:${OSA_RUNTIME_PORT:-8081}" in control_plane["ports"]
 
