@@ -301,6 +301,10 @@ independently of enterprise identity, ADR-011, and OpenShift acceptance gates.
   **Acceptance:** images are legible in GitHub, match the documented release,
   and show real successful interactions; no mockups or simulated responses
   are presented as live AI results.
+  **Progress (2026-09-15):** The screenshot gallery contract and required
+  filename/evidence checklist are scaffolded in
+  `docs/assets/screenshots/README.md`. Real screenshots still require a
+  Docker-enabled browser session and a published image set.
 
 - [ ] **DEMO-05 — Record a short demo video (optional).**
   Reuse the validated walkthrough for a 2–4 minute recording: what OSA does,
