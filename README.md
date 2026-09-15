@@ -34,6 +34,25 @@ SQLite and process-local state for enabled durable surfaces. A configured DSN
 is authoritative and fails closed when unavailable or unmigrated: OSA never
 silently falls back between PostgreSQL, SQLite, and memory.
 
+
+## Docker end-user quick start
+
+The fastest way to explore the application is the [Docker demo bundle](examples/docker-demo/README.md). It runs the Control Plane, Control Panel, and a deterministic local runtime with Docker Compose; no Python, Node.js, model key, or host Docker socket is required.
+
+```bash
+cd examples/docker-demo
+cp .env.example .env
+docker compose pull
+docker compose up -d control-plane control-panel
+docker compose --profile seed run --rm seed
+```
+
+Open [http://localhost:8080](http://localhost:8080), select `docker-demo-agent`, and invoke it with `What is running inside this Docker demo?`. The clearly labelled `DEMO RESPONSE` is deterministic and is not live model output. The API is at [http://localhost:8000](http://localhost:8000), and the seeded runtime is at [http://localhost:8081](http://localhost:8081).
+
+Follow the [numbered walkthrough](docs/guides/docker-demo.md) for recovery steps and the [capture script](docs/guides/docker-demo-capture.md) for the screenshot sequence. The [screenshot gallery contract](docs/assets/screenshots/README.md) records the remaining real-media requirements.
+
+The current public release `v0.1.4` predates the Control Panel image. Use one matching version tag from a release whose notes list all required images, or run the repository's manual Docker demo workflow against candidate images; do not mix `latest` and versioned tags.
+
 ## What works today
 
 | Area | Current implementation | Important limitation |
