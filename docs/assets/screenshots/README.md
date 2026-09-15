@@ -5,8 +5,10 @@ demo described in [the walkthrough](../../guides/docker-demo.md). The images
 must be captured from a running application with synthetic data; do not add
 mockups or generated images.
 
-Before committing media, record the exact release/tag and image digests in a
-sidecar metadata file, and verify every image against the capture checklist:
+Before committing media, copy
+[metadata.template.json](metadata.template.json) to a sidecar file beside the
+images, replace every placeholder, and record the exact release/tag and image
+digests. Verify every image against the capture checklist:
 
 | Filename | Walkthrough evidence |
 |---|---|

@@ -1,0 +1,13 @@
+{
+  "release": "vX.Y.Z",
+  "commit": "full-git-sha",
+  "images": {
+    "control_plane": "ghcr.io/bassemzohdy/open-simple-agent-control-plane@sha256:...",
+    "control_panel": "ghcr.io/bassemzohdy/open-simple-agent-control-panel@sha256:..."
+  },
+  "locale": "en",
+  "viewport": "1440x900",
+  "seed_command": "docker compose --profile seed run --rm seed",
+  "capture_command": "see docs/guides/docker-demo-capture.md",
+  "captured_at_utc": "YYYY-MM-DDThh:mm:ssZ"
+}
