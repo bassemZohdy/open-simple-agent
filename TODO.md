@@ -1,6 +1,6 @@
 # Open Simple Agent — Active Backlog
 
-Updated 2026-09-13. This file contains only unfinished, deferred, or
+Updated 2026-09-15. This file contains only unfinished, deferred, or
 deliberately gated work. Completed implementation history is recorded in
 `CHANGELOG.md` and git history.
 
@@ -105,6 +105,13 @@ enable a gated feature.
 
 ## Recommended next task
 
+Start the Docker end-user onboarding plan at **DEMO-01** below, then complete
+its runnable demo, walkthrough, and screenshots in dependency order. The
+optional video follows the validated screenshot guide. This is ready work
+and does not require resolving the production gates below.
+
+In parallel with that product work, the remaining architecture decision is:
+
 Review and approve the architecture-gated public A2A streaming and late-event
 route contract. The durable cursor relay, independent-worker acceptance, and
 explicit SDK stream-handler integration are complete; approval is the remaining
@@ -206,6 +213,116 @@ through `Intl`; API and machine values remain stable.
   client, and redirect contracts are selected.
 - [ ] Decide whether public agent-definition bundle import/export belongs in
   scope; resource import/export and server-side deployment export exist.
+
+## Docker end-user onboarding and demo assets — PLANNED
+
+Goal: a new user can pull released images, open the Control Panel, configure
+and run an agent, and understand the result using a visual guide. Screenshots
+are required; a short narrated/captioned video is an optional follow-up.
+
+Current gap: the README starts with source/developer setup and separate
+container examples. A frontend Dockerfile exists, but the release workflow
+currently publishes only runtime and Control Plane images. There is no
+checked-in Compose demo, screenshot gallery, or demo video.
+
+Implement in order: DEMO-01 → DEMO-02 → DEMO-03 → DEMO-04.
+DEMO-05 is optional after DEMO-04. DEMO-06 publishes the completed guide/assets;
+DEMO-07 maintains and verifies the delivered path. This work can proceed
+independently of enterprise identity, ADR-011, and OpenShift acceptance gates.
+
+- [ ] **DEMO-01 — Complete the released Docker application entry point.**
+  Extend the existing image release workflow to publish the Control Panel
+  image alongside the runtime and Control Plane, using the same version,
+  registry, signing, and provenance conventions. Document exact published
+  image names, supported CPU architectures, ports, browser URLs, and which
+  services are needed for standalone runtime versus the full application.
+  Validate frontend API configuration for a pulled image and browser access
+  to deployed runtimes; users must not need a source build to configure URLs.
+  **Acceptance:** all images required for the documented full-app demo can
+  be pulled at one released version, and the browser reaches the real API
+  and runtime. Verify actual image manifests before claiming ARM64 support.
+
+- [ ] **DEMO-02 — Add a reproducible local Docker demo.**
+  Provide a downloadable versioned Compose/configuration bundle and concise
+  environment example, with start, readiness, seed, stop, and reset commands.
+  Reuse the current local deployment provider and explicit fake-provider
+  opt-in for a no-model-key demonstration; label simulated responses clearly.
+  Seed a useful sample agent and its referenced resources through supported
+  APIs. Verify the Control Plane container's child-runtime ports, advertised
+  invoke URLs, and CORS from the user's browser; do not assume Docker service
+  names are browser-resolvable or that a Docker deployment provider exists.
+  Bind the unauthenticated local demo to loopback, without a host Docker
+  socket mount. Explain process-local state loss and make data deletion an
+  explicit reset step. Offer a documented live-model configuration using
+  secret references/environment, with no credentials committed.
+  **Acceptance:** a clean machine with Docker/Compose and a browser can
+  download the bundle, pull images, start it, open the UI, deploy the sample,
+  invoke it, and stop/reset it without installing Python or Node.
+  Durable/production deployment remains covered by the existing deployment
+  guide and its provider/migration requirements.
+
+- [ ] **DEMO-03 — Write the end-user walkthrough and capture script.**
+  Add a Docker-first getting-started guide covering prerequisites and verified
+  resource/architecture requirements; pull/start and readiness; open the
+  panel; choose/create an agent; inspect its model/tools; activate/deploy;
+  send a prompt; inspect the response/session and available tool traces;
+  inspect status/logs; stop/restart; and explain what survives a restart.
+  Include expected results and recovery for occupied ports, failed readiness,
+  missing model credentials, API/runtime URL or CORS errors, and 401/403.
+  Explain switching from the deterministic demo to a live provider without
+  implying the demo has generated real model output. Use the same sample
+  names/prompts and numbered steps in the guide, screenshots, and video.
+  **Acceptance:** a reader can follow the guide from a clean start to a
+  successful invocation and shutdown; every shown capability is implemented
+  and supported by the chosen demo topology.
+
+- [ ] **DEMO-04 — Capture real application screenshots and add a gallery.**
+  Capture the running released Docker demo: agent overview, creation/template
+  flow, model/tool resources, active deployment, invocation/result, and
+  status/logs. Include an Arabic RTL example and a narrow-screen example
+  using supported layouts. Store optimized images under
+  `docs/assets/screenshots/` with descriptive names, captions, alt text, and
+  the corresponding walkthrough step. Use synthetic data and exclude tokens,
+  credentials, personal data, and unrelated browser content.
+  **Acceptance:** images are legible in GitHub, match the documented release,
+  and show real successful interactions; no mockups or simulated responses
+  are presented as live AI results.
+
+- [ ] **DEMO-05 — Record a short demo video (optional).**
+  Reuse the validated walkthrough for a 2–4 minute recording: what OSA does,
+  pull/start containers, open the panel, configure/deploy an agent, invoke it,
+  inspect output/status, and stop it. Include readable captions, a transcript,
+  chapter timestamps, and an explicit deterministic/live-provider label.
+  Keep recording instructions and script in the repository; attach a
+  compressed MP4 to a GitHub Release and link it through a screenshot
+  thumbnail, avoiding large raw recordings in git.
+  **Acceptance:** a new user can reproduce the recorded steps using the same
+  released bundle; playback and captions/transcript are checked. Video
+  completion does not block the screenshot guide.
+
+- [ ] **DEMO-06 — Publish an obvious end-user starting point.**
+  Put the Docker quick start and a compact screenshot preview near the top
+  of README.md, linking to the full walkthrough/gallery and video when
+  available. Link the guide and assets from the relevant Docker Hub image
+  descriptions and GitHub Release notes; keep developer setup separately
+  discoverable. Publish the Compose/configuration bundle with the matching
+  release and show its version beside the media.
+  **Acceptance:** GitHub and Docker Hub users can reach the full-app startup
+  instructions and visuals directly, and all commands, image tags, asset
+  links, and download links resolve.
+
+- [ ] **DEMO-07 — Verify and maintain the documented demo.**
+  Add a focused browser/container smoke check for the exact demo path
+  (readiness → create/activate/deploy → invoke → stop), using deterministic
+  fixtures and the released or candidate images. Reuse existing CI tooling;
+  run media recapture manually or for relevant UI/demo/release changes,
+  without adding live-model calls or video rendering to every PR.
+  Record release/commit, image digests, locale, viewport, seed command, and
+  capture command beside the assets. Add a release checklist to refresh
+  outdated screenshots and verify the optional video against changed flows.
+  **Acceptance:** the walkthrough passes from a clean environment, a failed
+  invocation cannot be mistaken for success, and maintainers can reproduce
+  the screenshots without secret credentials.
 
 ## Packaging, CI/CD, and release — PARTIALLY COMPLETE
 
