@@ -66,6 +66,7 @@ DEFAULT_COMMAND_TEMPLATE = "osa-runtime --config {bundle_path} --port {port}"
 DEPLOY_COMMAND_TEMPLATE_ENV_VAR = "OSA_DEPLOY_COMMAND_TEMPLATE"
 DEPLOY_ROOT_ENV_VAR = "OSA_DEPLOY_ROOT"
 INVOKE_URL_TEMPLATE_ENV_VAR = "OSA_DEPLOY_INVOKE_URL_TEMPLATE"
+DEPLOY_PORT_ENV_VAR = "OSA_DEPLOY_PORT"
 RUNTIME_CORS_ENV_VAR = "OSA_DEPLOY_RUNTIME_ALLOWED_ORIGINS"
 RUNTIME_CORS_PASSTHROUGH_ENV_VAR = "OSA_RUNTIME_ALLOWED_ORIGINS"
 DEPLOY_PROVIDER_ENV_VAR = "OSA_DEPLOY_PROVIDER"
@@ -148,6 +149,26 @@ def _free_port() -> int:
     with socket.socket() as sock:
         sock.bind(("127.0.0.1", 0))
         return int(sock.getsockname()[1])
+
+
+def deployment_port() -> int:
+    """Select a local deployment port, optionally fixed for a container demo.
+
+    A fixed port is useful when the local provider runs inside one container
+    and the child runtime must be exposed through a known host port. It is an
+    operator setting, so API callers cannot choose or influence it. Unset
+    preserves the existing ephemeral-port behavior.
+    """
+    configured = os.environ.get(DEPLOY_PORT_ENV_VAR, "").strip()
+    if not configured:
+        return _free_port()
+    try:
+        port = int(configured)
+    except ValueError as exc:
+        raise DeploymentError(f"{DEPLOY_PORT_ENV_VAR} must be an integer between 1024 and 65535") from exc
+    if not 1024 <= port <= 65535:
+        raise DeploymentError(f"{DEPLOY_PORT_ENV_VAR} must be an integer between 1024 and 65535")
+    return port
 
 
 def command_template() -> str:
@@ -259,7 +280,7 @@ class DeploymentService:
 
                 await self._reconcile_resources(record.tenant_id)
                 bundle_path = self._export_bundle(record)
-                port = _free_port()
+                port = deployment_port()
                 health_url = f"http://127.0.0.1:{port}/health/ready"
                 command = shlex.split(command_template().format(bundle_path=bundle_path, port=port))
                 spec = DeploymentSpec(
@@ -392,7 +413,7 @@ class DeploymentService:
 
                 await self._reconcile_resources(agent.tenant_id)
                 bundle_path = self._export_bundle(agent, override_definition=snapshot.definition, version=target)
-                port = _free_port()
+                port = deployment_port()
                 spec = DeploymentSpec(
                     agent_id=stored.agent_id,
                     command=shlex.split(command_template().format(bundle_path=bundle_path, port=port)),
