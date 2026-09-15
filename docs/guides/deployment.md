@@ -144,6 +144,7 @@ auto-migrates. The selected deployment provider uses these server-side settings:
 |---|---|---|
 | `OSA_CONTROL_PLANE_DATABASE_URL` | PostgreSQL DSN for shared state, or file-backed `sqlite+aiosqlite:///...` for local state | unset (in-memory) |
 | `OSA_DEPLOY_COMMAND_TEMPLATE` | Server-owned runtime launch template; supports `{bundle_path}` and `{port}` | `osa-runtime --config {bundle_path} --port {port}` |
+| `OSA_DEPLOY_PORT` | Optional fixed port for the local development provider; useful when a child runtime must be exposed through a known Docker host port | unset (ephemeral) |
 | `OSA_DEPLOY_PROVIDER` | Deployment provider (`local`, `kubernetes`, or `openshift`) | `local` for in-memory development; required as `kubernetes` or `openshift` with a durable Control Plane |
 | `OSA_KUBERNETES_IMAGE` | Runtime image used by the Kubernetes provider | required for `kubernetes` |
 | `OSA_KUBERNETES_NAMESPACE` | Kubernetes namespace | `default` |
@@ -164,7 +165,9 @@ auto-migrates. The selected deployment provider uses these server-side settings:
 | `OSA_DEPLOYMENT_OPERATION_LEASE_SECONDS` | PostgreSQL lease duration for mutating deployment operations; minimum 5 seconds | `30` |
 
 The command template is configuration owned by the server/operator, never API
-input. The Control Plane image packages `osa-runtime` for the local development
+input.
+
+The local provider can use `OSA_DEPLOY_PORT` for a single-container demo. Keep it unset for normal development so each deployment receives an ephemeral port; a fixed port must not be reused by concurrent local deployments. The Control Plane image packages `osa-runtime` for the local development
 topology. In Kubernetes or OpenShift mode, the provider mounts the exported
 bundle into the separately published runtime image, so runtime credentials
 stay in Kubernetes Secret references. OpenShift additionally creates a Route;
