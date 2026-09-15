@@ -267,7 +267,9 @@ independently of enterprise identity, ADR-011, and OpenShift acceptance gates.
   guide and its provider/migration requirements.
   **Progress (2026-09-15):** The Compose bundle, deterministic seed script,
   fixed local child-runtime port, browser-reachable invoke URL, explicit fake
-  provider forwarding, and static bundle contract tests are implemented and merged from PR #16. Docker execution remains the final acceptance check.
+  provider forwarding, labeled deterministic responses, and static bundle
+  contract tests are implemented and merged from PR #16 plus the follow-up
+  fake-response fix. Docker execution remains the final acceptance check.
 
 - [ ] **DEMO-03 — Write the end-user walkthrough and capture script.**
   Add a Docker-first getting-started guide covering prerequisites and verified

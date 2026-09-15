@@ -134,6 +134,18 @@ class TestServiceApp:
             assert sink.validated
         assert sink.closed
 
+    async def test_fake_provider_response_can_be_labeled(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("OSA_ALLOW_FAKE_PROVIDER", "1")
+        monkeypatch.setenv("OSA_FAKE_PROVIDER_RESPONSE", "DEMO RESPONSE: deterministic fake response")
+        app = create_runtime_app(_fake_bundle(tmp_path))
+        async with (
+            app.router.lifespan_context(app),
+            AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client,
+        ):
+            invoked = await client.post("/v1/invoke", json={"input": "hello"})
+            assert invoked.status_code == 200
+            assert invoked.json()["output"] == "DEMO RESPONSE: deterministic fake response"
+
     async def test_ready_and_invoke_via_bundle_app(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("OSA_ALLOW_FAKE_PROVIDER", "1")
         app = create_runtime_app(_fake_bundle(tmp_path))
