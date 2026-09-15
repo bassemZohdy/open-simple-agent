@@ -55,6 +55,7 @@ from osa.runtimes.adk import AdkRuntime, GenericAdkAgent, default_registry
 _TRUTHY_VALUES = {"1", "true", "yes", "on"}
 DEFAULT_BUNDLE_ENV_VAR = "OSA_BUNDLE"
 ALLOW_FAKE_PROVIDER_ENV_VAR = "OSA_ALLOW_FAKE_PROVIDER"
+FAKE_PROVIDER_RESPONSE_ENV_VAR = "OSA_FAKE_PROVIDER_RESPONSE"
 MEMORY_DATABASE_URL_ENV_VAR = "OSA_MEMORY_DATABASE_URL"
 SESSION_DATABASE_URL_ENV_VAR = "OSA_SESSION_DATABASE_URL"
 
@@ -181,8 +182,9 @@ async def build_runtime(
 
     catalogs = build_catalogs(bundle)
     _register_builtin_implementations(catalogs.tool_catalog)
+    fake_response = os.environ.get(FAKE_PROVIDER_RESPONSE_ENV_VAR, "fake response")
     adapters = default_registry(
-        fake_provider=FakeModelProvider() if allow_fake_provider else None,
+        fake_provider=FakeModelProvider(fake_response) if allow_fake_provider else None,
         secret_resolver=resolver,
         observability=observability,
     )
