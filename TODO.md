@@ -105,10 +105,12 @@ enable a gated feature.
 
 ## Recommended next task
 
-Start the Docker end-user onboarding plan at **DEMO-01** below, then complete
-its runnable demo, walkthrough, and screenshots in dependency order. The
-optional video follows the validated screenshot guide. This is ready work
-and does not require resolving the production gates below.
+Run the Docker demo acceptance path on a Docker-enabled GitHub runner, then
+publish one matching tagged image set and capture the real screenshots required
+by DEMO-04. The runnable bundle, walkthrough, capture script, gallery contract,
+and manual smoke workflow are already implemented; do not mark the media or
+release tasks complete until the browser path and image manifests are verified.
+The optional video follows the validated screenshot guide.
 
 In parallel with that product work, the remaining architecture decision is:
 
@@ -220,10 +222,10 @@ Goal: a new user can pull released images, open the Control Panel, configure
 and run an agent, and understand the result using a visual guide. Screenshots
 are required; a short narrated/captioned video is an optional follow-up.
 
-Current gap: the README still starts with source/developer setup and separate
-container examples. The Compose demo, walkthrough, capture script, screenshot
-gallery contract, and manual smoke workflow are checked in; real screenshots,
-video, and tagged-release validation remain open.
+Current gap: the Compose demo, walkthrough, capture script, screenshot
+gallery contract, manual smoke workflow, and README Docker quick start are
+checked in. Real screenshots, video, and tagged-release validation remain open;
+the current public release `v0.1.4` predates the Control Panel image.
 
 Implement in order: DEMO-01 → DEMO-02 → DEMO-03 → DEMO-04.
 DEMO-05 is optional after DEMO-04. DEMO-06 publishes the completed guide/assets;
@@ -326,6 +328,10 @@ independently of enterprise identity, ADR-011, and OpenShift acceptance gates.
   descriptions and GitHub Release notes; keep developer setup separately
   discoverable. Publish the Compose/configuration bundle with the matching
   release and show its version beside the media.
+  **Progress (2026-09-15):** README now has a Docker-first quick start
+  linking the Compose bundle, numbered walkthrough, capture script, and
+  screenshot contract. Keep this task open until a matching tagged image set
+  and real screenshot/media links are published.
   **Acceptance:** GitHub and Docker Hub users can reach the full-app startup
   instructions and visuals directly, and all commands, image tags, asset
   links, and download links resolve.
