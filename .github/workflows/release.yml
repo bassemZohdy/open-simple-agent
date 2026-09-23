@@ -107,7 +107,7 @@ jobs:
             dockerfile: Dockerfile.control-plane
           - component: control-panel
             context: control-plane/frontend
-            dockerfile: Dockerfile
+            dockerfile: control-plane/frontend/Dockerfile
     permissions:
       contents: read
       packages: write
