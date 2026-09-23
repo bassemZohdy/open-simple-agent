@@ -37,10 +37,12 @@ silently falls back between PostgreSQL, SQLite, and memory.
 
 ## Docker end-user quick start
 
-The fastest way to explore the application is the [Docker demo bundle](examples/docker-demo/README.md). It runs the Control Plane, Control Panel, and a deterministic local runtime with Docker Compose; no Python, Node.js, model key, or host Docker socket is required.
+The fastest way to explore the application is the [Docker demo bundle](examples/docker-demo/README.md). It runs the Control Plane, Control Panel, and a deterministic local runtime with Docker Compose; no Python, Node.js, model key, source checkout, or host Docker socket is required. Download the `v0.1.5` bundle with its matching image tags:
 
 ```bash
-cd examples/docker-demo
+curl -fL -o osa-docker-demo-0.1.5.tar.gz https://github.com/bassemZohdy/open-simple-agent/releases/download/v0.1.5/osa-docker-demo-0.1.5.tar.gz
+tar -xzf osa-docker-demo-0.1.5.tar.gz
+cd docker-demo
 cp .env.example .env
 docker compose pull
 docker compose up -d control-plane control-panel
@@ -51,7 +53,7 @@ Open [http://localhost:8080](http://localhost:8080), select `docker-demo-agent`,
 
 Follow the [numbered walkthrough](docs/guides/docker-demo.md) for recovery steps and the [capture script](docs/guides/docker-demo-capture.md) for the screenshot sequence. The [screenshot gallery contract](docs/assets/screenshots/README.md) records the remaining real-media requirements.
 
-The current public release `v0.1.4` predates the Control Panel image. Use one matching version tag from a release whose notes list all required images, or run the repository's manual Docker demo workflow against candidate images; do not mix `latest` and versioned tags.
+The bundle pins all images to `v0.1.5` (`0.1.5` image tags). Keep the three services on one matching release; do not mix `latest` and versioned tags.
 
 ## What works today
 
@@ -71,7 +73,7 @@ The current public release `v0.1.4` predates the Control Panel image. Use one ma
 | Deployment | Local provider with bounded logs, health probing, startup-failure capture, identity-aware retry, safe bundle export, and persisted deploy/status/stop/restart/logs/rollback APIs; operator-selected Kubernetes or dedicated OpenShift provider with labelled status rehydration, probes, scaling, rollback, logs, bundle ConfigMaps, Secret references, hardened pod security, and OpenShift Routes | Kind and independent-worker PostgreSQL ownership acceptance pass in CI; OpenShift provider implementation exists but real cluster validation remains a separate gate |
 | Runtime API | Invoke, capabilities, liveness, readiness, optional A2A Agent Card/JSON-RPC, shared JWT/OIDC bearer authentication including RFC 7662 opaque-token introspection, opt-in route permissions, tenant-claim binding, request IDs, Prometheus metrics including model/tool/MCP capability outcomes, optional bounded JSONL or migration-owned PostgreSQL capability sink, redaction-safe structured logs and runtime/A2A audit events; SSE streaming (`/v1/invoke/stream`) with stable OSA events; `osa-runtime` CLI with bundle bootstrap; shared outbound URL/DNS/redirect policy; opt-in bounded HTTP rate-limit contract with optional PostgreSQL shared store | In-memory rate limiting and JSONL sink are process-local by default; public A2A multi-process streaming-route integration and global gateway quotas remain deployment concerns |
 | CI | Ruff format/lint, strict mypy, full Python suite with PostgreSQL + A2A services and an 84% coverage gate, Control Panel typecheck/test/build, both image smoke tests, Docker-backed Kind Kubernetes lifecycle acceptance, dependency/license scanning, CycloneDX SBOMs, a gated live-provider acceptance job, and a manual enterprise-identity acceptance workflow | Live-provider and enterprise-identity execution require opt-in credentials; public A2A streaming-route acceptance remains architecture-gated |
-| Release | Lockstep release validation; four Python distributions; GHCR and Docker Hub runtime/Control Plane images; SBOM/provenance attestations; keyless Cosign image signing; GitHub Releases with checksums; immutable-digest channel rollback | Current public release `v0.1.4` is complete; optional Python package-registry publication remains open |
+| Release | Lockstep release validation; four Python distributions; GHCR and Docker Hub runtime/Control Plane/Control Panel images; versioned Docker demo bundle; SBOM/provenance attestations; keyless Cosign image signing; GitHub Releases with checksums; immutable-digest channel rollback | Current public release `v0.1.5` is complete; optional Python package-registry publication remains open |
 
 ## Architecture
 
@@ -397,7 +399,7 @@ open-simple-agent/
 The P0 runnable-agent gate, managed-platform foundation, current Control Panel,
 and production images are implemented. Release automation can build validated
 Python artifacts and signed/attested GHCR and Docker Hub images from an
-intentional version/tag. The current public release is `v0.1.4`; the remaining
+intentional version/tag. The current public release is `v0.1.5`; the remaining
 gated work is listed in [TODO.md](TODO.md), notably
 public distributed A2A streaming-route/late-event acceptance, deployment-specific browser
 OIDC, and optional Python package-registry publication. Live-provider acceptance

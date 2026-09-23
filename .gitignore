@@ -27,6 +27,9 @@ htmlcov/
 # Frontend dependencies
 node_modules/
 
+# Local Docker demo configuration (may contain provider credentials)
+examples/docker-demo/.env
+
 # Linting
 .ruff_cache/
 

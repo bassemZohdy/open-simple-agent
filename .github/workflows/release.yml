@@ -217,11 +217,23 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          sha256sum dist/* > SHA256SUMS
+          demo_bundle="osa-docker-demo-${VERSION}.tar.gz"
+          mkdir -p release-bundle/docker-demo
+          cp examples/docker-demo/.env.example \
+            examples/docker-demo/README.md \
+            examples/docker-demo/docker-compose.yml \
+            examples/docker-demo/seed.sh \
+            release-bundle/docker-demo/
+          sed -i "s/:latest/:${VERSION}/g" release-bundle/docker-demo/.env.example
+          tar -czf "$demo_bundle" -C release-bundle docker-demo
+          sha256sum dist/* "$demo_bundle" > SHA256SUMS
           cat > release-notes.md <<EOF
           Open Simple Agent ${VERSION}
 
           Python distributions and checksums are attached to this release and have GitHub build-provenance attestations.
+          The ${demo_bundle} asset contains the matching Docker Compose demo,
+          environment example, and seed script. Follow the numbered walkthrough:
+          https://github.com/${GITHUB_REPOSITORY}/blob/${TAG}/docs/guides/docker-demo.md
 
           Container images:
           - ${REGISTRY_BASE}-runtime:${VERSION}
@@ -235,7 +247,7 @@ jobs:
 
           See CHANGELOG.md for the versioned change record.
           EOF
-          gh release create "$TAG" dist/* SHA256SUMS \
+          gh release create "$TAG" dist/* "$demo_bundle" SHA256SUMS \
             --repo "$GITHUB_REPOSITORY" \
             --verify-tag \
             --title "Open Simple Agent ${VERSION}" \

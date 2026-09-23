@@ -15,8 +15,10 @@ used.
 - Ports 8000, 8080, and 8081 available on loopback (or values changed in `.env`).
 
 No Python, Node.js, or source checkout is required after downloading this
-directory. Use images from one release; do not mix `latest` with a version tag
-when recording a demo.
+directory. The `osa-docker-demo-<VERSION>.tar.gz` GitHub Release asset includes
+an `.env.example` pinned to that release's image tags. The repository copy
+defaults to `latest` for development; use images from one release when recording
+a demo.
 
 ## Start
 
