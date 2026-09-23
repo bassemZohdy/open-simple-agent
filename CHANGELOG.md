@@ -8,10 +8,28 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 > development milestones; they are not published package releases. All package
 > manifests now share one lockstep release version, enforced by
 > `tests/unit/test_versioning.py`. The first public release was `v0.1.1` and
-> the current public release is `v0.1.4`; optional Python package-registry
+> the current public release is `v0.1.5`; optional Python package-registry
 > publication remains tracked in `TODO.md` (P3.3).
 
 ## [Unreleased]
+
+## [0.1.5] - 2026-09-24
+
+### Added — Docker end-user application and demo
+- Publish the Control Panel image beside the runtime and Control Plane images
+  with startup API URL configuration.
+- Add a versioned Docker Compose demo, deterministic sample agent, Docker-first
+  walkthrough, screenshot capture contract, and manual container smoke workflow.
+- Attach the matching Compose bundle to the GitHub Release for source-free
+  onboarding.
+
+### Fixed — Docker demo browser and deployment path
+- Send the required deployment request body from the seed script and preserve
+  LF line endings for Windows Docker Desktop checkouts.
+- Allow the configured Control Panel browser origin to call the Control Plane
+  through explicit opt-in CORS; cover preflight and actual requests in tests.
+- Label deterministic demo responses so they are not mistaken for live model
+  output.
 
 ## [0.1.4] - 2026-09-13
 
