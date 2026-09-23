@@ -36,6 +36,8 @@ fi
 
 # Re-running the seed script is safe for the sample agent.
 curl -fsS -X POST "${control_plane_url}/agents/${agent_id}/activate" >/dev/null || true
-deployment="$(curl -fsS -X POST "${control_plane_url}/agents/${agent_id}/deploy")"
+deployment="$(curl -fsS -X POST "${control_plane_url}/agents/${agent_id}/deploy" \
+  -H "Content-Type: application/json" \
+  -d '{}')"
 echo "$deployment"
 echo "Seeded docker-demo-agent (${agent_id}). Open the Control Panel at http://localhost:8080."
