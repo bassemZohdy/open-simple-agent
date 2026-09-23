@@ -1,5 +1,9 @@
 name: Publish Docker Hub descriptions
 
+# Requires DOCKERHUB_USERNAME and a DOCKERHUB_TOKEN PAT with repository
+# read/write/delete access to all three images (the description API returned
+# HTTP 403 with the currently stored token).
+
 on:
   workflow_dispatch:
 
@@ -10,6 +14,7 @@ jobs:
   update:
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
         include:
           - component: runtime

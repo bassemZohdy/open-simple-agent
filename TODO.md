@@ -344,6 +344,13 @@ independently of enterprise identity, ADR-011, and OpenShift acceptance gates.
   linking the Compose bundle, numbered walkthrough, capture script, and
   screenshot contract. Keep this task open until a matching tagged image set
   and real screenshot/media links are published.
+  **Progress (2026-09-24):** The `v0.1.5` release bundle, README screenshot
+  preview, gallery, and GitHub Release links are published. Docker Hub overview
+  text and a manual publication workflow are committed, but run `35936122075`
+  received HTTP 403 on Docker Hub's description PATCH after login. The stored
+  `DOCKERHUB_TOKEN` needs permission to edit the three repository descriptions
+  before rerunning the workflow; keep DEMO-06 open until the public image pages
+  link the guide and gallery.
   **Acceptance:** GitHub and Docker Hub users can reach the full-app startup
   instructions and visuals directly, and all commands, image tags, asset
   links, and download links resolve.
