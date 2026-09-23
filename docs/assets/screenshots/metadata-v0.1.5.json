@@ -1,0 +1,29 @@
+{
+  "release": "v0.1.5",
+  "commit": "f076a682a86d7dbe39791c3625b43bc59f6bd8f4",
+  "images": {
+    "runtime": "ghcr.io/bassemzohdy/open-simple-agent-runtime@sha256:e90ac195ab1acc7b031f5db424ef9ca8d92831b605eca88059c2d9d5b8ea60eb",
+    "control_plane": "ghcr.io/bassemzohdy/open-simple-agent-control-plane@sha256:d01ef840ca608d128761484287db078a95f6b68ef63b4bba586d9179ecee5e14",
+    "control_panel": "ghcr.io/bassemzohdy/open-simple-agent-control-panel@sha256:4ad2614866e6ec76f1aa8603783266e1570078f068b7ae5305a922aa949e9163"
+  },
+  "bundle": "osa-docker-demo-0.1.5.tar.gz",
+  "operating_system": "Microsoft Windows 11 Pro",
+  "docker_engine": "29.6.2",
+  "docker_compose": "5.3.1",
+  "browser": "Codex in-app browser",
+  "locales": ["en", "ar"],
+  "viewports": {
+    "desktop": "1280x720",
+    "narrow": "390x844"
+  },
+  "device_pixel_ratio": 1,
+  "host_ports": {
+    "control_plane": 8000,
+    "control_panel": 8080,
+    "runtime": 8081
+  },
+  "seed_command": "docker compose --profile seed run --rm seed",
+  "prompt": "What is running inside this Docker demo?",
+  "capture_command": "see docs/guides/docker-demo-capture.md",
+  "captured_at_utc": "2026-09-23T23:49:39Z"
+}

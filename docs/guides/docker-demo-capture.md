@@ -42,6 +42,13 @@ Save optimized images under `docs/assets/screenshots/` with names such as
 alt text, release/version metadata, and a link to the walkthrough step. Do not
 capture tokens, credentials, personal data, or unrelated browser content.
 
+The [v0.1.5 gallery](../assets/screenshots/README.md) and
+[capture metadata](../assets/screenshots/metadata-v0.1.5.json) are the current
+reference. Before a later release, repeat the clean bundle run and compare
+every image with the current UI, prompt, and output label. Refresh stale
+images and metadata together. If a video exists, verify its steps and links
+against the new flow before keeping it in the release notes.
+
 ## Optional video
 
 Use the same order and prompt for a 2–4 minute recording:
