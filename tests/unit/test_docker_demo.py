@@ -5,6 +5,7 @@ from pathlib import Path
 import yaml
 
 DEMO = Path(__file__).resolve().parents[2] / "examples" / "docker-demo"
+WORKSPACE_ROOT = DEMO.parents[1]
 
 
 def test_docker_demo_bundle_has_required_services_and_seed_contract() -> None:
@@ -38,3 +39,15 @@ def test_docker_demo_docs_explain_deterministic_output_and_reset() -> None:
     assert "DEMO RESPONSE" in docs
     assert "docker compose down --remove-orphans" in docs
     assert "No Python, Node.js, or source checkout" in docs
+
+
+def test_release_image_dockerfiles_match_their_contexts() -> None:
+    workflow = yaml.safe_load((WORKSPACE_ROOT / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8"))
+    images = workflow["jobs"]["images"]["strategy"]["matrix"]["include"]
+    assert {image["component"] for image in images} == {"runtime", "control-plane", "control-panel"}
+    for image in images:
+        context = WORKSPACE_ROOT / image["context"]
+        dockerfile = WORKSPACE_ROOT / image["dockerfile"]
+        assert context.is_dir()
+        assert dockerfile.is_file()
+        assert dockerfile.is_relative_to(context)
