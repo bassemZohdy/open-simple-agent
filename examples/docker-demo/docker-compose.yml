@@ -6,6 +6,7 @@ services:
       - "127.0.0.1:${OSA_RUNTIME_PORT:-8081}:${OSA_RUNTIME_PORT:-8081}"
     environment:
       OSA_ALLOW_FAKE_PROVIDER: "1"
+      OSA_CONTROL_PLANE_ALLOWED_ORIGINS: "http://localhost:${OSA_CONTROL_PANEL_PORT:-8080}"
       OSA_FAKE_PROVIDER_RESPONSE: "DEMO RESPONSE: deterministic fake response"
       OSA_DEPLOY_PROVIDER: local
       OSA_DEPLOY_PORT: "${OSA_RUNTIME_PORT:-8081}"

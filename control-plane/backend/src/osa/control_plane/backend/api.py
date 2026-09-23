@@ -19,6 +19,7 @@ for PostgreSQL-backed persistence; the module-level app below is in-memory.
 from __future__ import annotations
 
 import logging
+import os
 import re
 from importlib import metadata
 from typing import TYPE_CHECKING, Any
@@ -26,6 +27,7 @@ from uuid import uuid4
 
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.exceptions import RequestValidationError
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, PlainTextResponse
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
@@ -69,7 +71,7 @@ from osa.generic_agent import (
 logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
-    from collections.abc import Awaitable, Callable
+    from collections.abc import Awaitable, Callable, Mapping
 
     from starlette.responses import Response
 
@@ -402,6 +404,16 @@ def _install_authentication(
 # --- App configuration ---
 
 
+CONTROL_PLANE_CORS_ORIGINS_ENV_VAR = "OSA_CONTROL_PLANE_ALLOWED_ORIGINS"
+
+
+def _allowed_origins_from_env(environ: Mapping[str, str] | None = None) -> list[str]:
+    """Parse the opt-in browser origins allowed to call the Control Plane."""
+    env = os.environ if environ is None else environ
+    raw = env.get(CONTROL_PLANE_CORS_ORIGINS_ENV_VAR, "")
+    return [origin.strip() for origin in raw.split(",") if origin.strip()]
+
+
 def configure_control_plane_app(
     app: FastAPI,
     *,
@@ -451,6 +463,16 @@ def configure_control_plane_app(
         authenticator,
         secret_resolver,
     )
+    allowed_origins = _allowed_origins_from_env()
+    if allowed_origins:
+        # Browser preflight requests must reach CORS before authentication.
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=allowed_origins,
+            allow_methods=["GET", "POST", "PATCH", "DELETE"],
+            allow_headers=["Authorization", "Content-Type", "X-Request-ID"],
+            expose_headers=["X-Request-ID"],
+        )
     app.state.observability = observability or Observability()
     configure_structured_logging()
 

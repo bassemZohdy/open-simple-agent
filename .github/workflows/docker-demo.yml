@@ -53,6 +53,16 @@ jobs:
             sleep 2
           done
           curl -fsS http://127.0.0.1:8080/config.js | grep -F 'localhost:8000'
+          curl -fsS -D - -o /dev/null -H 'Origin: http://localhost:8080' \
+            'http://127.0.0.1:8000/agents?limit=1' \
+            | grep -Fi 'access-control-allow-origin: http://localhost:8080'
+          curl -fsS -X OPTIONS \
+            -H 'Origin: http://localhost:8080' \
+            -H 'Access-Control-Request-Method: POST' \
+            -H 'Access-Control-Request-Headers: content-type' \
+            'http://127.0.0.1:8000/agents' \
+            -D - -o /dev/null \
+            | grep -Fi 'access-control-allow-origin: http://localhost:8080'
           docker compose --project-directory examples/docker-demo ps
 
       - name: Seed, deploy, invoke, and stop the sample agent

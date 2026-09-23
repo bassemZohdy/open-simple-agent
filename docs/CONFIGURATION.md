@@ -468,7 +468,16 @@ is encountered.
 Permission enforcement requires `OSA_AUTH_MODE=optional` or `required`; the
 configuration is rejected when authentication is `disabled`.
 
-### Browser CORS (runtime)
+### Browser CORS (Control Plane and runtime)
+
+When the Control Panel and Control Plane use different browser origins, set
+`OSA_CONTROL_PLANE_ALLOWED_ORIGINS` on the Control Plane to the panel's exact
+origin (for example, `http://localhost:8080`). This opt-in comma-separated
+list allows `GET`, `POST`, `PATCH`, and `DELETE` browser requests with
+`Authorization`, `Content-Type`, and `X-Request-ID` headers. Preflight `OPTIONS`
+requests bypass authentication; the API still authenticates actual requests.
+An unset value adds no Control Plane CORS headers. The Docker demo configures
+this setting from `OSA_CONTROL_PANEL_PORT`.
 
 Browser clients such as the Control Panel cannot call the runtime cross-origin
 unless the runtime explicitly allows it. Set `OSA_RUNTIME_ALLOWED_ORIGINS` to a
@@ -484,6 +493,7 @@ When a deployment is launched through the Control Plane,
 
 | Variable | Meaning | Default |
 |---|---|---:|
+| `OSA_CONTROL_PLANE_ALLOWED_ORIGINS` | Comma-separated browser origins allowed to call the Control Plane | unset (no CORS) |
 | `OSA_RUNTIME_ALLOWED_ORIGINS` | Comma-separated browser origins allowed to call the runtime | unset (no CORS) |
 | `OSA_DEPLOY_RUNTIME_ALLOWED_ORIGINS` | Forwarded by the deployment service as `OSA_RUNTIME_ALLOWED_ORIGINS` | unset |
 

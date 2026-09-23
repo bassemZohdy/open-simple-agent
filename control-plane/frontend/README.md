@@ -33,6 +33,9 @@ docker run --rm -p 127.0.0.1:8080:8080 \\
 ```
 
 The value is used by the browser, so it must be reachable from the user's machine. Do not set it to a Docker-only service name.
+If the API URL has a different origin from the panel, configure the Control
+Plane with `OSA_CONTROL_PLANE_ALLOWED_ORIGINS` set to the panel's browser
+origin. The Docker demo Compose bundle supplies this value automatically.
 
 The shell supports an optional Bearer token for Control Plane instances using `OSA_AUTH_MODE=optional|required`. Tokens are stored only in `sessionStorage`; they are never written to source, configuration, URLs, or logs. The UI supports English and Arabic: it detects the browser language when no session choice exists, stores an explicit locale only in the current `sessionStorage` session, and applies RTL layout for Arabic. Dates continue to use the browser locale/timezone through `Intl`. OIDC login/refresh orchestration is intentionally not invented here because issuer/client/redirect semantics are deployment-specific and are not yet a stable Control Plane contract.
 
