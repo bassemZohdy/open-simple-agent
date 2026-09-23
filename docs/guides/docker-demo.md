@@ -134,9 +134,12 @@ and seed commands again for a clean demonstration.
 - **Seed fails to find the model or agent:** remove the containers with
   `docker compose down --remove-orphans`, start them again, and rerun the
   seed command. The seed script is deterministic and idempotent.
-- **Control Panel is blank or reports a network error:** inspect
-  `OSA_API_BASE_URL` in `.env`. It must be a URL reachable from the browser,
-  normally `http://localhost:<OSA_CONTROL_PLANE_PORT>`.
+- **Control Panel is blank or reports a network error:** check
+  `OSA_CONTROL_PLANE_PORT` in `.env` and open `/config.js` on the panel port.
+  Its API URL must be reachable from the browser, normally
+  `http://localhost:<OSA_CONTROL_PLANE_PORT>`. The Control Plane must also
+  allow the panel origin through `OSA_CONTROL_PLANE_ALLOWED_ORIGINS`; the
+  Compose bundle derives it from `OSA_CONTROL_PANEL_PORT`.
 - **Runtime invocation reports a CORS error:** ensure the Control Panel port
   matches `OSA_CONTROL_PANEL_PORT` and that the runtime port mapping matches
   `OSA_RUNTIME_PORT`. Restart and reseed after changing `.env`.

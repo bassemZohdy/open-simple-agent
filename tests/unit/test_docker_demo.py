@@ -17,6 +17,9 @@ def test_docker_demo_bundle_has_required_services_and_seed_contract() -> None:
         "http://localhost:${OSA_RUNTIME_PORT:-8081}"
     )
     assert control_plane["environment"]["OSA_ALLOW_FAKE_PROVIDER"] == "1"
+    assert control_plane["environment"]["OSA_CONTROL_PLANE_ALLOWED_ORIGINS"] == (
+        "http://localhost:${OSA_CONTROL_PANEL_PORT:-8080}"
+    )
     assert "127.0.0.1:${OSA_RUNTIME_PORT:-8081}:${OSA_RUNTIME_PORT:-8081}" in control_plane["ports"]
 
     panel = compose["services"]["control-panel"]
