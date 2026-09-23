@@ -1,0 +1,30 @@
+name: Publish Docker Hub descriptions
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - component: runtime
+            description: Open Simple Agent ADK runtime for deployed agents
+          - component: control-plane
+            description: Open Simple Agent Control Plane API and deployment manager
+          - component: control-panel
+            description: Open Simple Agent browser Control Panel
+    steps:
+      - uses: actions/checkout@v7
+      - name: Publish ${{ matrix.component }} overview
+        uses: peter-evans/dockerhub-description@v5
+        with:
+          username: ${{ vars.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          repository: ${{ vars.DOCKERHUB_USERNAME }}/open-simple-agent-${{ matrix.component }}
+          short-description: ${{ matrix.description }}
+          readme-filepath: ./docs/dockerhub/${{ matrix.component }}.md

@@ -51,7 +51,9 @@ docker compose --profile seed run --rm seed
 
 Open [http://localhost:8080](http://localhost:8080), select `docker-demo-agent`, and invoke it with `What is running inside this Docker demo?`. The clearly labelled `DEMO RESPONSE` is deterministic and is not live model output. The API is at [http://localhost:8000](http://localhost:8000), and the seeded runtime is at [http://localhost:8081](http://localhost:8081).
 
-Follow the [numbered walkthrough](docs/guides/docker-demo.md) for recovery steps and the [capture script](docs/guides/docker-demo-capture.md) for the screenshot sequence. The [screenshot gallery contract](docs/assets/screenshots/README.md) records the remaining real-media requirements.
+The [v0.1.5 screenshot gallery](docs/assets/screenshots/README.md) shows the released application's agent list, template flow, resource, deployment, response, logs, Arabic layout, and narrow layout. Start with the [numbered walkthrough](docs/guides/docker-demo.md); use the [capture script](docs/guides/docker-demo-capture.md) to reproduce the images.
+
+[![Docker demo invocation showing a deterministic response](docs/assets/screenshots/05-invocation-demo-en.png)](docs/assets/screenshots/README.md)
 
 The bundle pins all images to `v0.1.5` (`0.1.5` image tags). Keep the three services on one matching release; do not mix `latest` and versioned tags.
 

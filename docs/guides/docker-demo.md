@@ -55,6 +55,9 @@ The seed command creates the `default` fake model resource, creates or reuses
 `docker-demo-agent`, activates it, deploys it, and prints the deployment JSON.
 It is safe to run again after a transient failure.
 
+The [agent overview screenshot](../assets/screenshots/01-agents-en.png) shows the
+activated record from the `v0.1.5` release.
+
 Expected result: the deployment has status `running` and an invoke URL based on
 `http://localhost:8081`.
 
@@ -63,6 +66,15 @@ Expected result: the deployment has status `running` and an invoke URL based on
 Open [http://localhost:8080](http://localhost:8080). Choose **Agents** and
 select `docker-demo-agent`.
 
+The [screenshot gallery](../assets/screenshots/README.md) shows the agent
+details, built-in templates and creation form, the `default` model resource,
+and the running deployment. The sample agent is seeded through the API; the
+template form is shown for exploration and does not create another agent.
+The seed command performs the create, activate, and deploy steps. The sample
+definition has no tools or skills, so it produces no tool traces; its model is
+the `default` fake resource. The managed invocation view displays the direct
+runtime response rather than a session transcript.
+
 Inspect:
 
 - the agent status and current version;
@@ -70,7 +82,8 @@ Inspect:
 - the deployment status and advertised invoke URL;
 - the deployment logs.
 
-The browser calls the Control Plane at the host URL in `OSA_API_BASE_URL`.
+The released Control Panel generates its browser API URL from the Compose
+configuration. The browser calls the Control Plane at that host URL.
 Do not use the Compose service name `control-plane` as that value: it is
 reachable only inside the Docker network, while the browser runs on the host.
 
@@ -87,6 +100,9 @@ Expected result: the runtime returns a short response beginning with
 through the published 8081 port. The response is deterministic and does not
 use an API key.
 
+See the [successful invocation screenshot](../assets/screenshots/05-invocation-demo-en.png)
+and the [390 × 844 narrow-screen capture](../assets/screenshots/08-deployment-narrow.png).
+
 For a direct smoke check, use the runtime endpoint shown by the deployment:
 
 ```bash
@@ -98,11 +114,14 @@ curl -fsS -X POST http://localhost:8081/v1/invoke \
 ## 6. Observe status and logs
 
 Refresh the deployment status after an invocation. Use the Control Panel logs
-view, or:
+view, or run:
 
 ```bash
 docker compose logs --tail=100 control-plane
 ```
+
+The [logs screenshot](../assets/screenshots/06-logs-status-en.png) shows a
+successful HTTP 200 invocation in the released demo.
 
 A failed invocation must show an error state or error response. Do not use a
 successful health check as evidence that an invocation succeeded.

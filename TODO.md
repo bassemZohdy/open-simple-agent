@@ -105,12 +105,9 @@ enable a gated feature.
 
 ## Recommended next task
 
-Run the Docker demo acceptance path on a Docker-enabled GitHub runner, then
-publish one matching tagged image set and capture the real screenshots required
-by DEMO-04. The runnable bundle, walkthrough, capture script, gallery contract,
-and manual smoke workflow are already implemented; do not mark the media or
-release tasks complete until the browser path and image manifests are verified.
-The optional video follows the validated screenshot guide.
+Finish publishing the `v0.1.5` Docker demo guide and real screenshot gallery
+from the verified release, including Docker Hub overviews and release links.
+The optional video can follow the validated screenshot guide.
 
 In parallel with that product work, the remaining architecture decision is:
 
@@ -216,23 +213,24 @@ through `Intl`; API and machine values remain stable.
 - [ ] Decide whether public agent-definition bundle import/export belongs in
   scope; resource import/export and server-side deployment export exist.
 
-## Docker end-user onboarding and demo assets — PLANNED
+## Docker end-user onboarding and demo assets — RELEASED, PUBLICATION IN PROGRESS
 
 Goal: a new user can pull released images, open the Control Panel, configure
 and run an agent, and understand the result using a visual guide. Screenshots
 are required; a short narrated/captioned video is an optional follow-up.
 
-Current gap: the Compose demo, walkthrough, capture script, screenshot
-gallery contract, manual smoke workflow, and README Docker quick start are
-checked in. Real screenshots, video, and tagged-release validation remain open;
-the current public release `v0.1.4` predates the Control Panel image.
+The `v0.1.5` release includes the versioned Compose bundle and all three
+matching images. The release bundle was downloaded, checksum-verified, pulled,
+started, seeded, invoked in a browser, restarted, and stopped. The real
+screenshot gallery is captured from that release. Docker Hub overview and
+GitHub Release gallery links still need publication. Video remains optional.
 
 Implement in order: DEMO-01 → DEMO-02 → DEMO-03 → DEMO-04.
 DEMO-05 is optional after DEMO-04. DEMO-06 publishes the completed guide/assets;
 DEMO-07 maintains and verifies the delivered path. This work can proceed
 independently of enterprise identity, ADR-011, and OpenShift acceptance gates.
 
-- [ ] **DEMO-01 — Complete the released Docker application entry point.**
+- [x] **DEMO-01 — Complete the released Docker application entry point.**
   Extend the existing image release workflow to publish the Control Panel
   image alongside the runtime and Control Plane, using the same version,
   registry, signing, and provenance conventions. Document exact published
@@ -248,8 +246,13 @@ independently of enterprise identity, ADR-011, and OpenShift acceptance gates.
   release-note entries, and image/port documentation. Keep this task open
   until a tagged release is built, pulled from both registries, and its
   published manifest and browser path are verified.
+  **Verified (2026-09-24):** `v0.1.5` published runtime, Control Plane, and
+  Control Panel images to GHCR and Docker Hub. All six references pulled;
+  manifest digests matched across registries. The published manifests provide
+  `linux/amd64` runnable images; ARM64 is not claimed. The released bundle's
+  browser reached both the API and seeded runtime.
 
-- [ ] **DEMO-02 — Add a reproducible local Docker demo.**
+- [x] **DEMO-02 — Add a reproducible local Docker demo.**
   Provide a downloadable versioned Compose/configuration bundle and concise
   environment example, with start, readiness, seed, stop, and reset commands.
   Reuse the current local deployment provider and explicit fake-provider
@@ -272,8 +275,11 @@ independently of enterprise identity, ADR-011, and OpenShift acceptance gates.
   provider forwarding, labeled deterministic responses, and static bundle
   contract tests are implemented and merged from PR #16 plus the follow-up
   fake-response fix. Docker execution remains the final acceptance check.
+  **Verified (2026-09-24):** The checksum-verified `v0.1.5` release bundle
+  passed Compose pull/start/readiness/seed, browser invocation, restart,
+  stop, and reset on Docker Desktop without a source build.
 
-- [ ] **DEMO-03 — Write the end-user walkthrough and capture script.**
+- [x] **DEMO-03 — Write the end-user walkthrough and capture script.**
   Add a Docker-first getting-started guide covering prerequisites and verified
   resource/architecture requirements; pull/start and readiness; open the
   panel; choose/create an agent; inspect its model/tools; activate/deploy;
@@ -292,8 +298,10 @@ independently of enterprise identity, ADR-011, and OpenShift acceptance gates.
   `docs/guides/docker-demo-capture.md`, with links from the demo and deployment
   guides. They use the same sample agent, prompt, ports, and deterministic
   output label; live Docker execution and media capture remain pending.
+  **Verified (2026-09-24):** The documented released-image path reached a
+  successful `DEMO RESPONSE` in the Control Panel and completed shutdown.
 
-- [ ] **DEMO-04 — Capture real application screenshots and add a gallery.**
+- [x] **DEMO-04 — Capture real application screenshots and add a gallery.**
   Capture the running released Docker demo: agent overview, creation/template
   flow, model/tool resources, active deployment, invocation/result, and
   status/logs. Include an Arabic RTL example and a narrow-screen example
@@ -308,6 +316,10 @@ independently of enterprise identity, ADR-011, and OpenShift acceptance gates.
   filename/evidence checklist are scaffolded in
   `docs/assets/screenshots/README.md`. Real screenshots still require a
   Docker-enabled browser session and a published image set.
+  **Verified (2026-09-24):** Ten real `v0.1.5` Control Panel captures cover
+  the agent, template and creation flow, fake model resource, deployment,
+  invocation, logs, Arabic RTL, and a narrow layout. Captions, alt text, and
+  release/digest metadata are in `docs/assets/screenshots/`.
 
 - [ ] **DEMO-05 — Record a short demo video (optional).**
   Reuse the validated walkthrough for a 2–4 minute recording: what OSA does,
@@ -336,7 +348,7 @@ independently of enterprise identity, ADR-011, and OpenShift acceptance gates.
   instructions and visuals directly, and all commands, image tags, asset
   links, and download links resolve.
 
-- [ ] **DEMO-07 — Verify and maintain the documented demo.**
+- [x] **DEMO-07 — Verify and maintain the documented demo.**
   Add a focused browser/container smoke check for the exact demo path
   (readiness → create/activate/deploy → invoke → stop), using deterministic
   fixtures and the released or candidate images. Reuse existing CI tooling;
@@ -353,6 +365,10 @@ independently of enterprise identity, ADR-011, and OpenShift acceptance gates.
   exercises readiness, browser configuration, seed/create/activate/deploy,
   direct invocation, and stop, with logs and cleanup on failure. Run it on a
   Docker-enabled GitHub runner before declaring the demo acceptance complete.
+  **Verified (2026-09-24):** Manual Docker demo workflow run `35931749170`
+  passed on GitHub's Docker runner. The `v0.1.5` release run `35934641247`
+  passed, and the downloaded release bundle passed the browser path locally.
+  Capture metadata and refresh instructions are committed with the gallery.
 
 ## Packaging, CI/CD, and release — PARTIALLY COMPLETE
 
